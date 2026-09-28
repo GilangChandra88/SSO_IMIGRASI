@@ -119,4 +119,4 @@ Pengaturan tim ada di `.claude/settings.json` (pengaturan pribadi taruh di `.cla
 - Lint 0 error dan build lolos sebelum PR.
 - Tidak ada library baru tanpa persetujuan pemilik proyek.
 - Tidak ada data asli, password, atau API key di kode.
-- Jalankan aplikasi lokal terhadap Firebase **DEV**, bukan produksi.
+- Firebase yang dipakai adalah **pengembangan bersama**: hanya data uji, jangan pernah data asli, dan jangan menghapus data uji anggota lain.

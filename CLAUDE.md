@@ -120,7 +120,7 @@ Struktur di dalam modul **dianjurkan** (`pages/`, `components/` khusus modul, `h
 - **Dilarang** menaruh data asli pegawai/pemohon (nama, NIP, alamat, telepon, e-mail pribadi, dokumen), **password**, atau **API key/secret** di kode, komentar, contoh, atau commit.
 - Gunakan **data dummy yang jelas palsu** (mis. `Budi Contoh`, NIP `000000000000000000`).
 - Konfigurasi rahasia hanya lewat **file `.env`** (tidak di-commit; contoh nilai di `.env.example`). Variabel Vite harus berawalan `VITE_`.
-- **Jalankan aplikasi lokal terhadap proyek Firebase DEV/latihan, bukan proyek produksi** (lihat README).
+- Proyek Firebase yang ada (`imigrasi-database`) berstatus **pengembangan bersama** dan hanya berisi **data uji**. **Jangan pernah memasukkan data asli ke sana**, dan jangan menghapus atau mengubah data uji milik anggota lain (lihat README).
 - Jangan menempelkan isi `.env`, token, atau data produksi ke chat/Issue/PR. Jika kredensial tidak sengaja ter-commit, laporkan segera ke pemilik proyek agar diganti (menghapus commit saja tidak cukup).
 
 ## 8. Perintah
@@ -140,6 +140,7 @@ Node `^20.19.0 || >=22.12.0` (lihat `engines` di `package.json`; `.nvmrc` memaka
 
 - **Kepegawaian dan Inventory tidak punya pengecekan peran sama sekali.** Siapa pun yang login bisa membuka `/kepegawaian`, membuat akun, dan mengubah `role` pegawai (termasuk ke `Super Admin`), kecuali dicegah aturan Firestore. Pengecekan peran hanya ada di e-Persuratan (`ProtectedRoute`, sisi klien saja).
 - **`firestore.rules` belum ada** di repo padahal dirujuk `firebase.json`. Keamanan data bergantung pada rules di Firebase Console.
+- **Belum ada pemisahan pengembangan dan produksi:** hanya satu proyek Firebase. Sebelum dipakai staf sungguhan, pemilik proyek perlu membuat proyek produksi terpisah, memasang aturan Firestore, dan menutup celah peran di atas.
 - E-mail Super Admin ditulis langsung di `src/context/AuthContext.jsx`. Pembuatan akun pegawai dilakukan dari klien (`secondaryAuth` di `kepegawaian/pages/Pegawai.jsx`).
 
 **Alur dan data:**
