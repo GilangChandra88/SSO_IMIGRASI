@@ -11,14 +11,14 @@ React 19 + Vite + Tailwind CSS 4 + React Router, dengan Firebase (Authentication
 
 - **Node.js** `^20.19.0` atau `>=22.12.0` (`node -v`). Tersedia `.nvmrc` (berisi `22`) untuk `nvm use`.
 - **Git** dan akun GitHub yang sudah **diundang oleh pemilik repo** (minta undangan bila belum ada).
-- Akses ke **proyek Firebase DEV** (lihat bagian "Menyiapkan Firebase DEV").
+- Nilai `.env` dan **akun uji** Firebase dari pemilik proyek (lihat bagian "Firebase: lingkungan pengembangan bersama").
 
 ## Menjalankan proyek
 
 ```bash
 npm install
 cp .env.example .env      # Windows PowerShell: Copy-Item .env.example .env
-# isi nilai di .env (lihat bagian berikutnya), lalu:
+# isi nilai di .env (minta ke pemilik proyek, lihat bagian Firebase di bawah), lalu:
 npm run dev
 ```
 
@@ -38,23 +38,50 @@ Jika halaman **putih kosong**, hampir pasti `.env` belum dibuat atau masih koson
 > Untuk merapikan hanya file yang Anda ubah, gunakan `npx prettier --write <file>`.
 > Semua perintah di dokumen ini ditulis satu per baris supaya bisa dijalankan di Git Bash maupun PowerShell.
 
-## Menyiapkan Firebase DEV
+## Firebase: lingkungan pengembangan bersama
 
-Aplikasi ini memakai Firebase sebagai "server": Firestore untuk data dan Authentication untuk login. **Jangan menjalankan aplikasi lokal terhadap proyek produksi** (`imigrasi-database`), karena mencoba fitur (membuat LPJ, menghapus pegawai) akan mengubah data sungguhan.
+Aplikasi ini memakai Firebase sebagai "server": Firestore untuk data dan Authentication untuk login. Saat ini hanya ada **satu proyek Firebase** (`imigrasi-database`, database `imigrasi`). Statusnya **lingkungan pengembangan**: isinya hanya **data uji** dan aplikasi masih dalam pengembangan. Semua anggota tim memakai proyek yang sama.
 
-Sebagai gantinya, pemilik proyek (atau Anda sendiri) membuat **proyek Firebase terpisah untuk latihan**, berisi data dan akun palsu saja:
+Karena datanya dipakai bersama:
 
-1. Buka [console.firebase.google.com](https://console.firebase.google.com), **Add project**, beri nama mis. `imigrasi-dev`.
-2. **Build → Authentication → Get started → Sign-in method → Email/Password → Enable.**
-3. **Build → Firestore Database → Create database.**
-   - Isi **Database ID** dengan `imigrasi` (sama dengan produksi dan Cloud Function), lalu biarkan `VITE_FIREBASE_DATABASE_ID=imigrasi` di `.env`. Memakai `(default)` masih bisa (isi `VITE_FIREBASE_DATABASE_ID=(default)`), tetapi tidak sama dengan produksi.
-   - Pilih **Start in test mode** (data hanya dummy). Test mode kedaluwarsa dalam **30 hari**; setelah itu semua baca/tulis ditolak sampai Anda memperbarui aturan di tab **Rules**. Jangan pilih _production mode_: repo ini belum punya `firestore.rules`, sehingga semua akses ditolak dan halaman tampak "memuat terus" atau kosong tanpa pesan yang jelas.
-4. Buat akun uji di **Authentication → Users → Add user** (e-mail palsu, mis. `admin@contoh.test`).
-5. Buat dokumen di koleksi `pegawai` agar peran terbaca. Field yang dipakai: `email` (**huruf kecil, sama persis dengan akun di Authentication**), `nama`, `nip` (dummy), dan `role`. Nilai `role` harus persis salah satu dari `Pegawai`, `Admin`, atau `Super Admin` (huruf besar di awal, ada spasi di `Super Admin`; penulisan lain diam-diam dianggap bukan admin). Pakai `Super Admin` bila perlu menguji MAK Setup.
-6. **Project settings → General → Your apps → Add app (Web)**, salin nilai `firebaseConfig` ke `.env`.
-7. Login di aplikasi dengan akun uji, lalu buka Console browser (F12): tidak boleh ada `permission-denied`. Bila Console menampilkan **"The query requires an index"**, klik tautan di pesan itu untuk membuat indeks di proyek dev Anda (satu klik per indeks).
+- **Masukkan hanya data uji yang jelas palsu.** Jangan pernah memasukkan data asli pegawai/pemohon (NIP, alamat, telepon, dokumen).
+- Anggota lain bisa mengubah atau menghapus data yang Anda buat, dan sebaliknya. Beri data uji Anda awalan yang mudah dikenali (mis. `[Budi] LPJ uji`) dan **jangan menghapus data yang bukan Anda buat**.
+- Hindari menguji fitur yang mengubah atau menghapus data secara massal.
+
+### Memulai (anggota baru)
+
+Minta ke pemilik proyek, lewat jalur pribadi (jangan lewat chat grup publik, Issue, atau PR):
+
+1. Nilai `VITE_FIREBASE_*` untuk `.env`.
+2. Satu **akun uji** (e-mail dan password) untuk login.
+
+Lalu ikuti langkah "Menjalankan proyek" di atas. Setelah login, buka Console browser (F12). Bila muncul **"The query requires an index"**, klik tautan di pesan itu untuk membuat indeks (cukup sekali untuk semua anggota, karena proyeknya sama). Bila muncul `permission-denied`, kabari pemilik proyek.
+
+### Untuk pemilik proyek: menambah anggota baru
+
+1. Firebase Console → **Authentication → Users → Add user**. Pakai e-mail palsu, mis. `budi@contoh.test`, dan password sementara.
+2. Firestore (database `imigrasi`) → koleksi `pegawai` → **Add document** dengan field: `email` (**huruf kecil, sama persis dengan akun di Authentication**), `nama`, `nip` (dummy), dan `role`. Nilai `role` harus persis `Pegawai`, `Admin`, atau `Super Admin` (huruf besar di awal, ada spasi di `Super Admin`; penulisan lain diam-diam dianggap bukan admin). Beri `Super Admin` hanya bila perlu menguji MAK Setup.
 
 Catatan tentang alur LPJ: dokumen berikutnya dibuka kuncinya di **dua tempat**, yaitu Cloud Function `onSuratItemUpdated` di `functions/` dan cadangan di klien (`PackDetail.jsx`, `handleStatusChange`). Tanpa men-deploy Cloud Function (butuh paket berbayar Blaze), pembukaan kunci tetap berjalan lewat klien, tetapi beberapa field progres tambahan (`stuck_items`, `age_days`, dst.) tidak terisi.
+
+### Sebelum dipakai staf sungguhan (pemilik proyek)
+
+Belum ada pemisahan antara pengembangan dan produksi. Sebelum staf mulai memakai aplikasi ini:
+
+1. Buat proyek Firebase **produksi terpisah**; proyek yang sekarang tetap menjadi pengembangan.
+2. Pasang aturan Firestore (`firestore.rules` belum ada di repo) dan tutup celah pengecekan peran di Kepegawaian dan Inventory (lihat [`CLAUDE.md`](CLAUDE.md) bagian 9).
+3. Isi `VITE_FIREBASE_*` di hosting dengan nilai proyek produksi.
+
+<details>
+<summary>Membuat proyek atau database Firebase baru (untuk produksi, atau untuk memisahkan data uji)</summary>
+
+- Proyek baru: [console.firebase.google.com](https://console.firebase.google.com) → **Add project**, lalu **Build → Authentication → Sign-in method → Email/Password → Enable**.
+- **Build → Firestore Database → Create database**: isi **Database ID** dengan `imigrasi` (sama dengan Cloud Function) dan biarkan `VITE_FIREBASE_DATABASE_ID=imigrasi`. Memakai `(default)` masih bisa (`VITE_FIREBASE_DATABASE_ID=(default)`), tetapi tidak sama dengan proyek yang ada.
+- Untuk proyek latihan, pilih **Start in test mode**. Test mode kedaluwarsa dalam **30 hari**; setelah itu semua baca/tulis ditolak sampai aturan di tab **Rules** diperbarui. Jangan pilih _production mode_ tanpa `firestore.rules`: semua akses ditolak dan halaman tampak "memuat terus" atau kosong tanpa pesan yang jelas.
+- Alternatif tanpa proyek baru: **Firestore → Add database** di proyek yang sama (mis. ID `imigrasi-dev`), lalu ubah `VITE_FIREBASE_DATABASE_ID` di `.env`. Data terpisah, akun login tetap sama.
+- **Project settings → General → Your apps → Add app (Web)** untuk mendapat nilai `firebaseConfig`.
+
+</details>
 
 **Jangan pernah meng-commit `.env`.** File itu sudah ada di `.gitignore`.
 
@@ -104,6 +131,6 @@ Detail lengkap (pembagian modul, konflik, review) ada di [`CONTRIBUTING.md`](CON
 
 ## Deploy (hanya pemilik proyek)
 
-- **Frontend.** `vercel.json` (rewrite ke `index.html` untuk SPA) dan `firebase.json` sama-sama ada; tanyakan ke pemilik proyek target yang dipakai. **Wajib:** isi variabel lingkungan `VITE_FIREBASE_*` (sama seperti `.env.example`, nilai proyek **produksi**) di pengaturan hosting (Vercel: Project Settings → Environment Variables) **sebelum** build. Vite menanamkan nilainya saat build; tanpa itu situs hasil deploy menjadi halaman putih.
+- **Frontend.** `vercel.json` (rewrite ke `index.html` untuk SPA) dan `firebase.json` sama-sama ada; tanyakan ke pemilik proyek target yang dipakai. **Wajib:** isi variabel lingkungan `VITE_FIREBASE_*` (sama seperti `.env.example`; saat ini nilainya sama dengan proyek pengembangan, setelah proyek produksi terpisah dibuat isi dengan nilainya) di pengaturan hosting (Vercel: Project Settings → Environment Variables) **sebelum** build. Vite menanamkan nilainya saat build; tanpa itu situs hasil deploy menjadi halaman putih.
 - **Cloud Functions.** `cd functions`, `npm install`, lalu `firebase deploy --only functions`.
 - **Firestore.** `firebase.json` merujuk `firestore.rules` yang **belum ada** di repo dan blok `firestore`-nya tidak menyebut database bernama `imigrasi`, sehingga `firebase deploy --only firestore` menarget database `(default)`. Jangan men-deploy Firestore sebelum diperbaiki oleh pemilik proyek.
