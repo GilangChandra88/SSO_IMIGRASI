@@ -1,0 +1,65 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "surat_items",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "assigned_to", "order": "ASCENDING" },
+        { "fieldPath": "is_blocked", "order": "ASCENDING" },
+        { "fieldPath": "updated_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "surat_items",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "assigned_to", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "updated_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "lpj_packs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "pegawai_uids", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "lpj_packs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "created_at", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "MAK_History",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "makNodeId", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" },
+        { "fieldPath": "tanggal", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "MAK_History",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "tahun", "order": "ASCENDING" },
+        { "fieldPath": "bulan", "order": "ASCENDING" },
+        { "fieldPath": "status", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "MAK_History",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "suratRef.packId", "order": "ASCENDING" },
+        { "fieldPath": "suratRef.suratItemId", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": []
+}

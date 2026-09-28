@@ -1,0 +1,68 @@
+/** LEMBAR VERIFIKASI / COVER KEUANGAN */
+export const definition = {
+  id: 'lembar-verifikasi',
+  kode: 'LVER',
+  nama: 'Lembar Verifikasi (Cover)',
+  kategori: 'Bundle/Arsip',
+  deskripsi:
+    'Cover bundle dokumen keuangan perjalanan dinas. Menjadi halaman depan seluruh paket dokumen: Nota Dinas, SPB, Rincian, SPTJM, Nominatif, dan Kwitansi.',
+  icon: '📁',
+  warna: '#ef4444',
+  status: 'active',
+  variables: [
+    {
+      key: 'nomor_bundle',
+      label: 'Nomor Bundle/Paket',
+      type: 'text',
+      required: true,
+      source: 'auto',
+    },
+    { key: 'tanggal_cover', label: 'Tanggal Cover', type: 'date', required: true, source: 'auto' },
+    {
+      key: 'perihal',
+      label: 'Perihal/Kegiatan',
+      type: 'textarea',
+      required: true,
+      source: 'linked',
+    },
+    {
+      key: 'total_biaya',
+      label: 'Total Biaya (Rp)',
+      type: 'currency',
+      required: true,
+      source: 'linked',
+    },
+    { key: 'mak', label: 'Kode MAK', type: 'text', required: true, source: 'linked' },
+    {
+      key: 'dokumen_terlampir',
+      label: 'Dokumen Terlampir',
+      type: 'checklist',
+      required: true,
+      source: 'auto',
+      options: [
+        'Nota Dinas',
+        'Surat Perintah Bayar',
+        'Rincian SPBy',
+        'Rincian Perjalanan',
+        'SPTJM',
+        'Nominatif',
+        'Kwitansi',
+        'SP',
+        'SPD',
+      ],
+    },
+    {
+      key: 'pejabat_verifikasi',
+      label: 'Pejabat Verifikasi',
+      type: 'pegawai',
+      required: true,
+      source: 'pegawai',
+    },
+    { key: 'pejabat_ppk', label: 'Pejabat PPK', type: 'pegawai', required: true, source: 'linked' },
+  ],
+  connections: [
+    { targetSuratId: 'laporan', type: 'references', label: '+ Laporan', variableMapping: {} },
+    { targetSuratId: 'lampiran', type: 'references', label: '+ Lampiran', variableMapping: {} },
+  ],
+  nodePosition: { x: 1090, y: 340 },
+};

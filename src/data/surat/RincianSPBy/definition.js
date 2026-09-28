@@ -1,0 +1,66 @@
+/** RINCIAN SPBY */
+export const definition = {
+  id: 'rincian-spby',
+  kode: 'RSPBY',
+  nama: 'Rincian SPBy',
+  kategori: 'Keuangan',
+  deskripsi: 'Rincian perhitungan biaya SPBY: transport, hotel, uang harian per pegawai.',
+  icon: '🧮',
+  warna: '#3b82f6',
+  status: 'active',
+  variables: [
+    {
+      key: 'nomor_sp_ref',
+      label: 'No. SP Referensi',
+      type: 'text',
+      required: true,
+      source: 'linked',
+    },
+    {
+      key: 'pegawai_list',
+      label: 'Daftar Pegawai',
+      type: 'multi_pegawai',
+      required: true,
+      source: 'linked',
+    },
+    { key: 'tujuan', label: 'Tujuan', type: 'text', required: true, source: 'linked' },
+    { key: 'total_hari', label: 'Total Hari', type: 'number', required: true, source: 'linked' },
+    {
+      key: 'biaya_transport',
+      label: 'Biaya Transport',
+      type: 'currency',
+      required: true,
+      source: 'linked',
+    },
+    {
+      key: 'uang_harian',
+      label: 'Uang Harian/hari',
+      type: 'currency',
+      required: true,
+      source: 'linked',
+    },
+    {
+      key: 'biaya_hotel',
+      label: 'Biaya Hotel',
+      type: 'currency',
+      required: false,
+      source: 'linked',
+    },
+    {
+      key: 'total_biaya',
+      label: 'Total Biaya',
+      type: 'currency',
+      required: true,
+      source: 'linked',
+    },
+  ],
+  connections: [
+    {
+      targetSuratId: 'lembar-verifikasi',
+      type: 'references',
+      label: '→ Verifikasi',
+      variableMapping: {},
+    },
+  ],
+  nodePosition: { x: 830, y: 240 },
+};

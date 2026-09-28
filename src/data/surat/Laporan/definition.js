@@ -1,0 +1,62 @@
+/** LAPORAN PERJALANAN DINAS */
+export const definition = {
+  id: 'laporan',
+  kode: 'LAP',
+  nama: 'Laporan',
+  kategori: 'Bundle/Arsip',
+  deskripsi:
+    'Laporan hasil pelaksanaan perjalanan dinas. Berisi ringkasan kegiatan, hasil, dan rekomendasi.',
+  icon: '📄',
+  warna: '#ef4444',
+  status: 'active',
+  variables: [
+    { key: 'nomor_laporan', label: 'Nomor Laporan', type: 'text', required: true, source: 'auto' },
+    {
+      key: 'tanggal_laporan',
+      label: 'Tanggal Laporan',
+      type: 'date',
+      required: true,
+      source: 'auto',
+    },
+    { key: 'perihal', label: 'Perihal Kegiatan', type: 'text', required: true, source: 'linked' },
+    { key: 'tujuan', label: 'Tujuan', type: 'text', required: true, source: 'linked' },
+    {
+      key: 'tanggal_mulai',
+      label: 'Tanggal Mulai',
+      type: 'date',
+      required: true,
+      source: 'linked',
+    },
+    {
+      key: 'tanggal_selesai',
+      label: 'Tanggal Selesai',
+      type: 'date',
+      required: true,
+      source: 'linked',
+    },
+    { key: 'isi_laporan', label: 'Isi Laporan', type: 'richtext', required: true, source: 'input' },
+    {
+      key: 'hasil_kegiatan',
+      label: 'Hasil Kegiatan',
+      type: 'textarea',
+      required: true,
+      source: 'input',
+    },
+    {
+      key: 'rekomendasi',
+      label: 'Rekomendasi',
+      type: 'textarea',
+      required: false,
+      source: 'input',
+    },
+    {
+      key: 'pegawai_pelapor',
+      label: 'Pelapor',
+      type: 'pegawai',
+      required: true,
+      source: 'pegawai',
+    },
+  ],
+  connections: [],
+  nodePosition: { x: 1090, y: 480 },
+};

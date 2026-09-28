@@ -1,0 +1,2 @@
+# Semua file teks memakai LF (menghindari konflik CRLF/LF antar anggota tim di Windows dan Mac).
+* text=auto eol=lf
