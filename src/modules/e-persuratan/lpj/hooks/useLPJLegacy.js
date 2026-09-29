@@ -1,14 +1,12 @@
 /**
- * Fungsi LPJ format lama (surat_items per dokumen). Masih diimpor Dashboard dan
- * SuratForm (mode LPJ); dihapus setelah keduanya pindah ke model skema 2.
+ * Fungsi LPJ format lama (surat_items per dokumen). Hanya dipakai mode LPJ lama di
+ * SuratForm (?packId=&itemId=), yang tidak lagi dibuka alur LPJ baru. Hapus bersama
+ * mode itu dan packTemplates.js bila data uji format lama sudah tidak diperlukan.
  */
 
-import { useState, useEffect } from 'react';
 import {
-  collectionGroup,
   collection,
   doc,
-  onSnapshot,
   query,
   where,
   serverTimestamp,
@@ -17,59 +15,6 @@ import {
 } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { PERJADIN_PHASES } from '../data/packTemplates';
-
-// ─── Hook: Tugas LPJ untuk Dashboard (per user) ───────────────────────────────
-
-/**
- * Ambil semua surat_items yang ditugaskan ke user ini:
- * - is_blocked = false (sudah bisa dikerjakan)
- * - status != 'completed'
- * Menggunakan collectionGroup untuk query lintas semua packs.
- *
- * @param {string} userUid
- */
-export function useMyLPJTasks(userUid) {
-  const [tasks, setTasks] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    if (!userUid) {
-      setLoading(false);
-      return;
-    }
-
-    // Query collectionGroup: surat_items lintas semua lpj_packs
-    const q = query(
-      collectionGroup(db, 'surat_items'),
-      where('assigned_to', '==', userUid),
-      where('is_blocked', '==', false),
-    );
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const all = snap.docs.map((d) => ({
-          id: d.id,
-          packId: d.ref.parent.parent.id, // ambil packId dari path
-          ...d.data(),
-        }));
-        // Filter client-side: hanya yang belum selesai
-        setTasks(all.filter((t) => t.status !== 'completed' && t.status !== 'not_required'));
-        setLoading(false);
-      },
-      (err) => {
-        // Jika index belum ada → fallback ke empty (akan ada error di console)
-        console.warn('useMyLPJTasks: index belum siap atau error:', err.message);
-        setTasks([]);
-        setLoading(false);
-      },
-    );
-
-    return unsub;
-  }, [userUid]);
-
-  return { tasks, loading };
-}
 
 // ─── Sync SPD Items (Dynamic generation based on SP) ───────────────────
 export async function syncSPDItems(packId, spFormData) {

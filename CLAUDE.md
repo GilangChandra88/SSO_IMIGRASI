@@ -21,25 +21,30 @@ URL: `/login`, `/` (Portal), `/e-persuratan/*`, `/inventory/*`, `/kepegawaian/*`
 
 ## 2. Alur bisnis LPJ
 
-**LPJ (Laporan Pertanggungjawaban)** = satu **paket (pack)** dokumen keuangan untuk satu kegiatan. Ada dua jenis: **Perjalanan Dinas** dan **Non-Perjalanan Dinas**. Definisi paket ada di `src/modules/e-persuratan/lpj/data/packTemplates.js`; definisi tiap surat di `src/data/surat/*/definition.js` (14 definisi, 13 terdaftar di `src/data/surat/index.js`; `SuratKeteranganTinggal` belum didaftarkan).
+**LPJ (Laporan Pertanggungjawaban)** = satu **berkas** dokumen keuangan untuk satu kegiatan. Ada dua jenis: **Perjalanan Dinas** dan **Non-Perjalanan Dinas**. Tampilan, perilaku responsif, dan alurnya **mengikuti purwarupa** `e-persuratan-react` (di luar repo; minta ke pemilik proyek bila perlu).
 
-**Perjalanan Dinas** (4 fase):
+**Model data (skema 2):** satu dokumen `lpj_packs/{id}` per berkas (`skema: 2`, `jenis`, `uraian`, `status: draft|selesai`, `pegawai_uids`, `aktivitas`) berisi bagian `sp`, `spd`, `lpj`, `lap`, `selesai` (Perjadin) atau `np` (Non-Perjadin). Semua status fase dihitung dari isi dokumen oleh `lpj/utils/lpjLogic.js` (port `lpjLogic.js` purwarupa). Berkas lama berbasis `surat_items` (tanpa `skema`) tampil sebagai "Format lama" dan tidak bisa dibuka lagi.
 
-1. **Surat Perintah (SP)**
-2. **Surat Perjalanan Dinas (SPD)** — dibuat satu per pegawai saat form SP disimpan (`syncSPDItems` di `lpj/hooks/useLPJ.js`)
-3. **SPBY (Form Hub)** — isian keuangan diisi **sekali**, lalu mengalir ke 7 dokumen: Nota Dinas, Surat Perintah Bayar (SPB), Rincian SPBy, Rincian Perjalanan Tugas, SPTJM Pelaksana, Nominatif, Kwitansi
-4. **Penutup dan arsip**: Lembar Verifikasi (cover), Laporan, Lampiran
+**Perjalanan Dinas** (4 fase, terbuka berurutan; fase berikutnya terkunci sampai fase sebelumnya selesai):
 
-**Non-Perjalanan Dinas**: SPB → Nota Dinas, SPTJM Pihak Ketiga, Kwitansi → Lembar Verifikasi dan Lampiran.
+1. **Surat Perintah**: menimbang, dasar (+ DIPA baku), Kepada (pegawai), Untuk (poin 1 + poin baku 2–4), pejabat penandatangan (Kepala/PLT/PLH). **Selesai** → final, lalu **TTE Srikandi**: unggah scan (opsional) + nomor surat resmi → SP selesai, nomor SPD mengikuti nomor SP.
+2. **SPD**: satu form untuk semua pelaksana (seksi, maksud, alat angkut, tujuan, tanggal, MAK sampai Akun) → Selesai → cetak SPD per pelaksana.
+3. **LPJ & SPBy**: tanggal LPJ + detail transaksi (pelaksana · item Akun MAK · jumlah) → pack 7 dokumen (Nota Dinas, Kwitansi, SPTJM/pelaksana, SPBy, Rincian SPBy/pelaksana, Surat Pernyataan Pengeluaran/pelaksana, Nominatif). Saat selesai, realisasi dicatat ke `MAK_History`.
+4. **Laporan Kegiatan**: 5 bagian isi + foto (JPG/PNG ≤200 KB, maks. 10) → berkas `selesai`.
+
+**Non-Perjalanan Dinas** (2 fase): **SPBy & Rincian Bayar** (tanggal, pelaksana, MAK, uraian, transaksi → SPBy, Nota Dinas, SPTJM/pelaksana, Kwitansi, Lembar Verifikasi; dicatat ke `MAK_History`) → **Lampiran** (Foto Bukti/Produk + Nota Pembayaran, maks. 10 gambar per jenis) → berkas `selesai`.
 
 **Aturan alur:**
 
-- Fase hanya pengelompokan tampilan. Keterkaitan sebenarnya lewat `depends_on` per dokumen (`surat_item`): dokumen **terkunci** (`is_blocked`) sampai semua dependensinya `completed`. Contoh: Lampiran tanpa dependensi; Laporan menunggu SPBY; Lembar Verifikasi menunggu Nota Dinas + SPB + Rincian SPBy.
-- Status dokumen: `not_started`, `in_progress`, `completed`. `not_required` ada di model tetapi belum ada fitur yang menetapkannya dan belum diperhitungkan buka-kunci/progres. Tombol **Tandai Selesai** pada kelompok dokumen (mis. SPBy & Pack Dokumen) bisa langsung memindahkan anggota yang `not_started` ke `completed`.
-- **Logika buka-kunci dan progres berjalan di dua tempat** (terduplikasi): Cloud Function `onSuratItemUpdated` (`functions/index.js`) dan cadangan di klien (`lpj/pages/PackDetail.jsx`, `handleStatusChange`). Ubah keduanya bersamaan. Klien hanya menulis `progress.total/completed/percentage`; function menulis field progres tambahan (`in_progress`, `not_started`, `stuck_items`, `age_days`).
-- **Tampilan dan alur mengikuti purwarupa** (`e-persuratan-react`, di luar repo) secara bertahap. Sudah: jendela **Buat Berkas Baru** (`lpj/components/CreatePackModal.jsx`: jenis + uraian kegiatan maks. 220 karakter, disimpan sebagai `judul`; pegawai dipilih di form Surat Perintah) dan halaman **detail** (`lpj/pages/PackDetail.jsx`: kartu per fase, tombol per dokumen Buat Sekarang/Edit/Lihat/Tandai Selesai; fase terkunci bila semua dokumennya terkunci; SPD per pegawai dan dokumen SPBY tampil sebagai kelompok). Belum: konsep "selesai = final", nomor surat setelah TTE Srikandi, cetak SPD per pelaksana, susunan dokumen Fase 3–4 versi purwarupa, unggah berkas (butuh Firebase Storage), kartu Status Pembayaran.
-- Penugasan (`assigned_to`): item bertipe `admin` dan `bendahara` otomatis ke **pembuat paket** (`bendahara` bukan peran akun). Item `per_pegawai`: hanya SPD yang dipecah per pegawai; SPTJM Pelaksana ditandai `per_pegawai` di template tetapi saat ini dibuat **satu item per paket** dengan `assigned_to` kosong (?). Akibatnya SPD/SPTJM tidak muncul di Dashboard siapa pun (Dashboard hanya menampilkan item dengan `assigned_to` = pengguna login dan tidak terkunci).
-- Dokumen PDF dirender di `src/components/SuratPreview/SuratPreviewCanvas.jsx` (`@react-pdf/renderer`). Template PDF baru ada untuk 9 dari 13 surat terdaftar; SPBY (form saja), Lembar Verifikasi, Laporan, dan Lampiran belum punya.
+- "Selesai" pada sebuah fase = **final** (konfirmasi "tidak akan bisa diedit lagi"); belum ada fitur buka kunci.
+- Halaman: `lpj/pages/LPJPage.jsx` → Daftar (`/e-persuratan/lpj`), Detail (`/lpj/:id`), form (`/lpj/:id?isi=sp|tte|spd|cetak-spd|lpj|laporan|np|lampiran`). Langkah form dibatasi status kunci (`bolehMasuk` di form).
+- Hak akses (sisi klien): admin melihat & mengubah semua berkas; pegawai melihat berkas yang ia buat atau yang mencantumkan dirinya (`pegawai_uids`), dan mengubahnya selama belum final.
+- Berkas unggahan disimpan di **Firebase Storage** `lpj/{id}/...` (`lpj/services/lpjStorage.js`, aturan di `storage.rules`); dokumen Firestore hanya menyimpan metadata (`path`, `url`, `name`, `size`).
+- Dokumen PDF: `lpj/utils/dokumenLpj.js` memetakan berkas ke kunci data template di `src/components/SuratPreview/SuratPreviewCanvas.jsx`. Template ada untuk SP, SPD, Nota Dinas, Kwitansi, Nominatif, SPTJM, Rincian SPBy. **Belum ada** untuk SPBy, Surat Pernyataan Pengeluaran, Laporan Kegiatan, Lembar Verifikasi → pratinjau placeholder.
+- Kartu **Status Pembayaran** (bukti transfer Bendahara) hanya menampilkan field `pembayaran`; belum ada cara mengisinya (sama seperti purwarupa).
+- Data pegawai, pejabat, dan MAK diambil dari Firestore (`pegawai`, `MAK`); PPK dan Bendahara di PDF dari `status_khusus`. Jangan menyalin `masterData.js` purwarupa (berisi nama yang tampak asli).
+- Dashboard e-Persuratan membaca berkas yang sama (`useLPJPacks` lewat `lpj/index.js`); "Aktivitas Terbaru" dari field `aktivitas` tiap berkas.
+- Definisi surat ada di `src/data/surat/*/definition.js` (14 definisi, 13 terdaftar di `src/data/surat/index.js`); dipakai template PDF dan halaman Persuratan.
 
 **Data pendukung:**
 
@@ -100,7 +105,7 @@ Struktur di dalam modul **dianjurkan** (`pages/`, `components/` khusus modul, `h
 - **Function component + hooks.** Tanpa class component (kecuali error boundary di `main.jsx`).
 - **Nama file komponen PascalCase** (`PackDetail.jsx`). Hook `useNamaHook.js`, helper `camelCase.js`. Satu komponen utama per file.
 - **Styling hanya dengan Tailwind CSS.** Jangan menambah CSS manual, `style={{}}`, atau `<style>` baru. Pengecualian: komponen `@react-pdf/renderer` memakai `StyleSheet` karena PDF tidak mendukung Tailwind.
-- **Warna mengikuti purwarupa**: navy `#0f2040` untuk kartu utama dan tombol aksi utama; kartu judul memakai gradien `bg-gradient-to-r from-[#0f2040] to-[#1e4080]` (hover tombol `#1e4080`). Aksen status biru (`blue-50`/`blue-200`/`blue-700`), selesai hijau (`green-600`), peringatan kuning/amber. Di mode gelap, tombol dan ikon navy memakai `blue-600` agar tetap terlihat. Sidebar dan halaman yang belum dirombak masih `slate-800` (`#1e293b`) dan diseragamkan bertahap. Mode gelap memakai varian `dark:`. Aplikasi Kepegawaian memakai aksen amber (`APP_ACCENTS` di `src/utils/appAccents.js`).
+- **Warna & font mengikuti purwarupa** (halaman LPJ dan Dashboard e-Persuratan): token warna purwarupa (terang/gelap) tersedia sebagai kelas Tailwind di `lpj/ui/tokens.js` (`T`, `NAVY`, `STATUS`, `FORM`, `BTN`, `LAYOUT`) — pakai itu, jangan menulis ulang kode warna. Navy `#0f2040` untuk tombol aksi utama, gradien `from-[#0f2040] to-[#1e4080]` untuk kartu judul. Font Inter / Plus Jakarta Sans / IBM Plex Mono (dimuat di `index.html`) lewat `FONT.*`. Lebar dinamis (bilah progres) memakai `<progress>` atau atribut SVG, bukan `style`. Jangan menggabungkan dua kelas latar/warna yang bentrok (mis. `FORM.card` + `bg-...`); pilih token yang sesuai (`FORM.cardMuted`). Sidebar dan aplikasi lain masih `slate-800` (`#1e293b`). Mode gelap memakai varian `dark:`. Aplikasi Kepegawaian memakai aksen amber (`APP_ACCENTS` di `src/utils/appAccents.js`).
 - **Teks antarmuka dalam Bahasa Indonesia** (label, tombol, pesan error, placeholder). Nama variabel/fungsi boleh Indonesia atau Inggris, ikuti file sekitarnya.
 - Komponen baru harus responsif (mobile dan desktop) dan mendukung mode gelap.
 - Jangan menambah `console.log` ke kode yang di-commit.
@@ -146,18 +151,18 @@ Node `^20.19.0 || >=22.12.0` (lihat `engines` di `package.json`; `.nvmrc` memaka
 
 **Alur dan data:**
 
-- Logika buka-kunci/progres terduplikasi (Cloud Function dan `PackDetail.jsx`); lihat bagian 2. Cloud Function hanya jalan bila di-deploy (butuh paket berbayar Blaze).
+- **Sisa format LPJ lama:** Cloud Function `onSuratItemUpdated`/`onPackCreated` (`functions/`), `lpj/data/packTemplates.js`, `lpj/hooks/useLPJLegacy.js`, dan mode LPJ di `SuratForm.jsx` (`?packId=&itemId=`) hanya melayani berkas `surat_items` lama dan tidak dipakai alur baru. Hapus bersama bila data uji format lama sudah tidak diperlukan.
+- **Firebase Storage:** `storage.rules` harus di-deploy pemilik proyek (`firebase deploy --only storage`, Storage aktif di Console); tanpa itu unggah scan TTE, foto laporan, dan lampiran ditolak. Aturan saat ini: semua pengguna login boleh membaca/menulis `lpj/**` (maks. 5 MB, gambar/PDF). Berkas yang sudah terunggah tidak ikut terhapus bila berkas LPJ dihapus langsung dari Firestore.
 - Nama database `imigrasi` ditulis mati di `functions/index.js`. `firebase.json` tidak menyebut database itu, sehingga `firebase deploy --only firestore` menarget `(default)`; indeks kueri `inventory_transaksi` (`barangId` + `createdAt`) belum ada di `firestore.indexes.json`.
-- Panel "Perlu Dilengkapi" dan "Aktivitas Terbaru" di Dashboard berisi **data contoh** (bukan dari Firestore).
-- Teks DIPA ditulis mati dan berbeda di dua tempat: "Nomor SP DIPA-137.03.2.92951/202… tanggal 01 Desember 2025" di template PDF (`SuratPreviewCanvas.jsx`) dan string DIPA tahun 2026 di `SuratForm.jsx`.
-- Hook `useLPJ` menelan error (mis. indeks belum siap) dan mengembalikan daftar kosong tanpa pesan.
+- Teks DIPA ditulis mati dan berbeda di beberapa tempat: "Nomor SP DIPA-137.03.2.92951/202… tanggal 01 Desember 2025" di template PDF Nota Dinas (`SuratPreviewCanvas.jsx`) dan string DIPA tahun 2026 di `SuratForm.jsx` serta `lpj/data/masterLpj.js`.
+- Template PDF Surat Perintah selalu mencetak jabatan "Kepala Kantor…" walaupun pejabat yang dipilih PLT/PLH.
 
 **Lain-lain:**
 
 - Tidak ada route 404/catch-all: URL yang tidak dikenal menampilkan halaman kosong.
 - Bila `.env` kosong, `src/config/firebase.js` melempar error sebelum React dimuat sehingga yang tampak halaman putih (pesan hanya di Console).
 - Kelas `custom-scrollbar` dan `no-scrollbar` dipakai di banyak file tetapi tidak didefinisikan di CSS mana pun (tidak berefek).
-- `npm run lint` masih menampilkan ±80 peringatan (variabel tak terpakai, dependensi `useEffect`). Boleh dibersihkan bertahap di modul Anda sendiri.
+- `npm run lint` masih menampilkan ±55 peringatan (variabel tak terpakai, dependensi `useEffect`). Boleh dibersihkan bertahap di modul Anda sendiri.
 - Ukuran bundel JS besar (±2,4 MB); belum ada code-splitting.
 
 ## 10. Untuk Claude Code
