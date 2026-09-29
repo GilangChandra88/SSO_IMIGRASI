@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { PDFViewer, Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
+import { isiPlaceholder } from './isiPlaceholder';
 
 // ─── UTILS ──────────────────────────────────────────────────────────────────
 const fmtDate = (v) =>
@@ -1830,7 +1831,8 @@ const SPTJMPelaksana = ({ data, packItem }) => {
   );
 };
 
-const MyPdfDocument = ({ surat, data, packItem }) => (
+// Diekspor supaya modul LPJ bisa mencetak langsung (pdf().toBlob()) tanpa membuka pratinjau
+export const MyPdfDocument = ({ surat, data, packItem }) => (
   <Document>
     {surat.id === 'nota-dinas' ? (
       <Page
@@ -1898,23 +1900,10 @@ export default function SuratPreviewCanvas({ surat, formData, packItem }) {
     return () => clearTimeout(handler);
   }, [formData]);
 
-  const displayData = useMemo(() => {
-    const d = { ...debouncedFormData };
-    surat?.variables?.forEach((v) => {
-      if (d[v.key] !== undefined && d[v.key] !== '') return;
-      if (v.type === 'text') d[v.key] = '[ ... ]';
-      if (v.type === 'textarea') d[v.key] = '[ ... ]';
-      if (v.type === 'date')
-        d[v.key] = new Date().toLocaleDateString('id-ID', {
-          day: '2-digit',
-          month: 'long',
-          year: 'numeric',
-        });
-      if (v.type === 'pegawai') d[v.key] = 'Nama Pegawai\nNIP. -';
-      if (v.type === 'number') d[v.key] = 'Rp 0,-';
-    });
-    return d;
-  }, [surat, debouncedFormData]);
+  const displayData = useMemo(
+    () => isiPlaceholder(surat, debouncedFormData),
+    [surat, debouncedFormData],
+  );
 
   // Gunakan useMemo untuk merender PDFViewer HANYA ketika displayData benar-benar berubah.
   // Ini mencegah PDFViewer me-render ulang saat props formData masuk dengan cepat.

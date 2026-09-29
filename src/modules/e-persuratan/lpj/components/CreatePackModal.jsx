@@ -1,205 +1,169 @@
 import React, { useState } from 'react';
+import { FaArrowRight, FaCheck, FaCircleNotch, FaTimes } from 'react-icons/fa';
 import { createLPJPack } from '../hooks/useLPJ';
-import { FaTimes, FaCheck, FaCircleNotch, FaArrowRight } from 'react-icons/fa';
+import { URAIAN_MAX } from '../data/masterLpj';
+import Modal from '../ui/Modal';
+import { BTN, FONT, FORM, NAVY, STATUS, T } from '../ui/tokens';
 
-const JENIS = [
+const CARDS = [
   {
     type: 'perjadin',
-    nama: 'LPJ Perjadin',
+    name: 'LPJ Perjadin',
     desc: 'Laporan Pertanggungjawaban Perjalanan Dinas — Surat Perintah, SPD, & SPBy',
     badge: '4 Fase',
   },
   {
     type: 'non-perjadin',
-    nama: 'LPJ Non-Perjadin',
+    name: 'LPJ Non-Perjadin',
     desc: 'Laporan Pertanggungjawaban Kegiatan Non-Perjalanan Dinas',
     badge: '2 Fase',
   },
 ];
 
-const URAIAN_MAX = 220;
-
 /**
- * Jendela "Buat Berkas Baru": pilih jenis LPJ dan isi uraian kegiatan.
- * Uraian disimpan sebagai judul paket; pegawai dipilih nanti di form Surat Perintah.
+ * Jendela "Buat Berkas Baru" (TypeModal purwarupa): pilih jenis LPJ + isi uraian kegiatan,
+ * lalu berkas dibuat dan pengguna diarahkan ke Detail Dokumen.
+ * @param {{ onClose, onCreated: (id) => void, uid, nama, pegawaiLogin }} props
  */
-export default function CreatePackModal({ onClose, onSuccess, currentUser }) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
+export default function CreatePackModal({ onClose, onCreated, uid, nama, pegawaiLogin }) {
   const [type, setType] = useState('');
   const [uraian, setUraian] = useState('');
-  const [errors, setErrors] = useState({});
+  const [errType, setErrType] = useState(false);
+  const [errUraian, setErrUraian] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [errSubmit, setErrSubmit] = useState('');
 
-  const handleSubmit = async () => {
-    const judul = uraian.trim().slice(0, URAIAN_MAX);
-    const e = {};
-    if (!type) e.type = 'Pilih salah satu jenis LPJ terlebih dahulu.';
-    if (!judul) e.uraian = 'Uraian kegiatan wajib diisi.';
-    setErrors(e);
-    if (Object.keys(e).length) return;
+  async function handleNext() {
+    const val = uraian.trim().slice(0, URAIAN_MAX);
+    let ok = true;
+    if (!type) {
+      setErrType(true);
+      ok = false;
+    } else setErrType(false);
+    if (!val) {
+      setErrUraian(true);
+      ok = false;
+    } else setErrUraian(false);
+    if (!ok) return;
 
-    setIsSubmitting(true);
+    setBusy(true);
+    setErrSubmit('');
     try {
-      const displayName = currentUser?.displayName || currentUser?.email || 'Pengguna';
-      const packId = await createLPJPack({
-        type,
-        judul,
-        perihal: '',
-        tujuan: '',
-        tanggal_mulai: '',
-        tanggal_selesai: '',
-        mak: '',
-        pegawai_list: [],
-        created_by: { uid: currentUser?.uid, nama: displayName },
-      });
-      onSuccess(packId);
+      const id = await createLPJPack({ jenis: type, uraian: val, uid, nama, pegawaiLogin });
+      onCreated(id);
     } catch (err) {
       console.error('createLPJPack error:', err);
-      setErrors({ submit: 'Gagal membuat berkas. Periksa koneksi lalu coba lagi.' });
-    } finally {
-      setIsSubmitting(false);
+      setErrSubmit('Gagal membuat berkas. Periksa koneksi lalu coba lagi.');
+      setBusy(false);
     }
-  };
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="judul-buat-berkas"
-        className="bg-white dark:bg-[#0f172a] rounded-2xl shadow-2xl w-full max-w-[560px] max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-      >
-        {/* Header */}
-        <div className="flex items-start justify-between gap-4 px-6 pt-5">
-          <div>
-            <h2
-              id="judul-buat-berkas"
-              className="text-[17px] font-extrabold text-slate-900 dark:text-white"
-            >
-              Buat Berkas Baru
-            </h2>
-            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1">
-              Pilih jenis LPJ dan isi uraian kegiatan
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Tutup"
-            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
-          >
-            <FaTimes size={16} />
-          </button>
+    <Modal onClose={busy ? undefined : onClose} widthClass="max-w-[560px]" labelledBy="judul-buat">
+      <div className="flex items-start justify-between px-6 pt-5 pb-1">
+        <div>
+          <h2 id="judul-buat" className={`${FONT.head} font-extrabold text-[17px] ${T.ink}`}>
+            Buat Berkas Baru
+          </h2>
+          <p className={`mt-1 text-[12.5px] ${T.ink2}`}>Pilih jenis LPJ dan isi uraian kegiatan</p>
         </div>
-        <div className="h-px bg-slate-200 dark:bg-slate-800 my-3.5" />
-
-        <div className="overflow-y-auto custom-scrollbar">
-          {/* Pilihan jenis */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-6">
-            {JENIS.map((j) => {
-              const active = type === j.type;
-              return (
-                <button
-                  key={j.type}
-                  type="button"
-                  onClick={() => {
-                    setType(j.type);
-                    setErrors((e) => ({ ...e, type: undefined }));
-                  }}
-                  className={`relative text-left px-3.5 py-4 rounded-xl transition-colors ${
-                    active
-                      ? 'border-2 border-[#0f2040] dark:border-blue-500 bg-slate-50 dark:bg-slate-800/60'
-                      : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#162032] hover:border-slate-300 dark:hover:border-slate-600'
-                  }`}
-                >
-                  {active && (
-                    <span className="absolute top-2.5 right-2.5 text-[#0f2040] dark:text-blue-400">
-                      <FaCheck size={13} />
-                    </span>
-                  )}
-                  <div className="font-bold text-sm text-slate-900 dark:text-white mb-1.5">
-                    {j.nama}
-                  </div>
-                  <div className="text-xs text-slate-500 dark:text-slate-400 leading-snug mb-2">
-                    {j.desc}
-                  </div>
-                  <span className="inline-block text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/30">
-                    {j.badge}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-          {errors.type && (
-            <p className="px-6 pt-2 text-xs font-semibold text-rose-600 dark:text-rose-400">
-              {errors.type}
-            </p>
-          )}
-
-          {/* Uraian kegiatan */}
-          <div className="px-6 pt-4">
-            <label
-              htmlFor="uraian-kegiatan"
-              className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5"
-            >
-              Uraian Kegiatan <span className="text-rose-500">*</span>
-            </label>
-            <textarea
-              id="uraian-kegiatan"
-              rows={3}
-              maxLength={URAIAN_MAX}
-              placeholder="Contoh: Koordinasi teknis keimigrasian ke Direktorat Jenderal Imigrasi Jakarta"
-              value={uraian}
-              onChange={(e) => {
-                setUraian(e.target.value);
-                setErrors((prev) => ({ ...prev, uraian: undefined }));
-              }}
-              className={`w-full rounded-lg border bg-white dark:bg-[#162032] text-slate-900 dark:text-white px-3 py-2.5 text-sm placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-y ${
-                errors.uraian ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'
-              }`}
-            />
-            <div className="flex justify-between gap-2.5 mt-1.5 text-[11.5px] text-slate-400">
-              <p>
-                Uraian singkat ini akan tampil sebagai judul pada Detail Dokumen dan Daftar LPJ.
-              </p>
-              <p className="whitespace-nowrap">
-                {uraian.length}/{URAIAN_MAX}
-              </p>
-            </div>
-            {errors.uraian && (
-              <p className="mt-1 text-xs font-semibold text-rose-600 dark:text-rose-400">
-                {errors.uraian}
-              </p>
-            )}
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 pt-4 pb-6">
-          {errors.submit && (
-            <p role="alert" className="mb-3 text-sm font-semibold text-rose-600 dark:text-rose-400">
-              {errors.submit}
-            </p>
-          )}
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={handleSubmit}
-              disabled={isSubmitting}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#0f2040] hover:bg-[#1e4080] dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-sm font-semibold shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {isSubmitting ? (
-                <>
-                  <FaCircleNotch className="animate-spin" /> Membuat...
-                </>
-              ) : (
-                <>
-                  Lanjutkan <FaArrowRight size={12} />
-                </>
-              )}
-            </button>
-          </div>
-        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          aria-label="Tutup"
+          className={`p-1 leading-none ${T.inkMuted}`}
+        >
+          <FaTimes size={17} />
+        </button>
       </div>
-    </div>
+      <div className={`h-px my-3.5 ${T.bgBorder}`} />
+
+      <div className="grid grid-cols-1 min-[560px]:grid-cols-2 gap-3 px-6">
+        {CARDS.map((c) => {
+          const active = type === c.type;
+          return (
+            <button
+              key={c.type}
+              type="button"
+              onClick={() => {
+                setType(c.type);
+                setErrType(false);
+              }}
+              className={`relative text-left px-3.5 py-4 rounded-xl transition-colors ${
+                active
+                  ? `border-2 ${NAVY.border} dark:border-[#7DB6F3] ${T.surface2}`
+                  : `border ${T.border} ${T.surface} ${T.hoverSurface2}`
+              }`}
+            >
+              {active && (
+                <span className={`absolute top-2.5 right-2.5 ${NAVY.text}`}>
+                  <FaCheck size={13} />
+                </span>
+              )}
+              <div className={`font-bold text-sm mb-1.5 ${T.ink}`}>{c.name}</div>
+              <div className={`text-xs leading-[1.45] mb-2 ${T.ink2}`}>{c.desc}</div>
+              <span
+                className={`inline-block text-[10.5px] font-bold px-[9px] py-[3px] rounded-full border ${'bg-[#eff6ff] text-[#1d4ed8] border-[#bfdbfe] dark:bg-[rgba(57,135,229,.18)] dark:text-[#7DB6F3] dark:border-[rgba(125,182,243,.35)]'}`}
+              >
+                {c.badge}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {errType && (
+        <p className={`${FORM.err} px-6 pt-2`}>Pilih salah satu jenis LPJ terlebih dahulu.</p>
+      )}
+
+      <div className="px-6 pt-[18px] pb-1">
+        <label htmlFor="uraian-kegiatan" className={FORM.label}>
+          Uraian Kegiatan <span className="text-[#ef4444]">*</span>
+        </label>
+        <textarea
+          id="uraian-kegiatan"
+          rows={3}
+          maxLength={URAIAN_MAX}
+          placeholder="Contoh: Koordinasi teknis keimigrasian ke Direktorat Jenderal Imigrasi Jakarta"
+          value={uraian}
+          onChange={(e) => {
+            setUraian(e.target.value);
+            setErrUraian(false);
+          }}
+          className={`${FORM.textarea} ${errUraian ? FORM.borderErr : FORM.borderOk}`}
+        />
+        <div className="flex justify-between gap-2.5 mt-1.5">
+          <p className="text-[11.5px] text-[#94a3b8]">
+            Uraian singkat ini akan tampil sebagai judul pada Detail Dokumen dan Daftar LPJ.
+          </p>
+          <p className="text-[11.5px] text-[#94a3b8] whitespace-nowrap">
+            {uraian.length}/{URAIAN_MAX}
+          </p>
+        </div>
+        {errUraian && <p className={FORM.err}>Uraian kegiatan wajib diisi.</p>}
+      </div>
+
+      {errSubmit && (
+        <p
+          role="alert"
+          className={`mx-6 mt-3 px-3 py-2 rounded-lg text-[12.5px] ${STATUS.critBg} ${STATUS.critInk}`}
+        >
+          {errSubmit}
+        </p>
+      )}
+      <div className="flex justify-end px-6 pt-4 pb-6">
+        <button type="button" className={BTN.primaryDark} onClick={handleNext} disabled={busy}>
+          {busy ? (
+            <>
+              <FaCircleNotch className="animate-spin" size={12} /> Membuat...
+            </>
+          ) : (
+            <>
+              Lanjutkan <FaArrowRight size={12} />
+            </>
+          )}
+        </button>
+      </div>
+    </Modal>
   );
 }

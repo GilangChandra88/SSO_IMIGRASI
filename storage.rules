@@ -1,0 +1,21 @@
+rules_version = '2';
+
+// Aturan Firebase Storage. Deploy: firebase deploy --only storage
+service firebase.storage {
+  match /b/{bucket}/o {
+    // Berkas LPJ: scan Surat Perintah ber-TTE, foto Laporan Kegiatan, lampiran Non-Perjadin.
+    // Hanya pengguna yang login; maks. 5 MB; gambar atau PDF.
+    match /lpj/{packId}/{allPaths=**} {
+      allow read, delete: if request.auth != null;
+      allow create, update: if request.auth != null
+        && request.resource.size < 5 * 1024 * 1024
+        && (request.resource.contentType.matches('image/.*')
+          || request.resource.contentType == 'application/pdf');
+    }
+
+    // Selain itu ditolak.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
