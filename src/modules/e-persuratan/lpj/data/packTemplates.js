@@ -11,14 +11,13 @@
  *   'manual'      → admin assign manual saat setup
  */
 
-import { formatPegawaiString } from '../utils/pegawaiLPJ';
-
 // ─── FLOW A: PERJADIN ─────────────────────────────────────────────────────────
 
 export const PERJADIN_PHASES = [
   {
     id: 'sp',
     label: 'Fase 1 — Surat Perintah',
+    deskripsi: 'Dasar penugasan & pegawai yang ditugaskan',
     icon: '',
     color: '#1e293b',
     items: [
@@ -40,6 +39,7 @@ export const PERJADIN_PHASES = [
   {
     id: 'spd',
     label: 'Fase 2 — Surat Perjalanan Dinas',
+    deskripsi: 'Satu SPD untuk setiap pelaksana',
     icon: '',
     color: '#1e293b',
     items: [
@@ -60,6 +60,7 @@ export const PERJADIN_PHASES = [
   {
     id: 'spby',
     label: 'Fase 3 — SPBY',
+    deskripsi: 'Pack dokumen pertanggungjawaban',
     icon: '',
     color: '#334155',
     items: [
@@ -166,6 +167,7 @@ export const PERJADIN_PHASES = [
   {
     id: 'penutup',
     label: 'Fase 4 — Penutupan dan Arsip',
+    deskripsi: 'Lembar verifikasi, laporan & lampiran',
     icon: '',
     color: '#475569',
     items: [
@@ -215,6 +217,7 @@ export const NON_PERJADIN_PHASES = [
   {
     id: 'pembayaran',
     label: 'Fase 1 — Dokumen Pembayaran',
+    deskripsi: 'SPB, Nota Dinas, SPTJM & Kwitansi',
     icon: '',
     color: '#475569',
     items: [
@@ -271,6 +274,7 @@ export const NON_PERJADIN_PHASES = [
   {
     id: 'penutup',
     label: 'Fase 2 — Penutup & Arsip',
+    deskripsi: 'Lembar verifikasi & lampiran',
     icon: '',
     color: '#475569',
     items: [
@@ -311,11 +315,9 @@ export const NON_PERJADIN_PHASES = [
  * @param {'perjadin'|'non_perjadin'} type
  * @param {object[]} pegawaiList - list pegawai yang ditugaskan
  * @param {object} assignees - { admin: {uid, nama}, bendahara: {uid, nama} }
- * @param {object} detail - isian form Buat LPJ untuk mengisi awal SP & SPD:
- *   { maksud, tempat_tujuan, berangkat_dari, tanggal_berangkat, tanggal_kembali }
  * @returns {object[]} surat_items
  */
-export function generateSuratItems(type, pegawaiList = [], assignees = {}, detail = {}) {
+export function generateSuratItems(type, pegawaiList = [], assignees = {}) {
   const phases = type === 'perjadin' ? PERJADIN_PHASES : NON_PERJADIN_PHASES;
   const items = [];
 
@@ -327,14 +329,12 @@ export function generateSuratItems(type, pegawaiList = [], assignees = {}, detai
           items.push(
             buildItem({
               ...tpl,
-              // Pakai urutan, bukan NIP: NIP dummy yang sama akan saling menimpa
-              template_id: `${tpl.template_id}-${idx + 1}`,
+              template_id: `${tpl.template_id}-${pegawai.nip || idx}`,
               surat_nama: `${tpl.surat_nama} — ${pegawai.nama}`,
               phase_id: phase.id,
               phase_label: phase.label,
               assigned_to: pegawai.uid || '',
               assigned_name: pegawai.nama || '',
-              data: buildInitialData(tpl.kode, detail, pegawaiList, pegawai),
             }),
           );
         });
@@ -358,7 +358,6 @@ export function generateSuratItems(type, pegawaiList = [], assignees = {}, detai
             phase_label: phase.label,
             assigned_to,
             assigned_name,
-            data: buildInitialData(tpl.kode, detail, pegawaiList),
           }),
         );
       }
@@ -366,34 +365,6 @@ export function generateSuratItems(type, pegawaiList = [], assignees = {}, detai
   });
 
   return items;
-}
-
-/**
- * Isian awal dokumen dari form Buat LPJ, agar form SP dan SPD tidak diisi ulang.
- * Kunci yang kosong tidak ditulis supaya nilai bawaan form surat tetap berlaku.
- */
-function buildInitialData(kode, detail, pegawaiList, pegawai) {
-  let data = {};
-
-  if (kode === 'SP') {
-    data = {
-      pegawai_list: pegawaiList.map(formatPegawaiString),
-      kegiatan_poin_1: detail.maksud,
-    };
-  } else if (kode === 'SPD' && pegawai) {
-    data = {
-      pegawai: formatPegawaiString(pegawai),
-      maksud: detail.maksud,
-      tempat_tujuan: detail.tempat_tujuan,
-      berangkat_dari: detail.berangkat_dari,
-      tanggal_berangkat: detail.tanggal_berangkat,
-      tanggal_kembali: detail.tanggal_kembali,
-    };
-  }
-
-  return Object.fromEntries(
-    Object.entries(data).filter(([, v]) => (Array.isArray(v) ? v.length > 0 : !!v)),
-  );
 }
 
 function buildItem(tpl) {
@@ -417,7 +388,7 @@ function buildItem(tpl) {
     assigned_to: tpl.assigned_to || '',
     assigned_name: tpl.assigned_name || '',
     // Data isian surat (diisi saat dikerjakan)
-    data: tpl.data || {},
+    data: {},
     nomor_surat: '',
     instance_id: '',
     // Timestamps

@@ -1,8 +1,8 @@
 /**
  * PackDetail — Halaman Detail Paket LPJ
  * =======================================
- * Tampilan timeline per fase, status tiap surat, siapa assignee-nya,
- * dan aksi yang bisa dilakukan (Kerjakan / Selesai / Lihat).
+ * Kartu ringkasan di atas, lalu satu kartu per fase berisi dokumen / kelompok dokumen
+ * beserta status dan tombol aksinya (Buat Sekarang / Edit / Lihat / Tandai Selesai).
  */
 
 import React, { useState } from 'react';
@@ -10,23 +10,18 @@ import { useNavigate } from 'react-router-dom';
 import {
   FaArrowLeft,
   FaCheck,
-  FaPlay,
   FaLock,
-  FaUser,
   FaClock,
-  FaChevronDown,
-  FaChevronUp,
-  FaRegCircle,
-  FaCircleNotch,
-  FaCheckCircle,
-  FaMinusCircle,
   FaRegFileAlt,
   FaEye,
   FaEdit,
+  FaPlus,
+  FaCircleNotch,
 } from 'react-icons/fa';
 import { useLPJPackDetail } from '../hooks/useLPJ';
-import { PACK_TYPES } from '../data/packTemplates';
+import { PACK_TYPES, PERJADIN_PHASES, NON_PERJADIN_PHASES } from '../data/packTemplates';
 import { formatTanggal } from '../utils/formatTanggal';
+import ConfirmSelesaiModal from '../components/ConfirmSelesaiModal';
 import {
   doc,
   updateDoc,
@@ -39,57 +34,201 @@ import { db } from '@/config/firebase';
 import SuratPreviewModal from '@/components/SuratPreview/SuratPreviewModal';
 import { SURAT_REGISTRY } from '@/data/surat';
 
-const STATUS_CONFIG = {
-  not_started: { label: 'Belum Mulai', icon: <FaRegCircle />, color: 'text-slate-400' },
-  in_progress: {
-    label: 'Sedang Dikerjakan',
-    icon: <FaCircleNotch className="animate-spin" />,
-    color: 'text-indigo-500',
+// Dokumen turunan SPBY: isinya diambil dari SPBY sehingga selalu bisa dilihat
+const SPBY_CHILDREN = [
+  'nota-dinas',
+  'surat-perintah-bayar',
+  'rincian-spby',
+  'rincian-perjalanan-tugas',
+  'sptjm-pelaksana',
+  'nominatif',
+  'kwitansi',
+];
+
+// Label kelompok untuk dokumen induk yang disembunyikan (form hub)
+const GROUP_LABELS = { spby: 'SPBy & Pack Dokumen' };
+
+const STATUS_CFG = {
+  selesai: {
+    label: 'Selesai',
+    badge:
+      'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/30',
+    card: 'border-blue-200 dark:border-blue-500/30',
   },
-  completed: { label: 'Selesai', icon: <FaCheckCircle />, color: 'text-slate-700' },
-  not_required: { label: 'Tidak Diperlukan', icon: <FaMinusCircle />, color: 'text-slate-300' },
+  proses: {
+    label: 'Dalam Proses',
+    badge:
+      'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/30',
+    card: 'border-blue-200 dark:border-blue-500/30',
+  },
+  belum: {
+    label: 'Belum Dimulai',
+    badge:
+      'bg-slate-50 text-slate-500 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700',
+    card: 'border-slate-200 dark:border-slate-800',
+  },
+  terkunci: {
+    label: 'Terkunci',
+    badge:
+      'bg-slate-50 text-slate-400 border-slate-200 dark:bg-slate-800 dark:text-slate-500 dark:border-slate-700',
+    card: 'border-slate-200 dark:border-slate-800',
+  },
 };
+
+const BTN_SM =
+  'inline-flex items-center gap-1.5 px-3.5 py-[7px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-[12.5px] font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors disabled:opacity-40 disabled:cursor-not-allowed';
+const BTN_ACTION =
+  'inline-flex items-center gap-1.5 px-3.5 py-[7px] rounded-lg bg-[#0f2040] hover:bg-[#1e4080] dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-[12.5px] font-semibold shrink-0 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+const BTN_DONE =
+  'inline-flex items-center gap-1.5 px-3.5 py-[7px] rounded-lg border border-blue-200 dark:border-blue-500/30 bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300 text-[12.5px] font-semibold hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+
+const isDone = (item) => item.status === 'completed' || item.status === 'not_required';
+
+/** Status tampilan satu dokumen: selesai | terkunci | proses | belum */
+function statusOf(item) {
+  if (isDone(item)) return 'selesai';
+  if (item.is_blocked) return 'terkunci';
+  return item.status === 'in_progress' ? 'proses' : 'belum';
+}
+
+/** Status gabungan beberapa dokumen (kelompok atau fase) */
+function combinedStatus(list) {
+  const s = list.map(statusOf);
+  if (s.length === 0) return 'belum';
+  if (s.every((x) => x === 'selesai')) return 'selesai';
+  if (s.every((x) => x === 'terkunci')) return 'terkunci';
+  if (s.some((x) => x === 'selesai' || x === 'proses')) return 'proses';
+  return 'belum';
+}
+
+const canPreview = (item) =>
+  SPBY_CHILDREN.includes(item.definition_id) ||
+  !!item.instance_id ||
+  Object.keys(item.data || {}).length > 0;
+
+const formatRupiah = (n) => 'Rp ' + (Number(n) || 0).toLocaleString('id-ID');
+
+/**
+ * Susun baris tampilan satu fase:
+ * - fase dengan form hub tersembunyi (SPBY) → satu kelompok: hub + dokumen turunannya
+ * - dokumen per pegawai (mis. SPD) → satu kelompok berisi satu baris per pegawai
+ * - selain itu → satu baris per dokumen
+ */
+function buildRows(phaseItems, templatePhase) {
+  const hub = phaseItems.find((i) => i.is_hub && i.is_hidden);
+  if (hub) {
+    return [
+      {
+        type: 'group',
+        key: hub.id,
+        label: GROUP_LABELS[hub.definition_id] || hub.surat_nama,
+        kode: hub.kode,
+        formItem: hub,
+        members: phaseItems,
+        subItems: phaseItems.filter((i) => i.id !== hub.id),
+      },
+    ];
+  }
+
+  const rows = [];
+  const groups = {};
+  phaseItems.forEach((item) => {
+    const tpl = templatePhase?.items.find((t) => t.kode === item.kode);
+    if (tpl?.per_pegawai) {
+      if (!groups[item.kode]) {
+        groups[item.kode] = {
+          type: 'group',
+          key: `kelompok-${item.kode}`,
+          label: tpl.surat_nama,
+          kode: item.kode,
+          subItems: [],
+        };
+        rows.push(groups[item.kode]);
+      }
+      groups[item.kode].subItems.push(item);
+    } else {
+      rows.push({ type: 'single', key: item.id, item });
+    }
+  });
+
+  Object.values(groups).forEach((g) => {
+    g.formItem = g.subItems[0];
+    g.members = g.subItems;
+  });
+  return rows;
+}
+
+/** Nama pelaksana: dari form Surat Perintah, cadangan dari data paket. */
+function namaPelaksana(items, pack) {
+  const list = items.find((i) => i.kode === 'SP')?.data?.pegawai_list;
+  if (Array.isArray(list) && list.length > 0) return list.map((s) => String(s).split('\n')[0]);
+  return (pack.pegawai_list || []).map((p) => p.nama).filter(Boolean);
+}
+
+/** Total biaya dari detail transaksi SPBY, cadangan dari data paket. */
+function totalBiaya(items, pack) {
+  const rows = items.find((i) => i.kode === 'SPBY')?.data?.detail_transaksi;
+  if (Array.isArray(rows) && rows.length > 0) {
+    return rows.reduce(
+      (sum, r) => sum + (Number(String(r.jumlah ?? '').replace(/[^0-9]/g, '')) || 0),
+      0,
+    );
+  }
+  return Number(pack.total_biaya) || 0;
+}
 
 /**
  * @param {{
  *   packId: string,
- *   currentUser: object,
- *   isAdmin: boolean
+ *   currentUser: object
  * }} props
  */
-export default function PackDetail({ packId, currentUser, isAdmin }) {
+export default function PackDetail({ packId, currentUser }) {
   const navigate = useNavigate();
   const { pack, items, loading, error } = useLPJPackDetail(packId);
-  const [updating, setUpdating] = useState(''); // itemId yang sedang diupdate
-  const [collapsedPhases, setCollapsedPhases] = useState(new Set());
+  const [busy, setBusy] = useState(''); // key baris yang sedang ditandai selesai
+  const [confirm, setConfirm] = useState(null); // { key, label, items }
   const [previewItem, setPreviewItem] = useState(null);
 
   if (loading) return <LoadingSkeleton />;
   if (error || !pack) return <ErrorState message={error} />;
 
-  const packType = PACK_TYPES[pack.type];
+  const isPerjadin = pack.type === 'perjadin';
+  const packType = isPerjadin ? PACK_TYPES.perjadin : PACK_TYPES.non_perjadin;
+  const templatePhases = isPerjadin ? PERJADIN_PHASES : NON_PERJADIN_PHASES;
 
-  // Group items by phase
-  const phaseGroups = {};
+  // Kelompokkan item per fase (urutan mengikuti `urutan` item)
+  const phaseMap = new Map();
   items.forEach((item) => {
     const key = item.phase_id || 'lainnya';
-    if (!phaseGroups[key]) {
-      phaseGroups[key] = { label: item.phase_label || 'Lainnya', items: [] };
+    if (!phaseMap.has(key)) {
+      phaseMap.set(key, { id: key, label: item.phase_label || 'Lainnya', items: [] });
     }
-    phaseGroups[key].items.push(item);
+    phaseMap.get(key).items.push(item);
+  });
+  const phases = [...phaseMap.values()].map((p) => {
+    const tpl = templatePhases.find((t) => t.id === p.id);
+    const done = p.items.filter(isDone).length;
+    return {
+      ...p,
+      deskripsi: tpl?.deskripsi || '',
+      rows: buildRows(p.items, tpl),
+      done,
+      total: p.items.length,
+      pct: p.items.length ? Math.round((done / p.items.length) * 100) : 0,
+      status: combinedStatus(p.items),
+    };
   });
 
-  const handlePhaseComplete = async (phaseItems) => {
-    for (const item of phaseItems) {
-      if (item.status !== 'completed' && !item.is_blocked) {
-        await handleStatusChange(item, 'completed');
-      }
-    }
-  };
+  const overallDone = items.filter(isDone).length;
+  const overallPct = items.length ? Math.round((overallDone / items.length) * 100) : 0;
+  const faseAktif = phases.find((p) => p.status !== 'selesai');
+  const pelaksana = namaPelaksana(items, pack);
+  const biaya = totalBiaya(items, pack);
+  const spdData = items.find((i) => i.kode === 'SPD' && i.data?.tanggal_berangkat)?.data || {};
 
   const handleStatusChange = async (item, newStatus) => {
     try {
-      setUpdating(item.id);
       const itemRef = doc(db, 'lpj_packs', packId, 'surat_items', item.id);
 
       const updateData = {
@@ -155,20 +294,12 @@ export default function PackDetail({ packId, currentUser, isAdmin }) {
           updated_at: serverTimestamp(),
         });
       }
+      return true;
     } catch (err) {
       console.error('Gagal update status:', err);
       alert('Gagal mengupdate status surat.');
-    } finally {
-      setUpdating(null);
+      return false;
     }
-  };
-
-  const togglePhase = (phaseId) => {
-    setCollapsedPhases((prev) => {
-      const next = new Set(prev);
-      next.has(phaseId) ? next.delete(phaseId) : next.add(phaseId);
-      return next;
-    });
   };
 
   const handlePreview = (item) => {
@@ -193,17 +324,7 @@ export default function PackDetail({ packId, currentUser, isAdmin }) {
     }
 
     // Phase 2 Child sync: Inject SPBY data dynamically
-    const isPhase2Child = [
-      'nota-dinas',
-      'surat-perintah-bayar',
-      'rincian-spby',
-      'rincian-perjalanan-tugas',
-      'sptjm-pelaksana',
-      'nominatif',
-      'kwitansi',
-    ].includes(item.definition_id);
-
-    if (isPhase2Child) {
+    if (SPBY_CHILDREN.includes(item.definition_id)) {
       const spbyItem = items.find((i) => i.definition_id === 'spby');
       if (spbyItem && spbyItem.data) {
         instanceData = { ...instanceData, ...spbyItem.data };
@@ -226,273 +347,212 @@ export default function PackDetail({ packId, currentUser, isAdmin }) {
     });
   };
 
-  const handleNavigateToForm = (phaseItems) => {
-    let hub = phaseItems.find((i) => i.definition_id === 'surat-perintah');
-    if (!hub) hub = phaseItems.find((i) => i.definition_id === 'spby');
-    if (!hub) hub = phaseItems[0];
-
-    if (hub) {
-      if (hub.status === 'not_started') handleStatusChange(hub, 'in_progress');
-      navigate(
-        `/e-persuratan/persuratan/form/${hub.definition_id}?packId=${packId}&itemId=${hub.id}`,
-      );
-    }
+  // Buka form surat untuk item tertentu (status → in_progress bila belum dimulai)
+  const handleOpenForm = (item) => {
+    if (item.status === 'not_started') handleStatusChange(item, 'in_progress');
+    navigate(
+      `/e-persuratan/persuratan/form/${item.definition_id}?packId=${packId}&itemId=${item.id}`,
+    );
   };
+
+  // Tandai selesai berurutan (induk lebih dulu agar dokumen turunannya terbuka)
+  const handleConfirmSelesai = async () => {
+    const { key, items: targets } = confirm;
+    setConfirm(null);
+    setBusy(key);
+    for (const item of targets) {
+      if (isDone(item)) continue;
+      const ok = await handleStatusChange(item, 'completed');
+      if (!ok) break;
+    }
+    setBusy('');
+  };
+
+  const askSelesai = (key, label, targets) => setConfirm({ key, label, items: targets });
+
+  const summary = [
+    ['Pelaksana', pelaksana.join(', ')],
+    ['Seksi', ''],
+    ['Berangkat', formatTanggal(spdData.tanggal_berangkat || pack.tanggal_mulai)],
+    ['Kembali', formatTanggal(spdData.tanggal_kembali || pack.tanggal_selesai)],
+    [
+      'Tanggal LPJ',
+      pack.created_at?.toDate ? pack.created_at.toDate().toLocaleDateString('id-ID') : '',
+    ],
+    ['Total Biaya', formatRupiah(biaya)],
+  ];
 
   return (
     <div className="flex flex-col h-full bg-[#f8fafc] dark:bg-[#0f172a] overflow-y-auto custom-scrollbar">
-      <div className="px-6 lg:px-12 py-8 max-w-6xl mx-auto w-full shrink-0">
+      <div className="px-4 sm:px-6 lg:px-12 py-6 sm:py-8 max-w-5xl mx-auto w-full shrink-0">
         <button
           onClick={() => navigate('/e-persuratan/lpj')}
-          className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900 dark:hover:text-white font-bold mb-6 transition-colors"
+          className="flex items-center gap-2 text-sm text-slate-500 hover:text-slate-900 dark:hover:text-white font-semibold mb-5 transition-colors"
         >
           <FaArrowLeft size={12} /> Kembali ke Daftar LPJ
         </button>
 
-        {/* Hero Card */}
-        <div className="bg-[#1e293b] rounded-[24px] p-8 lg:p-10 text-white mb-4 shadow-lg relative overflow-hidden">
-          <div className="absolute top-0 right-0 w-64 h-64 bg-blue-400/10 rounded-full blur-3xl -mr-20 -mt-20"></div>
-
-          {/* Top badges */}
-          <div className="flex flex-wrap items-center gap-3 mb-8 relative z-10">
-            <span className="px-4 py-1.5 bg-[#0f172a] text-white text-xs font-bold rounded-full border border-slate-700/50">
-              Draft Aktif
-            </span>
-            <span className="px-4 py-1.5 bg-white text-slate-800 text-xs font-bold rounded-full">
-              {packType?.label || pack.type}
-            </span>
-            <span className="px-4 py-1.5 bg-white/20 text-white text-xs font-bold rounded-full">
-              {pack.status === 'completed' ? 'Selesai' : 'Draft'}
-            </span>
-          </div>
-
-          <div className="flex flex-col lg:flex-row justify-between lg:items-end gap-6 relative z-10">
-            <div>
-              <h1 className="text-3xl lg:text-4xl font-extrabold mb-3 tracking-tight">
+        {/* Kartu judul */}
+        <div className="bg-gradient-to-r from-[#0f2040] to-[#1e4080] rounded-2xl px-5 sm:px-6 py-5 mb-5 text-white shadow-lg">
+          <div className="flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2 mb-2.5">
+                <span className="text-[11.5px] font-bold px-2.5 py-0.5 rounded-full bg-white/15 border border-white/20">
+                  {pack.id}
+                </span>
+                <span className="text-[11.5px] font-bold px-2.5 py-0.5 rounded-full bg-white/15 border border-white/20">
+                  {packType.label}
+                </span>
+                <span
+                  className={`text-[11.5px] font-semibold px-2.5 py-0.5 rounded-full bg-white border border-white/40 ${
+                    faseAktif ? 'text-blue-700' : 'text-green-700'
+                  }`}
+                >
+                  {faseAktif ? faseAktif.label : 'Selesai'}
+                </span>
+              </div>
+              <h1 className="text-lg sm:text-[21px] font-bold leading-snug break-words">
                 {pack.judul || pack.perihal}
               </h1>
-              <p className="text-slate-300 text-sm font-medium">
-                {pack.pegawai_list?.map((p) => p.nama).join(', ') || pack.created_by_nama}
-                <span className="mx-3 text-slate-500">•</span>
-                TOTAL BIAYA{' '}
-                <span className="font-bold text-white">
-                  {pack.total_biaya
-                    ? new Intl.NumberFormat('id-ID', {
-                        style: 'currency',
-                        currency: 'IDR',
-                        minimumFractionDigits: 0,
-                      }).format(pack.total_biaya)
-                    : 'Rp 0'}
-                </span>
+              <p className="text-[12.5px] text-white/65 mt-2">
+                {pelaksana.join(', ') || '—'} · TOTAL BIAYA{' '}
+                <strong className="text-white">{formatRupiah(biaya)}</strong>
               </p>
             </div>
-
-            <div className="text-right">
-              <div className="text-5xl lg:text-6xl font-black tracking-tighter mb-2">
-                {pack.progress?.percentage || 0}%
+            <div className="text-right shrink-0">
+              <div className="text-2xl sm:text-[26px] font-extrabold leading-none">
+                {overallPct}%
               </div>
-              <div className="text-slate-400 text-sm font-medium">
-                {pack.progress?.completed || 0}/{pack.progress?.total || items.length} dokumen
-                selesai
+              <div className="text-[11.5px] text-white/65 font-semibold mt-1 whitespace-nowrap">
+                {overallDone}/{items.length} dokumen selesai
               </div>
             </div>
           </div>
+          <ProgressBar
+            value={overallPct}
+            className={`mt-4 h-1.5 rounded-full bg-white/15 [&::-webkit-progress-bar]:bg-white/15 [&::-webkit-progress-value]:rounded-full [&::-moz-progress-bar]:rounded-full ${
+              overallPct === 100
+                ? '[&::-webkit-progress-value]:bg-green-400 [&::-moz-progress-bar]:bg-green-400'
+                : '[&::-webkit-progress-value]:bg-sky-300 [&::-moz-progress-bar]:bg-sky-300'
+            }`}
+          />
         </div>
 
-        {/* Summary Card */}
-        <div className="bg-white dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800 rounded-2xl p-6 lg:p-8 mb-8 flex flex-wrap gap-8 lg:gap-16 text-sm shadow-sm">
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-              PELAKSANA
-            </span>
-            <span className="font-bold text-slate-800 dark:text-slate-200">
-              {pack.pegawai_list?.[0]?.nama || pack.created_by_nama}
-            </span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-              SEKSI
-            </span>
-            <span className="font-bold text-slate-800 dark:text-slate-200">-</span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-              BERANGKAT
-            </span>
-            <span className="font-bold text-slate-800 dark:text-slate-200">
-              {formatTanggal(pack.tanggal_mulai)}
-            </span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-              KEMBALI
-            </span>
-            <span className="font-bold text-slate-800 dark:text-slate-200">
-              {formatTanggal(pack.tanggal_selesai)}
-            </span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-              TANGGAL LPJ
-            </span>
-            <span className="font-bold text-slate-800 dark:text-slate-200">
-              {pack.created_at?.toDate ? pack.created_at.toDate().toLocaleDateString('id-ID') : '-'}
-            </span>
-          </div>
-          <div className="flex flex-col">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-              TOTAL BIAYA
-            </span>
-            <span className="font-bold text-slate-800 dark:text-slate-200">
-              {pack.total_biaya
-                ? new Intl.NumberFormat('id-ID', {
-                    style: 'currency',
-                    currency: 'IDR',
-                    minimumFractionDigits: 0,
-                  }).format(pack.total_biaya)
-                : 'Rp 0'}
-            </span>
-          </div>
-        </div>
-
-        {/* Phases list */}
-        <div className="space-y-4">
-          {Object.entries(phaseGroups).map(([phaseId, group], index) => {
-            const isLast = index === Object.keys(phaseGroups).length - 1;
-            const allItems = group.items;
-            const visibleItems = allItems.filter((i) => !i.is_hidden);
-
-            const completedCount = allItems.filter(
-              (i) => i.status === 'completed' || i.status === 'not_required',
-            ).length;
-            const isPhaseCompleted = completedCount === allItems.length && allItems.length > 0;
-            const isPhaseInProgress = completedCount > 0 && completedCount < allItems.length;
-            const isPhaseLocked = allItems.length > 0 && allItems[0].is_blocked;
-
-            let badgeUI = null;
-            if (isPhaseLocked) {
-              badgeUI = (
-                <span className="px-3 py-1 bg-slate-50 dark:bg-slate-800 text-slate-400 dark:text-slate-500 text-[11px] font-bold rounded-full border border-slate-200 dark:border-slate-700">
-                  Terkunci
-                </span>
-              );
-            } else if (isPhaseCompleted) {
-              badgeUI = (
-                <span className="px-3 py-1 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[11px] font-bold rounded-full border border-slate-900 dark:border-white">
-                  Selesai
-                </span>
-              );
-            } else if (isPhaseInProgress) {
-              badgeUI = (
-                <span className="px-3 py-1 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 text-[11px] font-bold rounded-full border border-blue-200 dark:border-blue-800/50">
-                  Dalam Proses
-                </span>
-              );
-            } else {
-              badgeUI = (
-                <span className="px-3 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 text-[11px] font-bold rounded-full border border-slate-200 dark:border-slate-700">
-                  Belum Dimulai
-                </span>
-              );
-            }
-
-            return (
-              <div
-                key={phaseId}
-                className="bg-white dark:bg-[#162032] border border-slate-100 dark:border-slate-800/80 rounded-2xl p-6 lg:p-8 shadow-sm"
-              >
-                {/* Phase Header */}
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-                  <div className="flex items-start sm:items-center gap-4 sm:gap-6">
-                    <div className="w-12 h-12 shrink-0 rounded-2xl bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center text-slate-800 dark:text-slate-200 font-bold border border-slate-100 dark:border-slate-700">
-                      {isPhaseLocked ? <FaLock size={14} className="text-slate-400" /> : index + 1}
-                    </div>
-                    <div>
-                      <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-1">
-                        {group.label}
-                      </h2>
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {completedCount}/{allItems.length} selesai -{' '}
-                        {visibleItems
-                          .map((i) => i.kode || i.surat_nama)
-                          .slice(0, 3)
-                          .join(', ')}
-                        {visibleItems.length > 3 ? '...' : ''}
-                        {isPhaseLocked ? ' - Menunggu tahap sebelumnya' : ''}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3">
-                    {badgeUI}
-
-                    {!isPhaseLocked && !isPhaseCompleted && allItems.length > 0 && (
-                      <div className="flex items-center gap-2 border-l border-slate-200 dark:border-slate-700 pl-3">
-                        <button
-                          onClick={() => handleNavigateToForm(allItems)}
-                          className="px-4 py-2 bg-slate-900 hover:bg-slate-800 dark:bg-white dark:hover:bg-slate-100 text-white dark:text-slate-900 text-xs font-bold rounded-lg shadow-sm transition-colors"
-                        >
-                          Isi Form
-                        </button>
-                        <button
-                          onClick={() => handlePhaseComplete(allItems)}
-                          className="px-4 py-2 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-white border border-slate-200 dark:border-slate-600 text-xs font-bold rounded-lg shadow-sm transition-colors flex items-center gap-1.5"
-                        >
-                          <FaCheck size={10} /> Selesai
-                        </button>
-                      </div>
-                    )}
-                  </div>
+        {/* Ringkasan (khusus Perjalanan Dinas) */}
+        {isPerjadin && (
+          <div className="bg-slate-100/70 dark:bg-slate-800/40 border border-slate-200 dark:border-slate-700 rounded-xl px-5 py-3.5 mb-6 flex flex-wrap gap-x-8 gap-y-3">
+            {summary.map(([label, val]) => (
+              <div key={label} className="min-w-0">
+                <div className="text-[10.5px] font-bold text-slate-400 uppercase tracking-wider mb-0.5">
+                  {label}
                 </div>
-
-                {/* Document Items */}
-                <div className="space-y-0 border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden bg-slate-50/50 dark:bg-slate-900/20">
-                  {isPhaseLocked ? (
-                    <div className="flex items-center gap-3 p-6 text-sm text-slate-400 font-medium">
-                      <FaLock />
-                      Selesaikan fase sebelumnya terlebih dahulu untuk membuka fase ini.
-                    </div>
-                  ) : (
-                    visibleItems.map((item, idx) => (
-                      <div
-                        key={item.id}
-                        className={
-                          idx !== visibleItems.length - 1
-                            ? 'border-b border-slate-100 dark:border-slate-800'
-                            : ''
-                        }
-                      >
-                        <SuratItemRow
-                          item={item}
-                          isAdmin={isAdmin}
-                          isUpdating={updating === item.id}
-                          currentUserUid={currentUser?.uid}
-                          onStatusChange={handleStatusChange}
-                          packId={packId}
-                          navigate={navigate}
-                          onPreview={() => handlePreview(item)}
-                        />
-                      </div>
-                    ))
-                  )}
-
-                  {isLast && !isPhaseCompleted && !isPhaseLocked && (
-                    <div className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50 dark:bg-slate-800/30 border-t border-slate-100 dark:border-slate-800">
-                      <div className="flex items-center gap-3 text-slate-600 dark:text-slate-400 font-semibold text-sm">
-                        <FaRegFileAlt size={14} /> Laporan Kegiatan
-                      </div>
-                      <button className="px-4 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 text-xs font-bold rounded-lg hover:bg-slate-800 transition-colors shrink-0">
-                        + Buat Sekarang
-                      </button>
-                    </div>
-                  )}
+                <div className="text-[13px] font-medium text-slate-800 dark:text-slate-200 break-words">
+                  {val || '—'}
                 </div>
               </div>
+            ))}
+          </div>
+        )}
+
+        {/* Kartu per fase */}
+        <div className="space-y-4">
+          {phases.map((phase, idx) => {
+            const locked = phase.status === 'terkunci';
+            const cfg = STATUS_CFG[phase.status];
+            const aktif = phase.status === 'selesai' || phase.status === 'proses';
+            return (
+              <section
+                key={phase.id}
+                className={`bg-white dark:bg-[#162032] border rounded-2xl overflow-hidden ${cfg.card} ${
+                  locked ? 'opacity-80' : ''
+                }`}
+              >
+                <div className="flex flex-wrap items-center gap-3 px-4 sm:px-5 py-4">
+                  <div
+                    className={`w-9 h-9 shrink-0 rounded-[10px] flex items-center justify-center ${
+                      aktif
+                        ? 'bg-[#0f2040] dark:bg-blue-600 text-white'
+                        : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
+                    }`}
+                  >
+                    {phase.status === 'selesai' ? (
+                      <FaCheck size={14} />
+                    ) : locked ? (
+                      <FaLock size={13} />
+                    ) : (
+                      <span className="text-sm font-extrabold">{idx + 1}</span>
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-[180px]">
+                    <h2 className="font-bold text-[14.5px] text-slate-900 dark:text-white">
+                      {phase.label}
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      {phase.done}/{phase.total} selesai
+                      {phase.deskripsi ? ` · ${phase.deskripsi}` : ''}
+                      {locked ? ' · menunggu tahap sebelumnya' : ''}
+                    </p>
+                  </div>
+                  <span
+                    className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full border whitespace-nowrap shrink-0 ${cfg.badge}`}
+                  >
+                    {cfg.label}
+                  </span>
+                </div>
+                <ProgressBar
+                  value={phase.pct}
+                  className={`h-1 bg-slate-100 dark:bg-slate-800 [&::-webkit-progress-bar]:bg-slate-100 dark:[&::-webkit-progress-bar]:bg-slate-800 ${
+                    locked
+                      ? '[&::-webkit-progress-value]:bg-slate-300 [&::-moz-progress-bar]:bg-slate-300'
+                      : '[&::-webkit-progress-value]:bg-[#0f2040] [&::-moz-progress-bar]:bg-[#0f2040] dark:[&::-webkit-progress-value]:bg-blue-500 dark:[&::-moz-progress-bar]:bg-blue-500'
+                  }`}
+                />
+
+                {locked ? (
+                  <div className="flex items-center gap-2 px-4 sm:px-5 py-4 text-[12.5px] text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800">
+                    <FaLock size={13} className="shrink-0" />
+                    <span>
+                      {idx > 0
+                        ? `Selesaikan "${phases[idx - 1].label}" terlebih dahulu untuk membuka fase ini.`
+                        : 'Fase ini masih terkunci.'}
+                    </span>
+                  </div>
+                ) : (
+                  phase.rows.map((row) =>
+                    row.type === 'group' ? (
+                      <GroupRow
+                        key={row.key}
+                        row={row}
+                        busy={busy === row.key}
+                        onOpenForm={handleOpenForm}
+                        onPreview={handlePreview}
+                        onSelesai={() => askSelesai(row.key, row.label, row.members)}
+                      />
+                    ) : (
+                      <DocRow
+                        key={row.key}
+                        item={row.item}
+                        busy={busy === row.key}
+                        onOpenForm={handleOpenForm}
+                        onPreview={handlePreview}
+                        onSelesai={() => askSelesai(row.key, row.item.surat_nama, [row.item])}
+                      />
+                    ),
+                  )
+                )}
+              </section>
             );
           })}
         </div>
       </div>
 
+      {confirm && (
+        <ConfirmSelesaiModal
+          label={confirm.label}
+          onYes={handleConfirmSelesai}
+          onNo={() => setConfirm(null)}
+        />
+      )}
       {previewItem && (
         <SuratPreviewModal surat={previewItem} onClose={() => setPreviewItem(null)} />
       )}
@@ -500,80 +560,195 @@ export default function PackDetail({ packId, currentUser, isAdmin }) {
   );
 }
 
-// Sub-komponen
-function SuratItemRow({
-  item,
-  isAdmin,
-  isUpdating,
-  currentUserUid,
-  onStatusChange,
-  packId,
-  navigate,
-  onPreview,
-}) {
-  const isCompleted = item.status === 'completed' || item.status === 'not_required';
-  const isPhase2Child = [
-    'nota-dinas',
-    'surat-perintah-bayar',
-    'rincian-spby',
-    'rincian-perjalanan-tugas',
-    'sptjm-pelaksana',
-    'nominatif',
-    'kwitansi',
-  ].includes(item.definition_id);
+// ─── Sub-komponen ─────────────────────────────────────────────────────────────
 
-  if (item.is_blocked) {
+/** Bilah progres tanpa inline style; warna diatur lewat kelas pseudo-element. */
+function ProgressBar({ value, className = '' }) {
+  return (
+    <progress
+      value={value}
+      max={100}
+      aria-label={`${value}% selesai`}
+      className={`block w-full appearance-none border-0 overflow-hidden ${className}`}
+    />
+  );
+}
+
+function StatusIcon({ status }) {
+  const cls = {
+    selesai: 'bg-green-600 text-white',
+    proses: 'bg-[#0f2040] dark:bg-blue-600 text-white',
+    belum: 'bg-slate-100 dark:bg-slate-800 text-slate-400',
+    terkunci: 'bg-slate-100 dark:bg-slate-800 text-slate-400',
+  }[status];
+  const Icon = { selesai: FaCheck, proses: FaClock, belum: FaRegFileAlt, terkunci: FaLock }[status];
+  return (
+    <div className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center ${cls}`}>
+      <Icon size={13} />
+    </div>
+  );
+}
+
+function KodeBadge({ kode }) {
+  if (!kode) return null;
+  return (
+    <span className="text-[10px] font-extrabold tracking-wide px-[7px] py-[3px] rounded-md bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shrink-0 whitespace-nowrap">
+      {kode}
+    </span>
+  );
+}
+
+function BusyLabel() {
+  return (
+    <>
+      <FaCircleNotch className="animate-spin" size={12} /> Memproses...
+    </>
+  );
+}
+
+/** Tombol aksi sesuai status: belum → Buat Sekarang; proses → Edit + Tandai Selesai; selesai → Edit */
+function Actions({ status, busy, previewItem, onPreview, onOpen, onSelesai }) {
+  if (status === 'terkunci') return null;
+  if (status === 'belum') {
     return (
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 lg:px-6">
-        <div className="flex items-center gap-4">
-          <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center shrink-0">
-            <FaLock size={14} />
-          </div>
-          <div>
-            <p className="text-sm font-bold text-slate-700 dark:text-slate-300">
-              {item.kode && <span className="mr-2 text-slate-400">{item.kode}</span>}
-              {item.surat_nama}
-            </p>
-            <p className="text-[11px] text-slate-400 mt-0.5">
-              Selesaikan tahap sebelumnya terlebih dahulu
-            </p>
-          </div>
-        </div>
-      </div>
+      <button type="button" className={BTN_ACTION} onClick={onOpen}>
+        <FaPlus size={11} /> Buat Sekarang
+      </button>
     );
   }
-
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 lg:px-6 hover:bg-slate-50 dark:hover:bg-slate-800/30 transition-colors">
-      <div className="flex items-center gap-4">
-        <div
-          className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
-            isCompleted
-              ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 border border-slate-900 dark:border-white'
-              : 'bg-white dark:bg-[#1e293b] text-slate-500 border border-slate-200 dark:border-slate-700 shadow-sm'
-          }`}
+    <div className="flex flex-wrap gap-2 shrink-0">
+      {previewItem && (
+        <button
+          type="button"
+          className={BTN_SM}
+          disabled={!canPreview(previewItem)}
+          onClick={() => onPreview(previewItem)}
         >
-          {isCompleted ? <FaCheck size={14} /> : <FaRegFileAlt size={14} />}
-        </div>
-        <div>
-          <p
-            className={`text-sm font-bold ${isCompleted ? 'text-slate-900 dark:text-white' : 'text-slate-800 dark:text-slate-200'}`}
+          <FaEye size={12} /> Lihat
+        </button>
+      )}
+      <button type="button" className={BTN_SM} onClick={onOpen} disabled={busy}>
+        <FaEdit size={12} /> Edit
+      </button>
+      {status === 'proses' && (
+        <button type="button" className={BTN_DONE} onClick={onSelesai} disabled={busy}>
+          {busy ? (
+            <BusyLabel />
+          ) : (
+            <>
+              <FaCheck size={11} /> Tandai Selesai
+            </>
+          )}
+        </button>
+      )}
+    </div>
+  );
+}
+
+function DocRow({ item, busy, onOpenForm, onPreview, onSelesai }) {
+  const status = statusOf(item);
+  const locked = status === 'terkunci';
+  return (
+    <div
+      className={`flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-[13px] border-t border-slate-200 dark:border-slate-800 ${
+        locked ? 'opacity-70' : ''
+      }`}
+    >
+      <div className="flex items-center gap-2.5 flex-1 min-w-0">
+        <StatusIcon status={status} />
+        <KodeBadge kode={item.kode} />
+        <div className="flex-1 min-w-0">
+          <div
+            className={`text-[13px] font-semibold ${
+              locked ? 'text-slate-400' : 'text-slate-900 dark:text-slate-100'
+            }`}
           >
-            {item.kode && <span className="mr-2 text-slate-400">{item.kode}</span>}
-            {item.surat_nama} {item.assigned_name ? `• ${item.assigned_name}` : ''}
-          </p>
+            {item.surat_nama}
+          </div>
+          <div className="text-[11px] text-slate-400 mt-px">
+            {locked
+              ? 'Menunggu dokumen sebelumnya selesai'
+              : item.assigned_name
+                ? `Ditugaskan ke ${item.assigned_name}`
+                : ''}
+          </div>
         </div>
+      </div>
+      <Actions
+        status={status}
+        busy={busy}
+        previewItem={item}
+        onPreview={onPreview}
+        onOpen={() => onOpenForm(item)}
+        onSelesai={onSelesai}
+      />
+    </div>
+  );
+}
+
+function GroupRow({ row, busy, onOpenForm, onPreview, onSelesai }) {
+  const status = combinedStatus(row.members);
+  return (
+    <div>
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-[13px] border-t border-slate-200 dark:border-slate-800">
+        <div className="flex items-center gap-2.5 flex-1 min-w-0">
+          <StatusIcon status={status} />
+          <KodeBadge kode={row.kode} />
+          <div className="flex-1 min-w-0">
+            <div className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">
+              {row.label}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-px">
+              {row.subItems.filter(isDone).length}/{row.subItems.length} dokumen selesai
+            </div>
+          </div>
+        </div>
+        <Actions
+          status={status}
+          busy={busy}
+          onPreview={onPreview}
+          onOpen={() => onOpenForm(row.formItem)}
+          onSelesai={onSelesai}
+        />
       </div>
 
-      <div className="flex items-center shrink-0">
-        <button
-          onClick={onPreview}
-          disabled={!isPhase2Child && !item.instance_id}
-          className="flex items-center gap-1.5 text-xs font-bold px-4 py-2 bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 rounded-lg hover:bg-slate-800 dark:hover:bg-white transition-colors disabled:opacity-30 disabled:cursor-not-allowed shadow-sm"
-        >
-          Lihat
-        </button>
-      </div>
+      {row.subItems.map((sub) => {
+        const subStatus = statusOf(sub);
+        const done = subStatus === 'selesai';
+        const tersedia = subStatus !== 'terkunci' && canPreview(sub);
+        return (
+          <div
+            key={sub.id}
+            className="flex items-center justify-between gap-2.5 py-[9px] pl-6 sm:pl-[52px] pr-4 sm:pr-5 border-t border-slate-200 dark:border-slate-800"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <span
+                className={`w-[18px] h-[18px] shrink-0 rounded-md flex items-center justify-center ${
+                  done ? 'bg-green-600 text-white' : 'bg-slate-200 dark:bg-slate-700'
+                }`}
+              >
+                {done && <FaCheck size={9} />}
+              </span>
+              <KodeBadge kode={sub.kode} />
+              <span className="text-[12.5px] text-slate-600 dark:text-slate-300 truncate">
+                {sub.surat_nama}
+              </span>
+            </div>
+            {tersedia ? (
+              <button
+                type="button"
+                className={`${BTN_SM} px-2.5 py-1 text-[11.5px]`}
+                onClick={() => onPreview(sub)}
+              >
+                <FaEye size={11} /> Lihat
+              </button>
+            ) : (
+              <span className="text-[11px] text-slate-400 shrink-0">Belum tersedia</span>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }

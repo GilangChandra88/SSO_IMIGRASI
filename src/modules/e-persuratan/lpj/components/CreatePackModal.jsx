@@ -1,237 +1,200 @@
 import React, { useState } from 'react';
 import { createLPJPack } from '../hooks/useLPJ';
-import { toPackPegawai } from '../utils/pegawaiLPJ';
-import { FaTimes, FaCircleNotch, FaCheck, FaArrowLeft, FaArrowRight } from 'react-icons/fa';
-import StepJenis from './create-pack/StepJenis';
-import StepPegawai from './create-pack/StepPegawai';
-import StepPerjalanan from './create-pack/StepPerjalanan';
-import StepRingkasan from './create-pack/StepRingkasan';
+import { FaTimes, FaCheck, FaCircleNotch, FaArrowRight } from 'react-icons/fa';
 
-// Langkah form Buat LPJ. Non-Perjalanan Dinas hanya memakai langkah pertama.
-const STEPS = [
+const JENIS = [
   {
-    label: 'Jenis & Judul',
-    title: 'Pilih Jenis Laporan',
-    desc: 'Pilih jenis LPJ yang akan dibuat',
+    type: 'perjadin',
+    nama: 'LPJ Perjadin',
+    desc: 'Laporan Pertanggungjawaban Perjalanan Dinas — Surat Perintah, SPD, & SPBy',
+    badge: '4 Fase',
   },
   {
-    label: 'Pegawai',
-    title: 'Pegawai yang Ditugaskan',
-    desc: 'Pilih pegawai yang melaksanakan perjalanan dinas',
+    type: 'non-perjadin',
+    nama: 'LPJ Non-Perjadin',
+    desc: 'Laporan Pertanggungjawaban Kegiatan Non-Perjalanan Dinas',
+    badge: '2 Fase',
   },
-  {
-    label: 'Perjalanan',
-    title: 'Detail Perjalanan',
-    desc: 'Maksud, tujuan, dan tanggal perjalanan dinas',
-  },
-  { label: 'Ringkasan', title: 'Ringkasan', desc: 'Periksa kembali sebelum laporan dibuat' },
 ];
 
-const INITIAL_FORM = {
-  type: '',
-  judul: '',
-  pegawai: [],
-  maksud: '',
-  tempat_tujuan: '',
-  berangkat_dari: 'Singaraja',
-  tanggal_berangkat: '',
-  tanggal_kembali: '',
-};
+const URAIAN_MAX = 220;
 
-/** Pesan kesalahan untuk langkah tertentu, atau '' bila valid. */
-function validateStep(step, form) {
-  if (step === 0) {
-    if (!form.type) return 'Pilih jenis LPJ terlebih dahulu.';
-    if (!form.judul.trim()) return 'Judul LPJ wajib diisi.';
-  }
-  if (step === 1 && form.pegawai.length === 0) {
-    return 'Pilih minimal satu pegawai yang ditugaskan.';
-  }
-  if (step === 2) {
-    if (!form.maksud.trim()) return 'Maksud perjalanan dinas wajib diisi.';
-    if (!form.berangkat_dari.trim()) return 'Tempat berangkat wajib diisi.';
-    if (!form.tempat_tujuan.trim()) return 'Tempat tujuan wajib diisi.';
-    if (!form.tanggal_berangkat) return 'Tanggal berangkat wajib diisi.';
-    if (!form.tanggal_kembali) return 'Tanggal kembali wajib diisi.';
-    if (form.tanggal_kembali < form.tanggal_berangkat) {
-      return 'Tanggal kembali tidak boleh sebelum tanggal berangkat.';
-    }
-  }
-  return '';
-}
-
+/**
+ * Jendela "Buat Berkas Baru": pilih jenis LPJ dan isi uraian kegiatan.
+ * Uraian disimpan sebagai judul paket; pegawai dipilih nanti di form Surat Perintah.
+ */
 export default function CreatePackModal({ onClose, onSuccess, currentUser }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [step, setStep] = useState(0);
-  const [form, setForm] = useState(INITIAL_FORM);
-  const [error, setError] = useState('');
-
-  const isPerjadin = form.type === 'perjadin';
-  const lastStep = isPerjadin ? STEPS.length - 1 : 0;
-  const current = STEPS[step];
-
-  const set = (key, val) => {
-    setForm((f) => ({ ...f, [key]: val }));
-    setError('');
-  };
+  const [type, setType] = useState('');
+  const [uraian, setUraian] = useState('');
+  const [errors, setErrors] = useState({});
 
   const handleSubmit = async () => {
+    const judul = uraian.trim().slice(0, URAIAN_MAX);
+    const e = {};
+    if (!type) e.type = 'Pilih salah satu jenis LPJ terlebih dahulu.';
+    if (!judul) e.uraian = 'Uraian kegiatan wajib diisi.';
+    setErrors(e);
+    if (Object.keys(e).length) return;
+
     setIsSubmitting(true);
-    setError('');
     try {
       const displayName = currentUser?.displayName || currentUser?.email || 'Pengguna';
       const packId = await createLPJPack({
-        type: form.type,
-        judul: form.judul.trim(),
-        perihal: isPerjadin ? form.maksud.trim() : '',
-        tujuan: isPerjadin ? form.tempat_tujuan.trim() : '',
-        tanggal_mulai: isPerjadin ? form.tanggal_berangkat : '',
-        tanggal_selesai: isPerjadin ? form.tanggal_kembali : '',
-        berangkat_dari: isPerjadin ? form.berangkat_dari.trim() : '',
+        type,
+        judul,
+        perihal: '',
+        tujuan: '',
+        tanggal_mulai: '',
+        tanggal_selesai: '',
         mak: '',
-        pegawai_list: isPerjadin ? form.pegawai.map(toPackPegawai) : [],
+        pegawai_list: [],
         created_by: { uid: currentUser?.uid, nama: displayName },
       });
       onSuccess(packId);
     } catch (err) {
       console.error('createLPJPack error:', err);
-      setError('Gagal membuat laporan. Periksa koneksi lalu coba lagi.');
+      setErrors({ submit: 'Gagal membuat berkas. Periksa koneksi lalu coba lagi.' });
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleNext = () => {
-    const pesan = validateStep(step, form);
-    if (pesan) {
-      setError(pesan);
-      return;
-    }
-    if (step < lastStep) {
-      setStep(step + 1);
-    } else {
-      handleSubmit();
-    }
-  };
-
-  const handleBack = () => {
-    setError('');
-    setStep(step - 1);
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-stretch sm:items-center justify-center bg-slate-900/40 backdrop-blur-sm sm:p-4">
-      <div className="bg-white dark:bg-[#0f172a] sm:rounded-[24px] shadow-2xl w-full max-w-3xl h-full sm:h-auto sm:max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="judul-buat-berkas"
+        className="bg-white dark:bg-[#0f172a] rounded-2xl shadow-2xl w-full max-w-[560px] max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200"
+      >
         {/* Header */}
-        <div className="p-5 sm:p-8 sm:pb-6 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
-                {current.title}
-              </h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{current.desc}</p>
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              aria-label="Tutup"
-              className="w-10 h-10 shrink-0 flex items-center justify-center text-slate-400 hover:text-slate-600 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+        <div className="flex items-start justify-between gap-4 px-6 pt-5">
+          <div>
+            <h2
+              id="judul-buat-berkas"
+              className="text-[17px] font-extrabold text-slate-900 dark:text-white"
             >
-              <FaTimes size={14} />
-            </button>
+              Buat Berkas Baru
+            </h2>
+            <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1">
+              Pilih jenis LPJ dan isi uraian kegiatan
+            </p>
           </div>
-
-          {/* Penanda langkah (khusus Perjalanan Dinas) */}
-          {isPerjadin && (
-            <ol className="flex items-center gap-2 mt-6">
-              {STEPS.map((s, idx) => {
-                const done = idx < step;
-                const active = idx === step;
-                return (
-                  <li key={s.label} className="flex items-center gap-2 flex-1 last:flex-none">
-                    <span
-                      className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
-                        done
-                          ? 'bg-indigo-600 text-white'
-                          : active
-                            ? 'bg-[#1e293b] dark:bg-indigo-500 text-white ring-4 ring-slate-100 dark:ring-indigo-500/20'
-                            : 'bg-slate-100 dark:bg-slate-800 text-slate-400'
-                      }`}
-                    >
-                      {done ? <FaCheck size={10} /> : idx + 1}
-                    </span>
-                    <span
-                      className={`hidden sm:inline text-xs font-bold whitespace-nowrap ${
-                        active ? 'text-slate-900 dark:text-white' : 'text-slate-400'
-                      }`}
-                    >
-                      {s.label}
-                    </span>
-                    {idx < STEPS.length - 1 && (
-                      <span
-                        className={`h-0.5 flex-1 rounded-full ${
-                          done ? 'bg-indigo-600' : 'bg-slate-100 dark:bg-slate-800'
-                        }`}
-                      />
-                    )}
-                  </li>
-                );
-              })}
-            </ol>
-          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Tutup"
+            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors"
+          >
+            <FaTimes size={16} />
+          </button>
         </div>
+        <div className="h-px bg-slate-200 dark:bg-slate-800 my-3.5" />
 
-        {/* Konten */}
-        <div className="flex-1 p-5 sm:p-8 overflow-y-auto custom-scrollbar">
-          {step === 0 && <StepJenis form={form} onChange={set} />}
-          {step === 1 && <StepPegawai form={form} onChange={set} />}
-          {step === 2 && <StepPerjalanan form={form} onChange={set} />}
-          {step === 3 && <StepRingkasan form={form} />}
+        <div className="overflow-y-auto custom-scrollbar">
+          {/* Pilihan jenis */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 px-6">
+            {JENIS.map((j) => {
+              const active = type === j.type;
+              return (
+                <button
+                  key={j.type}
+                  type="button"
+                  onClick={() => {
+                    setType(j.type);
+                    setErrors((e) => ({ ...e, type: undefined }));
+                  }}
+                  className={`relative text-left px-3.5 py-4 rounded-xl transition-colors ${
+                    active
+                      ? 'border-2 border-[#0f2040] dark:border-blue-500 bg-slate-50 dark:bg-slate-800/60'
+                      : 'border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#162032] hover:border-slate-300 dark:hover:border-slate-600'
+                  }`}
+                >
+                  {active && (
+                    <span className="absolute top-2.5 right-2.5 text-[#0f2040] dark:text-blue-400">
+                      <FaCheck size={13} />
+                    </span>
+                  )}
+                  <div className="font-bold text-sm text-slate-900 dark:text-white mb-1.5">
+                    {j.nama}
+                  </div>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 leading-snug mb-2">
+                    {j.desc}
+                  </div>
+                  <span className="inline-block text-[10.5px] font-bold px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 border border-blue-200 dark:bg-blue-500/10 dark:text-blue-300 dark:border-blue-500/30">
+                    {j.badge}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {errors.type && (
+            <p className="px-6 pt-2 text-xs font-semibold text-rose-600 dark:text-rose-400">
+              {errors.type}
+            </p>
+          )}
+
+          {/* Uraian kegiatan */}
+          <div className="px-6 pt-4">
+            <label
+              htmlFor="uraian-kegiatan"
+              className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5"
+            >
+              Uraian Kegiatan <span className="text-rose-500">*</span>
+            </label>
+            <textarea
+              id="uraian-kegiatan"
+              rows={3}
+              maxLength={URAIAN_MAX}
+              placeholder="Contoh: Koordinasi teknis keimigrasian ke Direktorat Jenderal Imigrasi Jakarta"
+              value={uraian}
+              onChange={(e) => {
+                setUraian(e.target.value);
+                setErrors((prev) => ({ ...prev, uraian: undefined }));
+              }}
+              className={`w-full rounded-lg border bg-white dark:bg-[#162032] text-slate-900 dark:text-white px-3 py-2.5 text-sm placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-y ${
+                errors.uraian ? 'border-rose-500' : 'border-slate-200 dark:border-slate-700'
+              }`}
+            />
+            <div className="flex justify-between gap-2.5 mt-1.5 text-[11.5px] text-slate-400">
+              <p>
+                Uraian singkat ini akan tampil sebagai judul pada Detail Dokumen dan Daftar LPJ.
+              </p>
+              <p className="whitespace-nowrap">
+                {uraian.length}/{URAIAN_MAX}
+              </p>
+            </div>
+            {errors.uraian && (
+              <p className="mt-1 text-xs font-semibold text-rose-600 dark:text-rose-400">
+                {errors.uraian}
+              </p>
+            )}
+          </div>
         </div>
 
         {/* Footer */}
-        <div className="p-4 sm:p-6 sm:px-8 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-[#162032] sm:rounded-b-[24px]">
-          {error && (
+        <div className="px-6 pt-4 pb-6">
+          {errors.submit && (
             <p role="alert" className="mb-3 text-sm font-semibold text-rose-600 dark:text-rose-400">
-              {error}
+              {errors.submit}
             </p>
           )}
-          <div className="flex justify-between sm:justify-end gap-3">
-            {step === 0 ? (
-              <button
-                type="button"
-                onClick={onClose}
-                className="px-6 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
-              >
-                Batal
-              </button>
-            ) : (
-              <button
-                type="button"
-                onClick={handleBack}
-                disabled={isSubmitting}
-                className="flex items-center gap-2 px-6 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors disabled:opacity-50"
-              >
-                <FaArrowLeft size={11} /> Kembali
-              </button>
-            )}
-
+          <div className="flex justify-end">
             <button
               type="button"
-              onClick={handleNext}
+              onClick={handleSubmit}
               disabled={isSubmitting}
-              className="px-8 py-2.5 bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-lg bg-[#0f2040] hover:bg-[#1e4080] dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-sm font-semibold shadow-sm transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (
                 <>
                   <FaCircleNotch className="animate-spin" /> Membuat...
                 </>
-              ) : step < lastStep ? (
-                <>
-                  Lanjut <FaArrowRight size={11} />
-                </>
               ) : (
-                <>Buat Laporan</>
+                <>
+                  Lanjutkan <FaArrowRight size={12} />
+                </>
               )}
             </button>
           </div>
