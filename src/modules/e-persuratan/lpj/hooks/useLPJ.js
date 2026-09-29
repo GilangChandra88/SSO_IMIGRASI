@@ -176,6 +176,7 @@ export async function createLPJPack(data) {
     tujuan,
     tanggal_mulai,
     tanggal_selesai,
+    berangkat_dari,
     mak,
     pegawai_list = [],
     created_by,
@@ -186,7 +187,16 @@ export async function createLPJPack(data) {
     bendahara: { uid: created_by.uid, nama: created_by.nama },
   };
 
-  const suratItems = generateSuratItems(type, pegawai_list, assignees);
+  // Isian awal form SP & SPD dari data paket
+  const detail = {
+    maksud: perihal,
+    tempat_tujuan: tujuan,
+    berangkat_dari,
+    tanggal_berangkat: tanggal_mulai,
+    tanggal_kembali: tanggal_selesai,
+  };
+
+  const suratItems = generateSuratItems(type, pegawai_list, assignees, detail);
 
   // Kumpulkan semua UID yang terlibat (pembuat + pegawai)
   const pegawai_uids = [created_by.uid, ...pegawai_list.map((p) => p.uid).filter(Boolean)];
@@ -235,6 +245,7 @@ export async function createLPJPack(data) {
     tujuan: tujuan || '',
     tanggal_mulai,
     tanggal_selesai,
+    berangkat_dari: berangkat_dari || '',
     mak: mak || '',
     status: 'in_progress',
     pegawai_list,

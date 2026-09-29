@@ -1714,7 +1714,12 @@ const SPTJMPelaksana = ({ data, packItem }) => {
   let nip = '[NIP]';
   let jabatan = '[JABATAN]';
 
-  if (!packItem && Array.isArray(data.pegawai_list) && data.pegawai_list.length > 0) {
+  // SPTJM tanpa penugasan (paket lama, satu SPTJM per paket): pakai pegawai pertama
+  if (
+    !packItem?.assigned_name &&
+    Array.isArray(data.pegawai_list) &&
+    data.pegawai_list.length > 0
+  ) {
     const lines = data.pegawai_list[0].split('\n');
     pegawaiName = lines[0] || '[NAMA PEGAWAI]';
     nip = lines[1]?.replace('NIP. ', '') || '[NIP]';
@@ -1881,7 +1886,7 @@ const MyPdfDocument = ({ surat, data, packItem }) => (
 );
 
 // ─── KOMPONEN PREVIEWER ───────────────────────────────────────────────────
-export default function SuratPreviewCanvas({ surat, formData }) {
+export default function SuratPreviewCanvas({ surat, formData, packItem }) {
   // Gunakan teknik Debounce (tunda render) selama 600ms.
   // Ini akan mencegah PDF iframe berkedip (blinking) saat user sedang asyik mengetik.
   const [debouncedFormData, setDebouncedFormData] = React.useState(formData);
@@ -1916,10 +1921,10 @@ export default function SuratPreviewCanvas({ surat, formData }) {
   const pdfElement = useMemo(
     () => (
       <PDFViewer style={{ width: '100%', height: '100%', border: 'none' }} showToolbar={true}>
-        <MyPdfDocument surat={surat} data={displayData} />
+        <MyPdfDocument surat={surat} data={displayData} packItem={packItem} />
       </PDFViewer>
     ),
-    [surat, displayData],
+    [surat, displayData, packItem],
   );
 
   if (!surat) return null;

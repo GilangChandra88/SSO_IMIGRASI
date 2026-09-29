@@ -26,6 +26,7 @@ import {
 } from 'react-icons/fa';
 import { useLPJPackDetail } from '../hooks/useLPJ';
 import { PACK_TYPES } from '../data/packTemplates';
+import { formatTanggal } from '../utils/formatTanggal';
 import {
   doc,
   updateDoc,
@@ -318,13 +319,17 @@ export default function PackDetail({ packId, currentUser, isAdmin }) {
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
               BERANGKAT
             </span>
-            <span className="font-bold text-slate-800 dark:text-slate-200">-</span>
+            <span className="font-bold text-slate-800 dark:text-slate-200">
+              {formatTanggal(pack.tanggal_mulai)}
+            </span>
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
               KEMBALI
             </span>
-            <span className="font-bold text-slate-800 dark:text-slate-200">-</span>
+            <span className="font-bold text-slate-800 dark:text-slate-200">
+              {formatTanggal(pack.tanggal_selesai)}
+            </span>
           </div>
           <div className="flex flex-col">
             <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">
