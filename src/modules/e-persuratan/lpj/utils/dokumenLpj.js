@@ -17,7 +17,19 @@ const TEMPLATE_BY_DOC = {
   nominatif: 'nominatif',
   sptjm: 'sptjm-pelaksana',
   rincian_spby: 'rincian-spby',
+  suratpernyataan: 'surat-pernyataan-pengeluaran',
 };
+
+// Dokumen khusus LPJ yang punya template PDF tetapi tidak didaftarkan di SURAT_REGISTRY
+// (supaya tidak muncul sebagai kartu di halaman Persuratan).
+const SURAT_KHUSUS_LPJ = [
+  {
+    id: 'surat-pernyataan-pengeluaran',
+    kode: 'SPP',
+    nama: 'Surat Pernyataan Pengeluaran Biaya Perjalanan Dinas',
+    variables: [],
+  },
+];
 
 // Lampiran Non-Perjadin berupa berkas unggahan
 const FILE_DOCS = ['foto_bukti', 'nota_pembayaran'];
@@ -119,14 +131,17 @@ export function resolveDokumen(pack, item, pegawaiList) {
     return { kind: 'files', label: item.label, files: pack.np?.lampiran?.[docKey] || [] };
   }
 
-  const surat = SURAT_REGISTRY.find((s) => s.id === TEMPLATE_BY_DOC[docKey]);
+  const suratId = TEMPLATE_BY_DOC[docKey];
+  const surat = [...SURAT_REGISTRY, ...SURAT_KHUSUS_LPJ].find((s) => s.id === suratId);
   if (!surat) return { kind: 'placeholder', label: item.label };
 
   const data = dataDokumen(pack, pegawaiList);
   let packItem;
   if (item.pegawai) {
     if (docKey === 'spd') data.pegawai = formatPegawai(item.pegawai);
-    if (docKey === 'rincian_spby') data._filterPegawai = labelPegawaiTransaksi(item.pegawai);
+    if (docKey === 'rincian_spby' || docKey === 'suratpernyataan') {
+      data._filterPegawai = labelPegawaiTransaksi(item.pegawai);
+    }
     if (docKey === 'sptjm') packItem = { assigned_name: item.pegawai.nama };
   } else if (docKey === 'spd') {
     const first = pelaksanaOf(pack)[0];

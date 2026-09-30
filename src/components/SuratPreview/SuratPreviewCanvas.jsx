@@ -1831,6 +1831,204 @@ const SPTJMPelaksana = ({ data, packItem }) => {
   );
 };
 
+// ─── SURAT PERNYATAAN PENGELUARAN BIAYA PERJALANAN DINAS ────────────────────
+// Dokumen tersendiri (bukan Rincian SPBy). Format: "Rincian Biaya Perjalanan Dinas" +
+// "Perhitungan SPD Rampung", satu halaman per pelaksana (detail_transaksi dikelompokkan per
+// `pegawai` "NIP - Nama"; `_filterPegawai` membatasi ke satu pelaksana).
+const sppStyles = StyleSheet.create({
+  page: {
+    fontSize: 11,
+    fontFamily: 'Times-Roman',
+    paddingTop: 40,
+    paddingLeft: 60,
+    paddingRight: 60,
+    paddingBottom: 40,
+    lineHeight: 1.3,
+  },
+  kop: { alignItems: 'center', marginBottom: 18 },
+  kopText: { fontFamily: 'Times-Bold', fontSize: 11 },
+  kopLine: { borderBottomWidth: 1.5, borderBottomColor: '#000', width: '100%', marginTop: 6 },
+  title: { fontFamily: 'Times-Bold', textAlign: 'center', marginBottom: 20 },
+  meta: { marginBottom: 8 },
+  table: { borderTopWidth: 1, borderLeftWidth: 1, borderColor: '#000', marginTop: 8 },
+  tr: { flexDirection: 'row' },
+  cell: {
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#000',
+    paddingVertical: 5,
+    paddingHorizontal: 5,
+  },
+  colNo: { width: '7%', textAlign: 'center' },
+  colUraian: { width: '55%' },
+  colJumlah: { width: '20%', textAlign: 'right' },
+  colKet: { width: '18%' },
+  colNoUraian: { width: '62%', textAlign: 'center' },
+  center: { textAlign: 'center' },
+  bold: { fontFamily: 'Times-Bold' },
+  ttdRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
+  ttdCol: { width: '48%', alignItems: 'center' },
+  ttdSpace: { height: 62 },
+  subTitle: { fontFamily: 'Times-Bold', textAlign: 'center', marginTop: 26, marginBottom: 18 },
+  hitungRow: { flexDirection: 'row', paddingLeft: 6 },
+  hitungLabel: { width: 260 },
+  ppk: { alignItems: 'center', marginTop: 26 },
+});
+
+const SuratPernyataanPengeluaran = ({ data }) => {
+  const rupiah = (n) => new Intl.NumberFormat('id-ID').format(n || 0);
+  const angka = (v) => parseInt(v?.toString().replace(/[^0-9]/g, ''), 10) || 0;
+  const barisPegawai = (str, placeholderNama, placeholderNip) => {
+    const lines = (str || '').split('\n');
+    return {
+      nama: lines[0] || placeholderNama,
+      nip: lines[1]?.replace('NIP. ', '') || placeholderNip,
+    };
+  };
+
+  // Kelompokkan transaksi per pelaksana ("NIP - Nama")
+  const grouped = {};
+  if (Array.isArray(data.detail_transaksi)) {
+    data.detail_transaksi.forEach((row) => {
+      const key = row.pegawai || '[NIP] - [NAMA PELAKSANA]';
+      if (data._filterPegawai && key !== data._filterPegawai) return;
+      if (!grouped[key]) grouped[key] = [];
+      grouped[key].push(row);
+    });
+  }
+  const pages = Object.entries(grouped);
+  if (pages.length === 0) pages.push([data._filterPegawai || '[NIP] - [NAMA PELAKSANA]', []]);
+
+  const nomorSp = data.nomor_sp || data.nomor_sp_ref || '[NOMOR SURAT PERINTAH]';
+  const tanggalSp = data.tanggal_sp ? fmtDateDash(data.tanggal_sp) : '[TANGGAL]';
+  const tanggalTtd = data.tanggal_spby ? fmtDateDash(data.tanggal_spby) : '[TANGGAL]';
+  const bendahara = barisPegawai(data.bendahara, '[NAMA BENDAHARA]', '[NIP BENDAHARA]');
+  const ppk = barisPegawai(data.pejabat_ppk, '[NAMA PPK]', '[NIP PPK]');
+
+  return (
+    <>
+      {pages.map(([pegawaiStr, rows], idx) => {
+        const parts = pegawaiStr.split(' - ');
+        const pelaksana =
+          parts.length > 1
+            ? { nip: parts[0], nama: parts.slice(1).join(' - ') }
+            : { nip: '[NIP]', nama: pegawaiStr };
+        const total = rows.reduce((sum, r) => sum + angka(r.jumlah), 0);
+        const dibayarkan = total;
+        const sisa = total - dibayarkan;
+
+        return (
+          <Page key={idx} size="A4" style={sppStyles.page}>
+            <View style={sppStyles.kop}>
+              <Text style={sppStyles.kopText}>KEMENTERIAN IMIGRASI DAN PEMASYARAKATAN RI</Text>
+              <Text style={sppStyles.kopText}>
+                KANTOR WILAYAH DIREKTORAT JENDERAL IMIGRASI BALI
+              </Text>
+              <Text style={sppStyles.kopText}>KANTOR IMIGRASI KELAS II TPI SINGARAJA</Text>
+              <Text style={sppStyles.kopText}>Jl. Seririt - Singaraja, Pemaron</Text>
+              <Text style={sppStyles.kopText}>Telp. (0362) 32174 Fax. (0362) 31175</Text>
+              <View style={sppStyles.kopLine} />
+            </View>
+
+            <Text style={sppStyles.title}>RINCIAN BIAYA PERJALANAN DINAS</Text>
+
+            <Text style={sppStyles.meta}>Lampiran Surat Perintah Nomor : {nomorSp},</Text>
+            <Text style={sppStyles.meta}>Tanggal : {tanggalSp}</Text>
+
+            {/* Tabel perincian biaya */}
+            <View style={sppStyles.table}>
+              <View style={sppStyles.tr}>
+                <Text style={[sppStyles.cell, sppStyles.colNo, sppStyles.bold]}>No</Text>
+                <Text
+                  style={[sppStyles.cell, sppStyles.colUraian, sppStyles.center, sppStyles.bold]}
+                >
+                  Perincian Biaya
+                </Text>
+                <Text
+                  style={[sppStyles.cell, sppStyles.colJumlah, sppStyles.center, sppStyles.bold]}
+                >
+                  Jumlah (Rp)
+                </Text>
+                <Text style={[sppStyles.cell, sppStyles.colKet, sppStyles.center, sppStyles.bold]}>
+                  Keterangan
+                </Text>
+              </View>
+              {rows.map((r, i) => (
+                <View key={i} style={sppStyles.tr} wrap={false}>
+                  <Text style={[sppStyles.cell, sppStyles.colNo]}>{i + 1}</Text>
+                  <Text style={[sppStyles.cell, sppStyles.colUraian]}>
+                    {[r.itemKode, r.itemName].filter(Boolean).join('. ') ||
+                      r.detail ||
+                      r.uraian ||
+                      '-'}
+                  </Text>
+                  <Text style={[sppStyles.cell, sppStyles.colJumlah]}>
+                    {rupiah(angka(r.jumlah))}
+                  </Text>
+                  <Text style={[sppStyles.cell, sppStyles.colKet]}> </Text>
+                </View>
+              ))}
+              <View style={sppStyles.tr} wrap={false}>
+                <Text style={[sppStyles.cell, sppStyles.colNoUraian, sppStyles.bold]}>Jumlah</Text>
+                <Text style={[sppStyles.cell, sppStyles.colJumlah, sppStyles.bold]}>
+                  {rupiah(total)}
+                </Text>
+                <Text style={[sppStyles.cell, sppStyles.colKet]}> </Text>
+              </View>
+            </View>
+
+            {/* Tanda terima: Bendahara (kiri) & pelaksana yang membuat pernyataan (kanan) */}
+            <View style={sppStyles.ttdRow} wrap={false}>
+              <View style={sppStyles.ttdCol}>
+                <Text> </Text>
+                <Text>Telah dibayarkan sejumlah :</Text>
+                <Text>Rp. {rupiah(dibayarkan)}</Text>
+                <Text>Bendahara Pengeluaran</Text>
+                <View style={sppStyles.ttdSpace} />
+                <Text style={sppStyles.bold}>{bendahara.nama.toUpperCase()}</Text>
+                <Text>NIP. {bendahara.nip}</Text>
+              </View>
+              <View style={sppStyles.ttdCol}>
+                <Text>Singaraja, {tanggalTtd}</Text>
+                <Text>Telah menerima jumlah uang sebesar :</Text>
+                <Text>Rp. {rupiah(total)}</Text>
+                <Text>Yang Membuat Pernyataan</Text>
+                <View style={sppStyles.ttdSpace} />
+                <Text style={sppStyles.bold}>{pelaksana.nama.toUpperCase()}</Text>
+                <Text>NIP. {pelaksana.nip}</Text>
+              </View>
+            </View>
+
+            {/* Perhitungan SPD rampung */}
+            <View wrap={false}>
+              <Text style={sppStyles.subTitle}>PERHITUNGAN SPD RAMPUNG</Text>
+              <View style={sppStyles.hitungRow}>
+                <Text style={sppStyles.hitungLabel}>Ditetapkan sejumlah</Text>
+                <Text>Rp. {rupiah(total)}</Text>
+              </View>
+              <View style={sppStyles.hitungRow}>
+                <Text style={sppStyles.hitungLabel}>Yang harus dibayarkan sejumlah</Text>
+                <Text>Rp. {rupiah(dibayarkan)}</Text>
+              </View>
+              <View style={sppStyles.hitungRow}>
+                <Text style={sppStyles.hitungLabel}>Sisa yang harus dibayarkan</Text>
+                <Text>Rp. {sisa ? rupiah(sisa) : '-'}</Text>
+              </View>
+
+              <View style={sppStyles.ppk}>
+                <Text>Pejabat Pembuat Komitmen</Text>
+                <View style={sppStyles.ttdSpace} />
+                <Text style={sppStyles.bold}>{ppk.nama.toUpperCase()}</Text>
+                <Text>NIP. {ppk.nip}</Text>
+              </View>
+            </View>
+          </Page>
+        );
+      })}
+    </>
+  );
+};
+
 // Diekspor supaya modul LPJ bisa mencetak langsung (pdf().toBlob()) tanpa membuka pratinjau
 export const MyPdfDocument = ({ surat, data, packItem }) => (
   <Document>
@@ -1868,6 +2066,8 @@ export const MyPdfDocument = ({ surat, data, packItem }) => (
       <RincianSPBy data={data} />
     ) : surat.id === 'nominatif' ? (
       <Nominatif data={data} />
+    ) : surat.id === 'surat-pernyataan-pengeluaran' ? (
+      <SuratPernyataanPengeluaran data={data} />
     ) : (
       <Page size="A4" style={styles.page}>
         <KopSurat />
