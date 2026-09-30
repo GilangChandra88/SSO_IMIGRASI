@@ -7,7 +7,7 @@ Aturan kerja untuk semua anggota tim dan untuk Claude Code di akun masing-masing
 
 ## 1. Ringkasan proyek
 
-Portal internal Kantor Imigrasi (Singaraja / Buleleng) dengan satu pintu masuk (SSO) ke beberapa aplikasi:
+Portal internal **Kantor Imigrasi Kelas II TPI Buleleng** (dulu "TPI Singaraja"; kantornya tetap di kota Singaraja) dengan satu pintu masuk (SSO) ke beberapa aplikasi. Di dokumen, nama kantor selalu "Buleleng"; "Singaraja" hanya untuk kota tempat surat dibuat ("Singaraja, <tanggal>", "Dikeluarkan di"), alamat jalan, dan laman/pos-el kop surat (belum ada info resmi alamat baru).
 
 | Aplikasi                | Folder                     | Isi                                                  |
 | ----------------------- | -------------------------- | ---------------------------------------------------- |

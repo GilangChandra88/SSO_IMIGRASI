@@ -23,7 +23,7 @@ export const DIPA_DASAR_TEXT =
 export const UNTUK_FIXED = [
   'Selama Melaksanakan kegiatan tersebut, yang bersangkutan dibebaskan dari tugas dinas sehari-hari;',
   'Surat tugas ini berlaku sampai dengan selesainya kegiatan; dan',
-  'Melaporkan hasil kegiatan tesebut kepada Kepala Kantor Imigrasi Kelas II TPI Singaraja.',
+  'Melaporkan hasil kegiatan tesebut kepada Kepala Kantor Imigrasi Kelas II TPI Buleleng.',
 ];
 
 // Lampiran Non-Perjadin yang wajib diunggah

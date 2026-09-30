@@ -112,7 +112,7 @@ const KopSurat = () => (
         </Text>
         <Text style={styles.title1}>Direktorat Jenderal Imigrasi</Text>
         <Text style={styles.title1}>Kantor Wilayah Direktorat Jenderal Imigrasi Bali</Text>
-        <Text style={styles.title2}>Kantor Imigrasi Kelas II TPI Singaraja</Text>
+        <Text style={styles.title2}>Kantor Imigrasi Kelas II TPI Buleleng</Text>
         <Text style={styles.address}>
           Jl. Raya Singaraja Seririt, Pemaron, Buleleng, Bali. Telepon ( 0362 ) 32174
         </Text>
@@ -217,7 +217,7 @@ const SuratPerintah = ({ data }) => (
           <Text style={{ width: 15 }}>3.</Text>
           <Text style={styles.valueCol}>
             Segera melaporkan hasil pelaksanaan tugas kepada Kepala Kantor Imigrasi Kelas II TPI
-            Singaraja;
+            Buleleng;
           </Text>
         </View>
         <View style={{ flexDirection: 'row', marginBottom: 3 }}>
@@ -240,7 +240,7 @@ const SuratPerintah = ({ data }) => (
           <Text style={styles.valueCol}>{fmtDate(data['tanggal_sp'])}</Text>
         </View>
 
-        <Text style={styles.ttdTitle}>Kepala Kantor Imigrasi{'\n'}Kelas II TPI Singaraja</Text>
+        <Text style={styles.ttdTitle}>Kepala Kantor Imigrasi{'\n'}Kelas II TPI Buleleng</Text>
         <Text style={styles.ttdName}>
           {data['pejabat_ttd']?.split('\n')[0] || '[Nama Pejabat]'}
         </Text>
@@ -258,7 +258,7 @@ const SuratPerjalananDinas = ({ data }) => {
       1,
       'Pejabat Pembuat Komitmen',
       <Text>
-        Kantor Imigrasi Kelas II Singaraja{'\n'}
+        Kantor Imigrasi Kelas II TPI Buleleng{'\n'}
         <Text style={{ fontFamily: 'Times-Bold' }}>
           {data['ppk']?.split('\n')[0]?.toUpperCase() || '[NAMA PPK]'}
         </Text>
@@ -354,7 +354,7 @@ const SuratPerjalananDinas = ({ data }) => {
         <Text>b. Akun</Text>
       </View>,
       <View>
-        <Text>a. Kantor Imigrasi Kelas II TPI Singaraja</Text>
+        <Text>a. Kantor Imigrasi Kelas II TPI Buleleng</Text>
         <Text>b. {data['akun'] || '[Kode MAK]'}</Text>
       </View>,
     ],
@@ -565,7 +565,7 @@ const RincianSPBy = ({ data }) => {
                 KANTOR WILAYAH DIREKTORAT JENDERAL IMIGRASI BALI
               </Text>
               <Text style={{ fontFamily: 'Times-Bold', fontSize: 11 }}>
-                KANTOR IMIGRASI KELAS II TPI SINGARAJA
+                KANTOR IMIGRASI KELAS II TPI BULELENG
               </Text>
               <Text style={{ fontFamily: 'Times-Bold', fontSize: 11 }}>
                 Jl. Seririt - Singaraja, Pemaron
@@ -819,7 +819,7 @@ const Kwitansi = ({ data }) => {
             <Text>Sudah diterima dari</Text>
           </View>
           <View style={{ flex: 1 }}>
-            <Text>: Pejabat Pembuat Komitmen Satker Kantor Imigrasi Kelas II TPI Singaraja</Text>
+            <Text>: Pejabat Pembuat Komitmen Satker Kantor Imigrasi Kelas II TPI Buleleng</Text>
           </View>
         </View>
         <View style={{ flexDirection: 'row', marginBottom: 5 }}>
@@ -919,7 +919,7 @@ const SuratPerintahBayar = ({ data }) => {
           KEMENTERIAN IMIGRASI DAN PEMASYARAKATAN
         </Text>
         <Text style={{ fontFamily: 'Helvetica-Bold' }}>
-          KANTOR IMIGRASI KELAS II TPI SINGARAJA (692951)
+          KANTOR IMIGRASI KELAS II TPI BULELENG (692951)
         </Text>
         <Text style={{ fontFamily: 'Helvetica-Bold', marginTop: 10 }}>SURAT PERINTAH BAYAR</Text>
       </View>
@@ -1156,7 +1156,7 @@ const RincianPerjalananTugas = ({ data }) => {
                 KANTOR WILAYAH DIREKTORAT JENDERAL IMIGRASI BALI
               </Text>
               <Text style={{ fontFamily: 'Times-Bold', fontSize: 11 }}>
-                KANTOR IMIGRASI KELAS II TPI SINGARAJA
+                KANTOR IMIGRASI KELAS II TPI BULELENG
               </Text>
               <Text style={{ fontSize: 10, fontFamily: 'Times-Roman' }}>
                 Jl. Seririt - Singaraja, Pemaron
@@ -1453,7 +1453,7 @@ const Nominatif = ({ data }) => {
           DAFTAR NOMINATIF PEMBAYARAN PERJALANAN DINAS
         </Text>
         <Text style={{ fontFamily: 'Helvetica-Bold', fontSize: 11 }}>
-          KANTOR IMIGRASI KELAS II TPI SINGARAJA
+          KANTOR IMIGRASI KELAS II TPI BULELENG
         </Text>
       </View>
 
@@ -1808,7 +1808,7 @@ const SPTJMPelaksana = ({ data, packItem }) => {
       <View style={{ flexDirection: 'row', marginBottom: 10, textAlign: 'justify' }}>
         <Text style={{ width: 20 }}>1.</Text>
         <Text style={{ flex: 1 }}>
-          Sehubungan dengan Surat Perintah Kepala Kantor Imigrasi Kelas II TPI Singaraja Nomor{' '}
+          Sehubungan dengan Surat Perintah Kepala Kantor Imigrasi Kelas II TPI Buleleng Nomor{' '}
           {nomorSp} tanggal {tglSp} , maka saya telah melaksanakan perjalanan dinas dimaksud dan
           perhitungan sebagaimana daftar pengeluaran riil dan rincian biaya perjalanan dinas telah
           dihitung dengan benar;
@@ -1937,7 +1937,7 @@ const SuratPernyataanPengeluaran = ({ data }) => {
               <Text style={sppStyles.kopText}>
                 KANTOR WILAYAH DIREKTORAT JENDERAL IMIGRASI BALI
               </Text>
-              <Text style={sppStyles.kopText}>KANTOR IMIGRASI KELAS II TPI SINGARAJA</Text>
+              <Text style={sppStyles.kopText}>KANTOR IMIGRASI KELAS II TPI BULELENG</Text>
               <Text style={sppStyles.kopText}>Jl. Seririt - Singaraja, Pemaron</Text>
               <Text style={sppStyles.kopText}>Telp. (0362) 32174 Fax. (0362) 31175</Text>
               <View style={sppStyles.kopLine} />
@@ -2173,7 +2173,7 @@ const NotaDinas = ({ data }) => {
           <Text>Yth.</Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text>: Kepala Kantor Imigrasi Kelas II TPI Singaraja</Text>
+          <Text>: Kepala Kantor Imigrasi Kelas II TPI Buleleng</Text>
         </View>
       </View>
       <View style={{ flexDirection: 'row', marginBottom: 5 }}>
@@ -2196,7 +2196,7 @@ const NotaDinas = ({ data }) => {
       {/* BODY */}
       <View style={{ marginBottom: 15, textAlign: 'justify' }}>
         <Text>
-          Sehubungan dengan pelaksanaan kegiatan pada DIPA Kantor Imigrasi Kelas II TPI Singaraja
+          Sehubungan dengan pelaksanaan kegiatan pada DIPA Kantor Imigrasi Kelas II TPI Buleleng
           Nomor SP DIPA-137.03.2.92951/202 tanggal 01 Desember 2025 bersama ini kami sampaikan
           usulan rencana kegiatan seperti tersebut dibawah ini :
         </Text>
