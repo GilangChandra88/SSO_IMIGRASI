@@ -18,6 +18,8 @@ const TEMPLATE_BY_DOC = {
   sptjm: 'sptjm-pelaksana',
   rincian_spby: 'rincian-spby',
   suratpernyataan: 'surat-pernyataan-pengeluaran',
+  // SPBy memakai format "Surat Perintah Bayar" kantor (template SPB yang sudah ada)
+  spby: 'surat-perintah-bayar',
 };
 
 // Dokumen khusus LPJ yang punya template PDF tetapi tidak didaftarkan di SURAT_REGISTRY
@@ -58,9 +60,17 @@ export function dataDokumen(pack, pegawaiList) {
   const ppk = pejabatKhusus(pegawaiList, 'PPK');
   const bendahara = pejabatKhusus(pegawaiList, 'Bendahara');
 
+  // Urutkan mengikuti urutan pelaksana (baris pertama = pelaksana pertama = penerima uang)
+  const urutan = Object.fromEntries(pelaksana.map((p, i) => [p.id, i]));
   const detail_transaksi = transaksiOf(pack)
     .filter((t) => t.itemNodeId || parseNum(t.jumlah) > 0)
-    .map((t, i) => {
+    .map((t, i) => ({ t, i }))
+    .sort(
+      (a, b) =>
+        (urutan[a.t.pelaksanaId] ?? pelaksana.length) -
+          (urutan[b.t.pelaksanaId] ?? pelaksana.length) || a.i - b.i,
+    )
+    .map(({ t }, i) => {
       const p = byId[t.pelaksanaId];
       return {
         id: i + 1,
@@ -147,5 +157,73 @@ export function resolveDokumen(pack, item, pegawaiList) {
     const first = pelaksanaOf(pack)[0];
     if (first) data.pegawai = formatPegawai(first);
   }
+  if (docKey === 'spby' && isPerjadin(pack)) data.uraian = uraianPembayaranPerjadin(pack);
   return { kind: 'pdf', label: item.label, surat, data, packItem };
+}
+
+// ─── Teks "Untuk Pembayaran" SPBy Perjadin ──────────────────────────────────
+
+const BULAN = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+];
+
+const urai = (iso) => {
+  const [y, m, d] = String(iso || '')
+    .split('-')
+    .map(Number);
+  return y && m && d ? { y, m, d } : null;
+};
+
+/** "11 September 2026" */
+const tanggalPanjang = (iso) => {
+  const t = urai(iso);
+  return t ? `${t.d} ${BULAN[t.m - 1]} ${t.y}` : '';
+};
+
+/** "12 s/d 13 September 2026", "30 September s/d 2 Oktober 2026", atau satu tanggal. */
+function rentangTanggal(mulai, selesai) {
+  const a = urai(mulai);
+  const b = urai(selesai);
+  if (!a) return tanggalPanjang(selesai);
+  if (!b || (a.y === b.y && a.m === b.m && a.d === b.d)) return tanggalPanjang(mulai);
+  if (a.y === b.y && a.m === b.m) return `${a.d} s/d ${b.d} ${BULAN[b.m - 1]} ${b.y}`;
+  if (a.y === b.y) return `${a.d} ${BULAN[a.m - 1]} s/d ${b.d} ${BULAN[b.m - 1]} ${b.y}`;
+  return `${tanggalPanjang(mulai)} s/d ${tanggalPanjang(selesai)}`;
+}
+
+/**
+ * Mis. "Biaya Perjalanan Dinas Dalam Rangka Melakukan Kegiatan X di Jembrana Pada Tanggal
+ * 12 s/d 13 September 2026 sesuai Sprint Nomor : W.1-406 Tanggal 11 September 2026 an. Budi, dkk"
+ */
+export function uraianPembayaranPerjadin(pack) {
+  const sp = pack.sp || {};
+  const spd = pack.spd || {};
+  const maksud = String(spd.maksud || pack.uraian || '')
+    .trim()
+    .replace(/^dalam rangka\s+/i, '')
+    .replace(/[.\s]+$/, '');
+  const pelaksana = pelaksanaOf(pack);
+
+  let teks = 'Biaya Perjalanan Dinas';
+  if (maksud) teks += ` Dalam Rangka ${maksud}`;
+  if (spd.tujuan) teks += ` di ${spd.tujuan.trim()}`;
+  const tanggal = rentangTanggal(spd.berangkat, spd.kembali);
+  if (tanggal) teks += ` Pada Tanggal ${tanggal}`;
+  if (sp.nomorSurat) {
+    teks += ` sesuai Sprint Nomor : ${sp.nomorSurat}`;
+    if (sp.tanggal) teks += ` Tanggal ${tanggalPanjang(sp.tanggal)}`;
+  }
+  if (pelaksana.length) teks += ` an. ${pelaksana[0].nama}${pelaksana.length > 1 ? ', dkk' : ''}`;
+  return teks;
 }
