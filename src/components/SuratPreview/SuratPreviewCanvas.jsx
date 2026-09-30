@@ -1652,7 +1652,7 @@ const Nominatif = ({ data }) => {
           );
         })}
 
-        {/* FOOTER JUMLAH */}
+        {/* FOOTER JUMLAH: total per item + total keseluruhan */}
         <View
           style={{
             flexDirection: 'row',
@@ -1662,14 +1662,27 @@ const Nominatif = ({ data }) => {
         >
           <View
             style={{
-              width: `${4 + 18 + 10 + 10 + 5 + expenseColumns.length * dynWidth}%`,
+              width: `${4 + 18 + 10 + 10 + 5}%`,
               borderRight: '1px solid black',
               padding: 4,
               textAlign: 'center',
             }}
           >
-            <Text>Jumlah Keseluruhan</Text>
+            <Text>Jumlah</Text>
           </View>
+          {expenseColumns.map((col, cIdx) => (
+            <View
+              key={cIdx}
+              style={{
+                width: `${dynWidth}%`,
+                borderRight: '1px solid black',
+                padding: 4,
+                textAlign: 'right',
+              }}
+            >
+              <Text>{formatRupiah(rows.reduce((sum, r) => sum + (r.expenses[col] || 0), 0))}</Text>
+            </View>
+          ))}
           <View
             style={{ width: '10%', borderRight: '1px solid black', padding: 4, textAlign: 'right' }}
           >
