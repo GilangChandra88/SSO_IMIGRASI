@@ -1457,18 +1457,22 @@ const Nominatif = ({ data }) => {
         </Text>
       </View>
 
+      {/* Garis kiri/atas dipasang per baris (bukan di bingkai luar) supaya tabel yang
+          berlanjut ke halaman berikutnya tidak menyisakan garis menjulur di area kosong. */}
       <View
         style={{
-          borderTop: '1px solid black',
-          borderLeft: '1px solid black',
           fontSize: 9,
           fontFamily: 'Helvetica',
+          lineHeight: 1.25,
         }}
       >
-        {/* HEADER */}
+        {/* HEADER (diulang di tiap halaman bila tabel berlanjut) */}
         <View
+          fixed
           style={{
             flexDirection: 'row',
+            borderTop: '1px solid black',
+            borderLeft: '1px solid black',
             borderBottom: '1px solid black',
             fontFamily: 'Helvetica-Bold',
             textAlign: 'center',
@@ -1574,7 +1578,15 @@ const Nominatif = ({ data }) => {
         {rows.map((r, idx) => {
           const info = getPegawaiInfo(r.nama);
           return (
-            <View key={idx} style={{ flexDirection: 'row', borderBottom: '1px solid black' }}>
+            <View
+              key={idx}
+              wrap={false}
+              style={{
+                flexDirection: 'row',
+                borderLeft: '1px solid black',
+                borderBottom: '1px solid black',
+              }}
+            >
               <View
                 style={{
                   width: '4%',
@@ -1654,8 +1666,10 @@ const Nominatif = ({ data }) => {
 
         {/* FOOTER JUMLAH: total per item + total keseluruhan */}
         <View
+          wrap={false}
           style={{
             flexDirection: 'row',
+            borderLeft: '1px solid black',
             borderBottom: '1px solid black',
             fontFamily: 'Helvetica-Bold',
           }}
@@ -1694,12 +1708,13 @@ const Nominatif = ({ data }) => {
 
       <Text style={{ fontSize: 9, marginTop: 4 }}>id : {data.nomor_bundle || '...'}</Text>
 
-      {/* SIGNATURES */}
+      {/* SIGNATURES — tidak boleh terpotong; bila tidak muat, pindah utuh ke halaman berikutnya */}
       <View
+        wrap={false}
         style={{
           flexDirection: 'row',
           justifyContent: 'space-between',
-          marginTop: 30,
+          marginTop: 20,
           fontSize: 10,
           textAlign: 'center',
         }}
@@ -1707,14 +1722,14 @@ const Nominatif = ({ data }) => {
         <View style={{ width: '40%' }}>
           <Text>Mengetahui,</Text>
           <Text>Pejabat Pembuat Komitmen</Text>
-          <View style={{ height: 60 }} />
+          <View style={{ height: 50 }} />
           <Text style={{ fontFamily: 'Helvetica-Bold' }}>{namaPpk.toUpperCase()}</Text>
           <Text>NIP. {nipPpk}</Text>
         </View>
         <View style={{ width: '40%' }}>
           <Text>Singaraja, {tanggal}</Text>
           <Text>Bendahara Pengeluaran</Text>
-          <View style={{ height: 60 }} />
+          <View style={{ height: 50 }} />
           <Text style={{ fontFamily: 'Helvetica-Bold' }}>{namaBendahara.toUpperCase()}</Text>
           <Text>NIP. {nipBendahara}</Text>
         </View>
