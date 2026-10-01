@@ -13,7 +13,7 @@ import { formatTanggal } from '../../utils/formatTanggal';
 import { lpjRowTotal } from '../../utils/lpjLogic';
 import { deleteLpjFile, pesanGagalUnggah, uploadLpjFile } from '../../services/lpjStorage';
 import ProgressBar from '../../ui/ProgressBar';
-import { BTN, FONT, LAYOUT, NAVY, STATUS, T } from '../../ui/tokens';
+import { BTN, FONT, LAYOUT, NAVY, STATUS, T } from '@/utils/uiTokens';
 
 /** Fase 2 Non-Perjadin — unggah Foto Bukti/Produk & Nota Pembayaran, lalu berkas selesai. */
 export default function StepLampiran({ ctx }) {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { FaChevronLeft } from 'react-icons/fa';
-import { T } from './tokens';
+import { T } from '@/utils/uiTokens';
 
 /** Tombol "Kembali" di kiri atas halaman (pola `.link-back` purwarupa). */
 export default function LinkBack({ onClick, children = 'Kembali' }) {

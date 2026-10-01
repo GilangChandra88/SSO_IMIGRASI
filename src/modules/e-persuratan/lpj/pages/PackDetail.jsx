@@ -42,8 +42,8 @@ import {
 import { formatTanggal } from '../utils/formatTanggal';
 import LinkBack from '../ui/LinkBack';
 import ProgressBar from '../ui/ProgressBar';
-import { useToast } from '../ui/toastStore';
-import { BTN, FONT, LAYOUT, NAVY, STAGE_CLS, STATUS, T } from '../ui/tokens';
+import { useToast } from '@/utils/toastStore';
+import { BTN, FONT, LAYOUT, NAVY, STAGE_CLS, STATUS, T } from '@/utils/uiTokens';
 
 export default function PackDetail({ packId }) {
   const navigate = useNavigate();

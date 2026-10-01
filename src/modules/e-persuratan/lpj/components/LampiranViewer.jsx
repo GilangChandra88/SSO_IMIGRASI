@@ -1,7 +1,7 @@
 import React from 'react';
 import { FaExternalLinkAlt, FaRegFilePdf, FaTimes } from 'react-icons/fa';
-import Modal from '../ui/Modal';
-import { BTN, FONT, T } from '../ui/tokens';
+import Modal from '@/components/Modal';
+import { BTN, FONT, T } from '@/utils/uiTokens';
 
 /** Menampilkan berkas unggahan (foto/PDF) dari Firebase Storage. */
 export default function LampiranViewer({ label, files, onClose }) {

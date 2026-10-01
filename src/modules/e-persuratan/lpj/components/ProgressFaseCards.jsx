@@ -1,7 +1,7 @@
 import React from 'react';
 import { FaCheck, FaLock } from 'react-icons/fa';
 import { lpjDetailStages, lpjStageStatus, STAGE_STATUS_LABEL } from '../utils/lpjLogic';
-import { NAVY, STAGE_CLS, T } from '../ui/tokens';
+import { NAVY, STAGE_CLS, T } from '@/utils/uiTokens';
 
 /**
  * Kartu ringkas "Progress Dokumen" per fase (ProgressFaseCards purwarupa).

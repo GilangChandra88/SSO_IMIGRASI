@@ -7,7 +7,7 @@ import {
   makOptions,
   makTahunOf,
 } from '../utils/makTree';
-import { FONT, FORM, STATUS, T } from '../ui/tokens';
+import { FONT, FORM, STATUS, T } from '@/utils/uiTokens';
 
 /**
  * Dropdown MAK bertingkat (Tahun → … → Akun). Tiap tingkat terkunci sampai tingkat

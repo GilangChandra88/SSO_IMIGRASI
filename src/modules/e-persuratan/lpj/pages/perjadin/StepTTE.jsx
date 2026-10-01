@@ -11,7 +11,7 @@ import {
 import { PEJABAT_KATEGORI, SCAN_MAX_BYTES } from '../../data/masterLpj';
 import { deleteLpjFile, pesanGagalUnggah, uploadLpjFile } from '../../services/lpjStorage';
 import Field from '../../ui/Field';
-import { BTN, FORM, NAVY, STATUS, T } from '../../ui/tokens';
+import { BTN, FORM, NAVY, STATUS, T } from '@/utils/uiTokens';
 
 /**
  * Fase 1 lanjutan — TTE Srikandi: unggah scan Surat Perintah ber-TTE (opsional) dan

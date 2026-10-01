@@ -1,5 +1,5 @@
 import React from 'react';
-import { FORM } from './tokens';
+import { FORM } from '@/utils/uiTokens';
 
 /** Label + isian + petunjuk/pesan error (komponen `Field` purwarupa). */
 export default function Field({ label, htmlFor, required, hint, err, children }) {

@@ -1,6 +1,6 @@
 /**
- * Token warna & gaya purwarupa LPJ (app.css + sharedStyles.js) sebagai kelas Tailwind.
- * Setiap token berpasangan terang/gelap. Pakai dengan template string:
+ * Token warna & gaya purwarupa e-Persuratan (LPJ, Dashboard, MAK, Nomor Surat) sebagai kelas
+ * Tailwind. Setiap token berpasangan terang/gelap. Pakai dengan template string:
  *   className={`${T.surface} ${T.border} border rounded-xl`}
  * Jangan membuat kelas dinamis (mis. `bg-[${x}]`); Tailwind hanya membaca kelas yang tertulis utuh.
  */
@@ -40,6 +40,14 @@ export const NAVY = {
   text: 'text-[#0f2040] dark:text-[#7DB6F3]',
   border: 'border-[#0f2040]',
   gradient: 'bg-gradient-to-r from-[#0f2040] to-[#1e4080]',
+};
+
+// Aksen emas purwarupa admin (--gold, --gold-strong, --gold-tint)
+export const GOLD = {
+  text: 'text-[#C9973B] dark:text-[#D9A94A]',
+  strongText: 'text-[#A97C24] dark:text-[#C9973B]',
+  strongBorder: 'border-[#A97C24] dark:border-[#C9973B]',
+  tintBg: 'bg-[#F7EEDC] dark:bg-[rgba(201,151,59,.16)]',
 };
 
 // ─── Warna status (status-info/good/warn/critical) ──────────────────────────
@@ -133,4 +141,77 @@ export const LAYOUT = {
   h1: `${FONT.head} text-[21px] font-extrabold tracking-[-0.01em] ${T.ink}`,
   sub: `text-[13px] mt-1 ${T.inkMuted}`,
   label: `text-[10.5px] font-bold uppercase tracking-[.06em] ${T.ink2}`,
+};
+
+// ─── Halaman admin purwarupa (MAK Setup, MAK History, Nomor Surat) ──────────
+const ADMIN_CONTROL = `${T.surface} ${T.ink} ${T.border} border rounded-lg text-[12.5px] px-2.5 py-[7px] outline-none ${T.focus} dark:[color-scheme:dark]`;
+
+// .data-table thead th (tanpa perataan; th = rata kiri)
+const ADMIN_TH = `${T.surface2} ${T.ink2} ${T.border} px-3.5 py-[11px] text-[11px] font-bold uppercase tracking-[.04em] whitespace-nowrap border-b`;
+
+const ADMIN_INPUT = `w-full px-[13px] py-2.5 border rounded-[10px] ${T.surface} ${T.ink} ${T.placeholder} text-sm outline-none ${T.focus} dark:[color-scheme:dark] disabled:opacity-85 disabled:cursor-not-allowed disabled:bg-[#F3F5F8] dark:disabled:bg-[#16243A]`;
+
+export const ADMIN = {
+  // .page-wrap + .card.card-pad
+  page: `${FONT.body} w-full max-w-[1200px] mx-auto px-4 pt-[18px] pb-[60px] sm:px-8 sm:pt-[26px]`,
+  card: `${T.surface} ${T.border} ${T.shadowSm} ${T.ink} border rounded-[20px] p-4 sm:p-5`,
+  // .page-head
+  h1: `${FONT.head} text-[clamp(19px,3vw,23px)] font-extrabold leading-[1.3] tracking-[-0.01em] ${T.ink}`,
+  sub: `text-[12.5px] mt-[5px] leading-[1.6] ${T.inkMuted}`,
+  toolbar: 'flex flex-wrap gap-2.5 items-center mb-[18px]',
+  // .table-search
+  search: `flex items-center gap-2 ${T.surface2} ${T.inkMuted} border border-transparent focus-within:border-[#2A78D6] dark:focus-within:border-[#5599e8] focus-within:bg-white dark:focus-within:bg-[#111D2E] rounded-[9px] px-[11px] h-9 flex-1 min-w-[200px]`,
+  searchInput: `bg-transparent border-none flex-1 min-w-0 outline-none text-sm ${T.ink} ${T.placeholder}`,
+  // .mak-period select/input
+  control: ADMIN_CONTROL,
+  // .seg-toggle / .seg-btn
+  seg: `flex ${T.surface2} p-1 rounded-[11px] gap-0.5 shrink-0 overflow-x-auto max-w-full`,
+  segBtn: `flex items-center gap-1.5 px-3 py-[7px] rounded-lg text-[12.5px] font-bold whitespace-nowrap cursor-pointer transition-colors ${T.inkMuted} hover:text-[#55627A] dark:hover:text-[#A7B6CB]`,
+  segActive: `flex items-center gap-1.5 px-3 py-[7px] rounded-lg text-[12.5px] font-bold whitespace-nowrap cursor-pointer ${T.surface} ${STATUS.infoInk} ${T.shadowSm}`,
+  // .table-scroll / .data-table
+  tableWrap: `overflow-x-auto border ${T.border} rounded-[14px]`,
+  table: 'w-full border-collapse text-[13.3px]',
+  th: `text-left ${ADMIN_TH}`,
+  thBase: ADMIN_TH,
+  td: `${T.border} ${T.ink} px-3.5 py-3 border-b align-top`,
+  tr: `${T.hoverSurface2} [&:last-child>td]:border-b-0`,
+  mono: `${FONT.mono} text-[12.5px] ${T.ink2} whitespace-nowrap`,
+  emptyRow: `text-center px-2.5 py-[30px] ${T.inkMuted}`,
+  // .row-action-btn
+  rowBtn: `w-[30px] h-[30px] rounded-lg grid place-items-center shrink-0 cursor-pointer ${T.inkMuted} hover:bg-[#F3F5F8] dark:hover:bg-[#16243A] hover:text-[#101A2C] dark:hover:text-[#EAF0F8]`,
+  // .seksi-tag
+  tag: `inline-block text-[10.5px] font-bold tracking-[.02em] px-[9px] py-[3px] rounded-md whitespace-nowrap ${STATUS.infoBg} ${STATUS.infoInk}`,
+  // .btn-add, .btn-solid, .btn-ghost
+  btnAdd: `inline-flex items-center gap-2 px-4 py-2.5 rounded-[10px] ${NAVY.bg} ${NAVY.hoverBg} text-white text-[13.5px] font-bold whitespace-nowrap cursor-pointer`,
+  btnSolid: `flex-1 text-center px-3 py-[11px] rounded-[10px] text-[13.5px] font-bold ${NAVY.bg} ${NAVY.hoverBg} text-white cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed`,
+  btnGhost: `flex-1 text-center px-3 py-[11px] rounded-[10px] text-[13.5px] font-semibold border ${T.borderStrong} ${T.ink} ${T.hoverSurface2} cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed`,
+  // .form-actions .btn-solid (lebar mengikuti isi)
+  btnSubmit: `inline-flex items-center justify-center gap-2 px-7 py-[11px] rounded-[10px] text-[13.5px] font-bold ${NAVY.bg} ${NAVY.hoverBg} text-white cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed`,
+  // .modal
+  modalBody: 'p-[22px]',
+  modalTitle: `${FONT.head} text-[16.5px] font-bold leading-[1.35] ${T.ink}`,
+  modalSub: `text-[12.5px] mt-1 mb-[18px] leading-[1.5] ${T.inkMuted}`,
+  modalClose: `p-1 rounded-lg shrink-0 cursor-pointer ${T.inkMuted} ${T.hoverSurface2}`,
+  modalActions: 'flex gap-2.5 mt-5',
+  // .modal-view-row
+  viewRow: `flex justify-between gap-2.5 py-2.5 border-b border-dashed last:border-b-0 ${T.border} text-[13px]`,
+  // .form-field
+  label: `block text-[13px] font-bold mb-[7px] ${T.ink2}`,
+  input: `${ADMIN_INPUT} ${T.borderStrong}`,
+  inputErr: `${ADMIN_INPUT} border-[#A62D2D] dark:border-[#F19191]`,
+  hint: `text-xs mt-1.5 ${T.inkMuted}`,
+  // .form-error-banner
+  errorBanner: `flex gap-2.5 items-start rounded-[10px] px-3.5 py-3 text-[12.5px] leading-[1.5] mb-[18px] ${STATUS.critBg} ${STATUS.critInk}`,
+  warnBanner: `flex gap-2.5 items-start rounded-[10px] px-3.5 py-3 text-[12.5px] leading-[1.5] mb-3.5 ${STATUS.warnBg} ${STATUS.warnInk}`,
+  // .kode-fixed
+  kodeFixed: `flex items-center gap-[7px] w-full ${FONT.mono} text-[13px] font-semibold ${T.ink2} ${T.surface2} border ${T.border} px-[13px] py-2.5 rounded-[10px]`,
+  // .crumb-link
+  crumb: `inline-flex items-center gap-[7px] text-[13.5px] font-semibold ${T.ink2} ${T.surface2} border ${T.border} pl-3 pr-[15px] py-2 rounded-full mb-[18px] cursor-pointer hover:bg-[#E9ECF1] dark:hover:bg-[#1C2C45] hover:text-[#101A2C] dark:hover:text-[#EAF0F8]`,
+  // .empty-state
+  empty: `text-center px-2.5 py-[34px] text-[13.5px] ${T.inkMuted}`,
+  // .mak-mini-btn (konfirmasi hapus di baris)
+  miniYes:
+    'px-[9px] py-1 rounded-md text-[11px] font-bold cursor-pointer bg-[#A62D2D] dark:bg-[#F19191] text-white dark:text-[#111D2E]',
+  miniNo: `px-[9px] py-1 rounded-md text-[11px] font-bold cursor-pointer ${T.surface2} ${T.ink2}`,
+  confirmText: `text-[11.5px] font-semibold whitespace-nowrap ${STATUS.critInk}`,
 };

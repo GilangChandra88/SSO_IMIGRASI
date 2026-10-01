@@ -1,7 +1,7 @@
 import React from 'react';
 import { FaRegTrashAlt } from 'react-icons/fa';
 import { formatNum } from '../utils/lpjLogic';
-import { BTN, FORM, T } from '../ui/tokens';
+import { BTN, FORM, T } from '@/utils/uiTokens';
 
 const GRID = 'grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_130px_36px] gap-2';
 

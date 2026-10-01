@@ -16,20 +16,18 @@ import {
   FaUpload,
 } from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
+import { FONT, STATUS, T } from '@/utils/uiTokens';
 import {
   formatTanggalPendek,
   isSkemaBaru,
   lpjDashStatus,
   lpjDashType,
   lpjRowTotal,
-  lpjUi,
   pelaksanaOf,
   stagesWithStatus,
   uraianOf,
   useLPJPacks,
 } from '@/modules/e-persuratan/lpj';
-
-const { T, FONT, STATUS } = lpjUi;
 
 const STATUS_LABEL = { baru: 'Baru', draft: 'Draft', selesai: 'Selesai' };
 const FILTER_LABEL = { all: 'Filter', baru: 'Baru', draft: 'Draft', selesai: 'Selesai' };

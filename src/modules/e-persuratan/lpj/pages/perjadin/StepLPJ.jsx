@@ -8,7 +8,7 @@ import { makItemsOfAkun } from '../../utils/makTree';
 import { catatMakHistory } from '../../services/makHistory';
 import TransaksiTable from '../../components/TransaksiTable';
 import Field from '../../ui/Field';
-import { BTN, FONT, FORM, STATUS, T } from '../../ui/tokens';
+import { BTN, FONT, FORM, STATUS, T } from '@/utils/uiTokens';
 
 /** Fase 3 — LPJ & SPBy: detail transaksi → pack dokumen pertanggungjawaban. */
 export default function StepLPJ({ ctx }) {

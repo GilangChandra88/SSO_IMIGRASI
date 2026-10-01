@@ -1,5 +1,5 @@
 /**
- * Toast modul LPJ (pengganti ToastContext purwarupa). Disimpan di tingkat modul supaya
+ * Toast e-Persuratan (pengganti ToastContext purwarupa). Disimpan di tingkat modul JS supaya
  * notifikasi tetap tampil setelah berpindah halaman (mis. dari form ke Daftar LPJ).
  * Tampilkan dengan <ToastViewport /> di halaman.
  */

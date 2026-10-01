@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { FaArrowRight, FaCheck, FaCircleNotch, FaTimes } from 'react-icons/fa';
 import { createLPJPack } from '../hooks/useLPJ';
 import { URAIAN_MAX } from '../data/masterLpj';
-import Modal from '../ui/Modal';
-import { BTN, FONT, FORM, NAVY, STATUS, T } from '../ui/tokens';
+import Modal from '@/components/Modal';
+import { BTN, FONT, FORM, NAVY, STATUS, T } from '@/utils/uiTokens';
 
 const CARDS = [
   {

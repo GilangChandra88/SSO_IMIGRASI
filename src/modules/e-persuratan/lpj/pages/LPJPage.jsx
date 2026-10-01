@@ -7,7 +7,7 @@
 
 import React from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import ToastViewport from '../ui/ToastViewport';
+import ToastViewport from '@/components/ToastViewport';
 import BerkasListPage from './BerkasListPage';
 import PackDetail from './PackDetail';
 import BerkasFormPage from './BerkasFormPage';
