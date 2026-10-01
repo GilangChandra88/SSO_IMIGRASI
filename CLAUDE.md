@@ -48,8 +48,8 @@ URL: `/login`, `/` (Portal), `/e-persuratan/*`, `/inventory/*`, `/kepegawaian/*`
 
 **Data pendukung:**
 
-- **MAK** (Mata Anggaran Kegiatan (?), kode pembebanan anggaran): pohon `Tahun > Program > Kegiatan > KRO > Output > Komponen > Sub Komponen > Akun > Item` dengan pagu. Diatur di MAK Setup; riwayat pemakaian di History MAK (koleksi `MAK`, `MAK_History`).
-- **Nomor Surat**: pohon kode `KOP > Kode surat 1 > 2 > 3` di koleksi bernama **`nomor surat kanim`** (memakai spasi); penghitung nomor di dokumen `settings/nomor_surat` (`lastNumber`); riwayat di `surat_dokumen` dan `surat_perintah`. Koleksi `counters` dipakai untuk ID paket LPJ (`LPJ-TAHUN-BULAN-NNNN`).
+- **MAK** (Mata Anggaran Kegiatan (?), kode pembebanan anggaran): pohon `Tahun > Program > Kegiatan > KRO > Output > Komponen > Sub Komponen > Akun > Item` dengan pagu (diisi di tingkat Item). Diatur di MAK Setup; riwayat pemakaian di History MAK (koleksi `MAK`, `MAK_History`). Tampilan MAK Setup dan History MAK **mengikuti purwarupa admin** (`e-persuratan-admin`, di luar repo): Rekap menampilkan Pagu, Realisasi **bulan terpilih**, Sisa, dan %; Lock Pagu tidak lagi diisi lewat antarmuka (field `lockPagu` lama dibiarkan). Batalkan/Pulihkan transaksi hanya untuk Super Admin.
+- **Nomor Surat** (halaman "Penomoran Surat Kanim Buleleng", purwarupa admin): tab **Daftar Nomor** (register nomor yang diminta lewat form "Tambah Nomor Surat": tanggal, seksi, kode surat, perihal, tujuan; disimpan di `surat_dokumen` dengan `sumber: 'register'`), **Riwayat Surat** (nomor dari form surat: `surat_perintah` + `surat_dokumen` lainnya), **Hierarki Kode** (pohon `KOP > Kode surat 1 > 2 > 3` di koleksi bernama **`nomor surat kanim`**, memakai spasi), dan **Pengaturan** (nomor terakhir). Semua nomor memakai penghitung bersama di `settings/nomor_surat` (`lastNumber`) dengan format sama dengan SuratForm: `<kode tiap tingkat digabung titik>-<urut 4 digit>`. Koleksi `counters` dipakai untuk ID paket LPJ (`LPJ-TAHUN-BULAN-NNNN`).
 - **Peran pengguna** (nilai persis, peka huruf besar/kecil): `Pegawai`, `Admin`, `Super Admin`. Dibaca dari dokumen `pegawai` (dicari lewat e-mail) di `src/context/AuthContext.jsx`.
 
 **Istilah:** SPD = Surat Perjalanan Dinas · SPBy = Surat Permintaan Bayar · SPB = Surat Perintah Bayar · SPTJM = Surat Pernyataan Tanggung Jawab Mutlak · PPK = Pejabat Pembuat Komitmen · KRO = Klasifikasi Rincian Output (?) · Kanim = Kantor Imigrasi.
@@ -82,7 +82,8 @@ src/
       AppModule.jsx         rute + menu aplikasi e-Persuratan
     inventory/              Stok Barang, Transaksi
     kepegawaian/            Pegawai
-  components/               komponen BERSAMA (Sidebar, SuratPreview, View*)
+  components/               komponen BERSAMA (Sidebar, SuratPreview, Modal, ToastViewport,
+                            StrukturHierarki = Pohon/Explorer/Kolom untuk MAK & kode surat)
   layouts/                  AppLayout
   data/surat/               definisi jenis surat + registry
   utils/  config/  context/ helper, firebase, AuthContext
@@ -105,7 +106,7 @@ Struktur di dalam modul **dianjurkan** (`pages/`, `components/` khusus modul, `h
 - **Function component + hooks.** Tanpa class component (kecuali error boundary di `main.jsx`).
 - **Nama file komponen PascalCase** (`PackDetail.jsx`). Hook `useNamaHook.js`, helper `camelCase.js`. Satu komponen utama per file.
 - **Styling hanya dengan Tailwind CSS.** Jangan menambah CSS manual, `style={{}}`, atau `<style>` baru. Pengecualian: komponen `@react-pdf/renderer` memakai `StyleSheet` karena PDF tidak mendukung Tailwind.
-- **Warna & font mengikuti purwarupa** (halaman LPJ dan Dashboard e-Persuratan): token warna purwarupa (terang/gelap) tersedia sebagai kelas Tailwind di `lpj/ui/tokens.js` (`T`, `NAVY`, `STATUS`, `FORM`, `BTN`, `LAYOUT`) — pakai itu, jangan menulis ulang kode warna. Navy `#0f2040` untuk tombol aksi utama, gradien `from-[#0f2040] to-[#1e4080]` untuk kartu judul. Font Inter / Plus Jakarta Sans / IBM Plex Mono (dimuat di `index.html`) lewat `FONT.*`. Lebar dinamis (bilah progres) memakai `<progress>` atau atribut SVG, bukan `style`. Jangan menggabungkan dua kelas latar/warna yang bentrok (mis. `FORM.card` + `bg-...`); pilih token yang sesuai (`FORM.cardMuted`). Sidebar dan aplikasi lain masih `slate-800` (`#1e293b`). Mode gelap memakai varian `dark:`. Aplikasi Kepegawaian memakai aksen amber (`APP_ACCENTS` di `src/utils/appAccents.js`).
+- **Warna & font mengikuti purwarupa** (halaman LPJ, Dashboard, MAK Setup, History MAK, dan Nomor Surat e-Persuratan): token warna purwarupa (terang/gelap) tersedia sebagai kelas Tailwind di `src/utils/uiTokens.js` (`T`, `NAVY`, `GOLD`, `STATUS`, `FORM`, `BTN`, `LAYOUT`, dan `ADMIN` untuk halaman bergaya purwarupa admin) — pakai itu, jangan menulis ulang kode warna. Notifikasi memakai `showToast` (`src/utils/toastStore.js`) + `<ToastViewport />`, bukan `alert()`; jendela memakai `src/components/Modal.jsx`. Navy `#0f2040` untuk tombol aksi utama, gradien `from-[#0f2040] to-[#1e4080]` untuk kartu judul. Font Inter / Plus Jakarta Sans / IBM Plex Mono (dimuat di `index.html`) lewat `FONT.*`. Lebar dinamis (bilah progres) memakai `<progress>` atau atribut SVG, bukan `style`. Jangan menggabungkan dua kelas latar/warna yang bentrok (mis. `FORM.card` + `bg-...`); pilih token yang sesuai (`FORM.cardMuted`). Sidebar dan aplikasi lain masih `slate-800` (`#1e293b`). Mode gelap memakai varian `dark:`. Aplikasi Kepegawaian memakai aksen amber (`APP_ACCENTS` di `src/utils/appAccents.js`).
 - **Teks antarmuka dalam Bahasa Indonesia** (label, tombol, pesan error, placeholder). Nama variabel/fungsi boleh Indonesia atau Inggris, ikuti file sekitarnya.
 - Komponen baru harus responsif (mobile dan desktop) dan mendukung mode gelap.
 - Jangan menambah `console.log` ke kode yang di-commit.
@@ -162,7 +163,7 @@ Node `^20.19.0 || >=22.12.0` (lihat `engines` di `package.json`; `.nvmrc` memaka
 - Tidak ada route 404/catch-all: URL yang tidak dikenal menampilkan halaman kosong.
 - Bila `.env` kosong, `src/config/firebase.js` melempar error sebelum React dimuat sehingga yang tampak halaman putih (pesan hanya di Console).
 - Kelas `custom-scrollbar` dan `no-scrollbar` dipakai di banyak file tetapi tidak didefinisikan di CSS mana pun (tidak berefek).
-- `npm run lint` masih menampilkan ±55 peringatan (variabel tak terpakai, dependensi `useEffect`). Boleh dibersihkan bertahap di modul Anda sendiri.
+- `npm run lint` masih menampilkan ±40 peringatan (variabel tak terpakai, dependensi `useEffect`). Boleh dibersihkan bertahap di modul Anda sendiri.
 - Ukuran bundel JS besar (±2,4 MB); belum ada code-splitting.
 
 ## 10. Untuk Claude Code
