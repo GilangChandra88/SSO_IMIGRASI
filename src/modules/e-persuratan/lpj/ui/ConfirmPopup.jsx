@@ -1,7 +1,7 @@
 import React from 'react';
 import { FaCheck, FaExclamationTriangle } from 'react-icons/fa';
-import Modal from './Modal';
-import { BTN, FONT, T } from './tokens';
+import Modal from '@/components/Modal';
+import { BTN, FONT, T } from '@/utils/uiTokens';
 
 /** "Tandai X selesai?" — konfirmasi sebelum sebuah fase dikunci (final). */
 export default function ConfirmPopup({ docLabel = 'Surat Perintah', onYes, onNo, busy }) {

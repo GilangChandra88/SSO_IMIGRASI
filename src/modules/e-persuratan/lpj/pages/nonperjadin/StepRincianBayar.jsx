@@ -8,7 +8,7 @@ import { catatMakHistory } from '../../services/makHistory';
 import MakDropdowns from '../../components/MakDropdowns';
 import TransaksiTable from '../../components/TransaksiTable';
 import Field from '../../ui/Field';
-import { BTN, FONT, FORM, LAYOUT, NAVY, STATUS, T } from '../../ui/tokens';
+import { BTN, FONT, FORM, LAYOUT, NAVY, STATUS, T } from '@/utils/uiTokens';
 
 function npValidateForm(np) {
   const e = {};

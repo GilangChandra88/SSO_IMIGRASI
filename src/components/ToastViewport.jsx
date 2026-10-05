@@ -1,9 +1,9 @@
 import React from 'react';
 import { FaCheck, FaExclamationTriangle } from 'react-icons/fa';
-import { useToastItems } from './toastStore';
-import { FONT, NAVY } from './tokens';
+import { useToastItems } from '@/utils/toastStore';
+import { FONT, NAVY } from '@/utils/uiTokens';
 
-/** Menampilkan toast LPJ di bawah tengah layar. */
+/** Menampilkan toast (`showToast`) di bawah tengah layar. */
 export default function ToastViewport() {
   const toasts = useToastItems();
   return (

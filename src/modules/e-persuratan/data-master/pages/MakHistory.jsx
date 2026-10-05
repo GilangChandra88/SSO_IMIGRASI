@@ -1,314 +1,247 @@
-import React, { useState, useEffect, useMemo } from 'react';
+/**
+ * History MAK (MakHistoryPage purwarupa admin): log realisasi anggaran dari `MAK_History`,
+ * dengan filter bulan/tahun/status, total transaksi aktif, dan Batalkan/Pulihkan (Super Admin).
+ */
+import React, { useMemo, useState } from 'react';
+import { doc, updateDoc } from 'firebase/firestore';
+import { FaCheck, FaHistory, FaSearch, FaTimes } from 'react-icons/fa';
 import { db } from '@/config/firebase';
-import { collection, query, onSnapshot, orderBy, doc, updateDoc } from 'firebase/firestore';
-import {
-  FaHistory,
-  FaSearch,
-  FaFilter,
-  FaTimes,
-  FaCheck,
-  FaExclamationTriangle,
-} from 'react-icons/fa';
+import { formatRupiah } from '@/components/StrukturHierarki/hierarkiUtils';
+import ToastViewport from '@/components/ToastViewport';
 import { useAuth } from '@/context/AuthContext';
+import { showToast } from '@/utils/toastStore';
+import { ADMIN, FONT, STATUS, T } from '@/utils/uiTokens';
+import { useMakHistory } from '../hooks/useMakData';
+import { BULAN_NAMES, formatTanggalID } from '../utils/makUtils';
 
-const BULAN_NAMES = [
-  'Januari',
-  'Februari',
-  'Maret',
-  'April',
-  'Mei',
-  'Juni',
-  'Juli',
-  'Agustus',
-  'September',
-  'Oktober',
-  'November',
-  'Desember',
-];
+const PILL =
+  'inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[.03em] px-[9px] py-[3px] rounded-full whitespace-nowrap';
+const AKSI_BTN = `w-[30px] h-[30px] rounded-lg grid place-items-center mx-auto cursor-pointer ${T.hoverSurface2}`;
 
 export default function MakHistory() {
   const { isSuperAdmin } = useAuth();
-  const [history, setHistory] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  // Filters
+  const { data: history, loading } = useMakHistory();
   const now = new Date();
   const [filterMonth, setFilterMonth] = useState(now.getMonth() + 1);
   const [filterYear, setFilterYear] = useState(now.getFullYear());
-  const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'active', 'cancelled'
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [search, setSearch] = useState('');
+  const [prosesId, setProsesId] = useState(null);
 
-  useEffect(() => {
-    const q = query(collection(db, 'MAK_History'), orderBy('createdAt', 'desc'));
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const data = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-        setHistory(data);
-        setLoading(false);
-      },
-      (error) => {
-        console.error('Error fetching MAK_History:', error);
-        setLoading(false);
-      },
-    );
-
-    return () => unsubscribe();
-  }, []);
-
-  const filteredHistory = useMemo(() => {
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
     return history.filter((item) => {
-      // Month & Year Filter
       if (filterMonth !== 0 && item.bulan !== filterMonth) return false;
       if (filterYear && item.tahun !== filterYear) return false;
-
-      // Status Filter
-      if (statusFilter !== 'all' && item.status !== statusFilter) return false;
-
-      // Search Query
-      if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const searchStr =
-          `${item.makString} ${item.itemName} ${item.uraian} ${item.suratRef?.pegawai} ${item.suratRef?.kode}`.toLowerCase();
-        if (!searchStr.includes(q)) return false;
+      if (filterStatus !== 'all' && item.status !== filterStatus) return false;
+      if (q) {
+        const s =
+          `${item.makString} ${item.itemName} ${item.uraian} ${item.suratRef?.pegawai || ''} ${item.suratRef?.kode || ''}`.toLowerCase();
+        if (!s.includes(q)) return false;
       }
-
       return true;
     });
-  }, [history, filterMonth, filterYear, searchQuery, statusFilter]);
+  }, [history, filterMonth, filterYear, filterStatus, search]);
 
-  const handleCancelTransaction = async (id, currentStatus) => {
-    if (!isSuperAdmin) {
-      alert('Hanya Super Admin yang dapat membatalkan transaksi.');
-      return;
-    }
+  const total = filtered
+    .filter((h) => h.status === 'active')
+    .reduce((s, h) => s + (Number(h.jumlah) || 0), 0);
 
-    const isCancelling = currentStatus === 'active';
-    const actionText = isCancelling ? 'membatalkan' : 'memulihkan';
-
-    if (
-      !window.confirm(
-        `Yakin ingin ${actionText} transaksi ini? Realisasi anggaran akan terpengaruh.`,
-      )
-    ) {
-      return;
-    }
-
+  const ubahStatus = async (item, status) => {
+    setProsesId(item.id);
     try {
-      await updateDoc(doc(db, 'MAK_History', id), {
-        status: isCancelling ? 'cancelled' : 'active',
+      await updateDoc(doc(db, 'MAK_History', item.id), {
+        status,
         updatedAt: new Date().toISOString(),
       });
-    } catch (error) {
-      console.error('Error updating transaction status:', error);
-      alert('Gagal mengubah status transaksi.');
+      showToast(status === 'cancelled' ? 'Transaksi dibatalkan.' : 'Transaksi dipulihkan.');
+    } catch {
+      showToast('Gagal mengubah status transaksi.', 'error');
+    } finally {
+      setProsesId(null);
     }
   };
 
-  const formatRupiah = (angka) => {
-    return new Intl.NumberFormat('id-ID').format(angka || 0);
-  };
-
-  const formatDate = (dateStr) => {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' });
-  };
-
-  const totalAmount = filteredHistory
-    .filter((h) => h.status === 'active')
-    .reduce((sum, item) => sum + (Number(item.jumlah) || 0), 0);
+  const kolom = isSuperAdmin ? 7 : 6;
 
   return (
-    <div className="w-full bg-slate-50 dark:bg-slate-950 min-h-screen font-sans flex flex-col">
-      {/* Header */}
-      <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2 tracking-tight">
-            <FaHistory className="text-indigo-600 dark:text-indigo-400" /> History MAK
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 font-medium text-sm mt-1">
-            Log pencatatan realisasi anggaran dari surat/transaksi.
-          </p>
-        </div>
+    <div className={`min-h-full ${T.ground}`}>
+      <div className={ADMIN.page}>
+        <section className={ADMIN.card}>
+          <div className="mb-4">
+            <h1 className={`${ADMIN.h1} flex items-center gap-[9px]`}>
+              <FaHistory size={18} className={STATUS.infoInk} />
+              History MAK
+            </h1>
+            <p className={`text-[13.5px] mt-[5px] ${T.inkMuted}`}>
+              Log pencatatan realisasi anggaran dari surat/transaksi.
+            </p>
+          </div>
 
-        <div className="flex flex-col sm:flex-row gap-3">
-          {/* Search */}
-          <div className="relative w-full sm:w-64">
-            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-              <FaSearch className="text-slate-400 dark:text-slate-500" size={12} />
+          <div className={ADMIN.toolbar}>
+            <div className={ADMIN.search}>
+              <FaSearch size={12} className="shrink-0" />
+              <input
+                type="search"
+                className={ADMIN.searchInput}
+                placeholder="Cari uraian, pegawai, MAK..."
+                aria-label="Cari history MAK"
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
             </div>
-            <input
-              type="text"
-              placeholder="Cari uraian, pegawai, MAK..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-500"
-            />
-          </div>
-
-          {/* Filters */}
-          <div className="flex items-center gap-2">
-            <select
-              value={filterMonth}
-              onChange={(e) => setFilterMonth(Number(e.target.value))}
-              className="text-sm border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value={0}>Semua Bulan</option>
-              {BULAN_NAMES.map((name, idx) => (
-                <option key={idx} value={idx + 1}>
-                  {name}
-                </option>
-              ))}
-            </select>
-
-            <input
-              type="number"
-              value={filterYear}
-              onChange={(e) => setFilterYear(Number(e.target.value))}
-              placeholder="Tahun"
-              className="w-20 text-sm border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="text-sm border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-2 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="all">Semua Status</option>
-              <option value="active">Active</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Content */}
-      <div className="flex-1 p-6 overflow-auto">
-        {loading ? (
-          <div className="flex flex-col items-center justify-center h-64 gap-4">
-            <div className="w-8 h-8 border-4 border-indigo-200 dark:border-indigo-800 border-t-indigo-600 rounded-full animate-spin"></div>
-            <p className="text-slate-500 dark:text-slate-400 mt-2">Memuat history transaksi...</p>
-          </div>
-        ) : (
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl shadow-sm overflow-hidden flex flex-col">
-            {/* Summary Bar */}
-            <div className="bg-slate-50 dark:bg-slate-950 px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex justify-between items-center">
-              <span className="text-sm font-semibold text-slate-600 dark:text-slate-400">
-                Total Transaksi Aktif (Filter):
-              </span>
-              <span className="text-lg font-bold text-indigo-700 dark:text-indigo-400">
-                Rp {formatRupiah(totalAmount)}
-              </span>
+            <div className="flex flex-wrap items-center gap-[7px] shrink-0">
+              <select
+                aria-label="Pilih bulan"
+                className={ADMIN.control}
+                value={filterMonth}
+                onChange={(e) => setFilterMonth(Number(e.target.value))}
+              >
+                <option value={0}>Semua Bulan</option>
+                {BULAN_NAMES.map((name, i) => (
+                  <option value={i + 1} key={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <input
+                type="number"
+                aria-label="Pilih tahun"
+                className={`${ADMIN.control} w-[78px]`}
+                value={filterYear}
+                onChange={(e) => setFilterYear(Number(e.target.value))}
+              />
+              <select
+                aria-label="Filter status"
+                className={ADMIN.control}
+                value={filterStatus}
+                onChange={(e) => setFilterStatus(e.target.value)}
+              >
+                <option value="all">Semua Status</option>
+                <option value="active">Aktif</option>
+                <option value="cancelled">Dibatalkan</option>
+              </select>
             </div>
+          </div>
 
-            {/* Table */}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-sm border-collapse text-slate-800 dark:text-slate-200">
-                <thead className="bg-slate-100 dark:bg-slate-800/50 text-slate-600 dark:text-slate-400">
+          <div
+            className={`flex justify-between items-center gap-3 border rounded-t-[14px] px-4 py-3 text-[13px] font-semibold ${T.surface2} ${T.border} ${T.ink2}`}
+          >
+            <span>Total Transaksi Aktif (Filter):</span>
+            <strong className={`${FONT.mono} text-base ${STATUS.infoInk}`}>
+              Rp {formatRupiah(total)}
+            </strong>
+          </div>
+          <div className={`border border-t-0 rounded-b-[14px] overflow-x-auto ${T.border}`}>
+            <table className={`${ADMIN.table} min-w-[840px]`}>
+              <thead>
+                <tr>
+                  <th className={ADMIN.th}>Tanggal</th>
+                  <th className={ADMIN.th}>Sumber / Pegawai</th>
+                  <th className={ADMIN.th}>MAK / Item</th>
+                  <th className={ADMIN.th}>Uraian</th>
+                  <th className={`${ADMIN.thBase} text-right`}>Jumlah (Rp)</th>
+                  <th className={`${ADMIN.thBase} text-center`}>Status</th>
+                  {isSuperAdmin && <th className={`${ADMIN.thBase} text-center`}>Aksi</th>}
+                </tr>
+              </thead>
+              <tbody>
+                {loading ? (
                   <tr>
-                    <th className="px-4 py-3 font-semibold border-b">Tanggal</th>
-                    <th className="px-4 py-3 font-semibold border-b">Sumber / Pegawai</th>
-                    <th className="px-4 py-3 font-semibold border-b">MAK / Item</th>
-                    <th className="px-4 py-3 font-semibold border-b">Uraian</th>
-                    <th className="px-4 py-3 font-semibold border-b text-right">Jumlah (Rp)</th>
-                    <th className="px-4 py-3 font-semibold border-b text-center">Status</th>
-                    {isSuperAdmin && (
-                      <th className="px-4 py-3 font-semibold border-b text-center">Aksi</th>
-                    )}
+                    <td colSpan={kolom} className={ADMIN.emptyRow}>
+                      Memuat history transaksi...
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                  {filteredHistory.length === 0 ? (
-                    <tr>
-                      <td
-                        colSpan={isSuperAdmin ? 7 : 6}
-                        className="text-center py-12 text-slate-400 dark:text-slate-500"
-                      >
-                        Tidak ada riwayat transaksi ditemukan.
-                      </td>
-                    </tr>
-                  ) : (
-                    filteredHistory.map((item) => (
-                      <tr
-                        key={item.id}
-                        className={`hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${item.status === 'cancelled' ? 'opacity-60 bg-rose-50/30 dark:bg-rose-900/10' : ''}`}
-                      >
-                        <td className="px-4 py-3 whitespace-nowrap">{formatDate(item.tanggal)}</td>
-                        <td className="px-4 py-3">
-                          <div className="font-semibold text-slate-800 dark:text-slate-200">
-                            {item.suratRef?.kode || 'Manual'}
-                          </div>
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={kolom} className={ADMIN.emptyRow}>
+                      Tidak ada riwayat transaksi ditemukan.
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map((item) => {
+                    const aktif = item.status === 'active';
+                    return (
+                      <tr key={item.id} className={`${ADMIN.tr} ${aktif ? '' : 'opacity-55'}`}>
+                        <td className={ADMIN.td}>
+                          <span className={ADMIN.mono}>{formatTanggalID(item.tanggal)}</span>
+                        </td>
+                        <td className={ADMIN.td}>
+                          <div className="font-semibold">{item.suratRef?.kode || 'Manual'}</div>
                           <div
-                            className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 max-w-[200px] truncate"
+                            className={`text-[11.5px] mt-0.5 max-w-[220px] truncate ${T.inkMuted}`}
                             title={item.suratRef?.pegawai}
                           >
                             {item.suratRef?.pegawai || '-'}
                           </div>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className={ADMIN.td}>
                           <div
-                            className="text-[10px] font-mono text-slate-500 dark:text-slate-400 mb-0.5 truncate max-w-[250px]"
+                            className={`${FONT.mono} text-[10px] mb-0.5 max-w-[230px] truncate ${T.inkMuted}`}
                             title={item.makString}
                           >
                             {item.makString}
                           </div>
-                          <div className="font-semibold text-teal-700 dark:text-teal-400 bg-teal-50 dark:bg-teal-900/20 inline-block px-1.5 py-0.5 rounded border border-teal-100">
+                          <span className={ADMIN.tag}>
                             {item.itemKode} - {item.itemName}
-                          </div>
+                          </span>
                         </td>
-                        <td className="px-4 py-3">
-                          <div
-                            className="text-slate-700 dark:text-slate-300 max-w-[250px] line-clamp-2"
-                            title={item.uraian}
-                          >
-                            {item.uraian || '-'}
-                          </div>
+                        <td className={`${ADMIN.td} max-w-[230px]`}>{item.uraian || '-'}</td>
+                        <td className={`${ADMIN.td} text-right`}>
+                          <span className={`${FONT.mono} font-bold whitespace-nowrap`}>
+                            {formatRupiah(item.jumlah)}
+                          </span>
                         </td>
-                        <td className="px-4 py-3 text-right font-bold text-slate-800 dark:text-slate-200 whitespace-nowrap">
-                          {formatRupiah(item.jumlah)}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {item.status === 'active' ? (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 px-2 py-1 rounded-full border border-emerald-200 dark:border-emerald-800">
-                              <FaCheck size={8} /> Active
+                        <td className={`${ADMIN.td} text-center`}>
+                          {aktif ? (
+                            <span className={`${PILL} ${STATUS.goodBg} ${STATUS.goodInk}`}>
+                              <FaCheck size={8} />
+                              Aktif
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 px-2 py-1 rounded-full border border-rose-200 dark:border-rose-800">
-                              <FaTimes size={8} /> Cancelled
+                            <span className={`${PILL} ${STATUS.critBg} ${STATUS.critInk}`}>
+                              <FaTimes size={8} />
+                              Dibatalkan
                             </span>
                           )}
                         </td>
                         {isSuperAdmin && (
-                          <td className="px-4 py-3 text-center">
-                            {item.status === 'active' ? (
+                          <td className={`${ADMIN.td} text-center`}>
+                            {aktif ? (
                               <button
-                                onClick={() => handleCancelTransaction(item.id, 'active')}
-                                className="text-rose-500 hover:text-rose-700 dark:text-rose-400 hover:bg-rose-50 p-1.5 rounded transition-colors"
+                                type="button"
+                                className={`${AKSI_BTN} ${STATUS.critInk}`}
                                 title="Batalkan Transaksi"
+                                aria-label="Batalkan Transaksi"
+                                disabled={prosesId === item.id}
+                                onClick={() => ubahStatus(item, 'cancelled')}
                               >
-                                <FaTimes size={14} />
+                                <FaTimes size={12} />
                               </button>
                             ) : (
                               <button
-                                onClick={() => handleCancelTransaction(item.id, 'cancelled')}
-                                className="text-emerald-500 hover:text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 p-1.5 rounded transition-colors"
+                                type="button"
+                                className={`${AKSI_BTN} ${STATUS.goodInk}`}
                                 title="Pulihkan Transaksi"
+                                aria-label="Pulihkan Transaksi"
+                                disabled={prosesId === item.id}
+                                onClick={() => ubahStatus(item, 'active')}
                               >
-                                <FaCheck size={14} />
+                                <FaCheck size={12} />
                               </button>
                             )}
                           </td>
                         )}
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
           </div>
-        )}
+        </section>
       </div>
+      <ToastViewport />
     </div>
   );
 }

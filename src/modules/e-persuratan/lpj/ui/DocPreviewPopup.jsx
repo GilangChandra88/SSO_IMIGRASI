@@ -1,7 +1,7 @@
 import React from 'react';
 import { FaRegFileAlt, FaTimes } from 'react-icons/fa';
-import Modal from './Modal';
-import { BTN, FONT, T } from './tokens';
+import Modal from '@/components/Modal';
+import { BTN, FONT, T } from '@/utils/uiTokens';
 
 /**
  * Pratinjau placeholder untuk dokumen yang belum punya template PDF

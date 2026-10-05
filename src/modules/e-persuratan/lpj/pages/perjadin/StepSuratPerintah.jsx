@@ -6,7 +6,7 @@ import PegawaiPicker from '../../components/PegawaiPicker';
 import PejabatPicker from '../../components/PejabatPicker';
 import PegawaiCards from '../../components/PegawaiCards';
 import Field from '../../ui/Field';
-import { BTN, FORM, NAVY, T } from '../../ui/tokens';
+import { BTN, FORM, NAVY, T } from '@/utils/uiTokens';
 
 function validateSp(sp) {
   const e = {};

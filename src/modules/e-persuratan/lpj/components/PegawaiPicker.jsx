@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { FaSearch, FaTimes } from 'react-icons/fa';
 import { toPegawaiRef } from '../utils/emptyModels';
-import { FORM, NAVY, T } from '../ui/tokens';
+import { FORM, NAVY, T } from '@/utils/uiTokens';
 
 /**
  * Cari & pilih beberapa pegawai (dipakai untuk "Kepada" Surat Perintah).

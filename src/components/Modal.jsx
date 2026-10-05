@@ -1,5 +1,5 @@
 import React from 'react';
-import { T, FONT } from './tokens';
+import { T, FONT } from '@/utils/uiTokens';
 
 /**
  * Overlay + kartu di tengah (pola `.lpjv-overlay` / `Modal.jsx` purwarupa).

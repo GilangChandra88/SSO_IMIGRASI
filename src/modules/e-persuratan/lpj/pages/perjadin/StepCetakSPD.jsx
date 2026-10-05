@@ -7,7 +7,7 @@ import {
   FaRegClock,
   FaRegEye,
 } from 'react-icons/fa';
-import { BTN, FORM, NAVY, STATUS, T } from '../../ui/tokens';
+import { BTN, FORM, NAVY, STATUS, T } from '@/utils/uiTokens';
 
 const inisial = (nama) =>
   String(nama || '')

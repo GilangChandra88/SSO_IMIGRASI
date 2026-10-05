@@ -4,7 +4,7 @@ import { LAP_FOTO_MAX_BYTES, LAP_FOTO_MAX_COUNT, LAP_SECTIONS } from '../../data
 import { formatTanggal } from '../../utils/formatTanggal';
 import { deleteLpjFile, pesanGagalUnggah, uploadLpjFile } from '../../services/lpjStorage';
 import Field from '../../ui/Field';
-import { BTN, FORM, T } from '../../ui/tokens';
+import { BTN, FORM, T } from '@/utils/uiTokens';
 
 /** Fase 4 — Laporan Kegiatan + foto dokumentasi, lalu berkas diselesaikan. */
 export default function StepLaporan({ ctx }) {

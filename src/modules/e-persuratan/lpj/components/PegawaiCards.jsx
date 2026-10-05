@@ -1,5 +1,5 @@
 import React from 'react';
-import { T } from '../ui/tokens';
+import { T } from '@/utils/uiTokens';
 
 /** Kartu data pelaksana hanya-baca: Nama · NIP · Pangkat/Gol · Jabatan. */
 export default function PegawaiCards({ list }) {

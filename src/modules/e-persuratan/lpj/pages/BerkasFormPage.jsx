@@ -9,7 +9,7 @@ import { useLPJPack } from '../hooks/useLPJ';
 import { useLpjUser } from '../hooks/useLpjUser';
 import { canEditPack, isPerjadin, isSkemaBaru } from '../utils/lpjLogic';
 import LinkBack from '../ui/LinkBack';
-import { LAYOUT, T } from '../ui/tokens';
+import { LAYOUT, T } from '@/utils/uiTokens';
 import PerjadinFormPage from './perjadin/PerjadinFormPage';
 import NonPerjadinFormPage from './nonperjadin/NonPerjadinFormPage';
 

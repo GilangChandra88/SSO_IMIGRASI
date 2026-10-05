@@ -11,8 +11,8 @@ import { useMakTree } from '../../hooks/useMakTree';
 import { useDokumenLpj } from '../../hooks/useDokumenLpj';
 import ConfirmPopup from '../../ui/ConfirmPopup';
 import LinkBack from '../../ui/LinkBack';
-import { useToast } from '../../ui/toastStore';
-import { LAYOUT, T } from '../../ui/tokens';
+import { useToast } from '@/utils/toastStore';
+import { LAYOUT, T } from '@/utils/uiTokens';
 import StepRincianBayar from './StepRincianBayar';
 import StepLampiran from './StepLampiran';
 

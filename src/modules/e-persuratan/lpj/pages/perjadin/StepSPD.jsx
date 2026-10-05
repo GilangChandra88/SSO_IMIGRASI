@@ -4,7 +4,7 @@ import { ALAT_ANGKUT, SEKSI_LIST } from '../../data/masterLpj';
 import MakDropdowns from '../../components/MakDropdowns';
 import PegawaiCards from '../../components/PegawaiCards';
 import Field from '../../ui/Field';
-import { BTN, FORM, STATUS, T } from '../../ui/tokens';
+import { BTN, FORM, STATUS, T } from '@/utils/uiTokens';
 
 function validateSpd(spd) {
   const e = {};
