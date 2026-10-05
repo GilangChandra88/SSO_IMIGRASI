@@ -714,7 +714,7 @@ export default function SuratForm() {
                                 {[
                                   'Selama Melaksanakan kegiatan tersebut, yang bersangkutan dibebaskan dari tugas dinas sehari-hari;',
                                   'Surat tugas ini berlaku sampai dengan selesainya kegiatan; dan',
-                                  'Melaporkan hasil kegiatan tesebut kepada Kepala Kantor Imigrasi Kelas II TPI Singaraja.',
+                                  'Melaporkan hasil kegiatan tesebut kepada Kepala Kantor Imigrasi Kelas II TPI Buleleng.',
                                 ].map((txt, i) => (
                                   <div key={i} className="flex gap-3 items-start">
                                     <div className="w-8 h-8 mt-1 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/50 shadow-sm dark:shadow-inner">

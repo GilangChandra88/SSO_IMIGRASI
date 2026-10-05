@@ -559,7 +559,7 @@ export default function NomorSuratKanim() {
                       KANTOR WILAYAH DIREKTORAT JENDERAL IMIGRASI BALI
                     </h3>
                     <h2 className="font-bold leading-tight uppercase mt-0.5 text-[16px]">
-                      KANTOR IMIGRASI KELAS II TPI SINGARAJA
+                      KANTOR IMIGRASI KELAS II TPI BULELENG
                     </h2>
                     <p className="mt-0.5 text-[11px]">
                       Jl. Raya Singaraja Seririt, Pemaron, Buleleng, Bali. Telepon (0362) 32174

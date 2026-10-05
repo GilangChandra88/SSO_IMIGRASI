@@ -17,6 +17,7 @@ export const PERJADIN_PHASES = [
   {
     id: 'sp',
     label: 'Fase 1 — Surat Perintah',
+    deskripsi: 'Dasar penugasan & pegawai yang ditugaskan',
     icon: '',
     color: '#1e293b',
     items: [
@@ -38,6 +39,7 @@ export const PERJADIN_PHASES = [
   {
     id: 'spd',
     label: 'Fase 2 — Surat Perjalanan Dinas',
+    deskripsi: 'Satu SPD untuk setiap pelaksana',
     icon: '',
     color: '#1e293b',
     items: [
@@ -58,6 +60,7 @@ export const PERJADIN_PHASES = [
   {
     id: 'spby',
     label: 'Fase 3 — SPBY',
+    deskripsi: 'Pack dokumen pertanggungjawaban',
     icon: '',
     color: '#334155',
     items: [
@@ -164,6 +167,7 @@ export const PERJADIN_PHASES = [
   {
     id: 'penutup',
     label: 'Fase 4 — Penutupan dan Arsip',
+    deskripsi: 'Lembar verifikasi, laporan & lampiran',
     icon: '',
     color: '#475569',
     items: [
@@ -213,6 +217,7 @@ export const NON_PERJADIN_PHASES = [
   {
     id: 'pembayaran',
     label: 'Fase 1 — Dokumen Pembayaran',
+    deskripsi: 'SPB, Nota Dinas, SPTJM & Kwitansi',
     icon: '',
     color: '#475569',
     items: [
@@ -269,6 +274,7 @@ export const NON_PERJADIN_PHASES = [
   {
     id: 'penutup',
     label: 'Fase 2 — Penutup & Arsip',
+    deskripsi: 'Lembar verifikasi & lampiran',
     icon: '',
     color: '#475569',
     items: [

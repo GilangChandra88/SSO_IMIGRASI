@@ -1,418 +1,489 @@
-import React, { useEffect, useState } from 'react';
-import { useAuth } from '@/context/AuthContext';
-import { db } from '@/config/firebase';
-import { collection, query, where, orderBy, onSnapshot } from 'firebase/firestore';
-import { useNavigate } from 'react-router-dom';
+/**
+ * Dashboard e-Persuratan (DashboardPage purwarupa): sambutan + tombol Buat LPJ, Status Berkas,
+ * Berkas LPJ Saya, Perlu Dilengkapi, dan Aktivitas Terbaru — semuanya dari berkas LPJ di Firestore.
+ */
+
+import React, { useMemo, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
-  FaFolderOpen,
-  FaPlus,
-  FaSearch,
-  FaFilter,
-  FaRegCircle,
-  FaCheckCircle,
-  FaCloudUploadAlt,
-  FaLock,
+  FaCheck,
+  FaChevronDown,
   FaChevronRight,
+  FaFilter,
+  FaPlus,
+  FaRegFileAlt,
+  FaSearch,
+  FaUpload,
 } from 'react-icons/fa';
-import { useMyLPJTasks } from '@/modules/e-persuratan/lpj';
+import { useAuth } from '@/context/AuthContext';
+import {
+  formatTanggalPendek,
+  isSkemaBaru,
+  lpjDashStatus,
+  lpjDashType,
+  lpjRowTotal,
+  lpjUi,
+  pelaksanaOf,
+  stagesWithStatus,
+  uraianOf,
+  useLPJPacks,
+} from '@/modules/e-persuratan/lpj';
+
+const { T, FONT, STATUS } = lpjUi;
+
+const STATUS_LABEL = { baru: 'Baru', draft: 'Draft', selesai: 'Selesai' };
+const FILTER_LABEL = { all: 'Filter', baru: 'Baru', draft: 'Draft', selesai: 'Selesai' };
+const STATUS_PILL = {
+  baru: `${STATUS.warnBg} ${STATUS.warnInk}`,
+  draft: `${STATUS.infoBg} ${STATUS.infoInk}`,
+  selesai: `${STATUS.goodBg} ${STATUS.goodInk}`,
+};
+
+const CARD = `${T.surface} ${T.border} ${T.shadowSm} ${T.ink} border rounded-[20px] p-5`;
+const H2 = `${FONT.head} text-[16.5px] font-bold ${T.ink}`;
+const CHIP =
+  'px-[13px] py-[7px] rounded-full text-[12.5px] font-semibold whitespace-nowrap border border-transparent transition-colors';
+const CHIP_OFF = `${T.surface2} ${T.ink2} ${T.hoverSurfaceHover}`;
+const CHIP_ON = 'bg-[#0E2340] text-[#EAF0FA] dark:bg-[#1F4C80]';
+
+/** Jumlah fase selesai / total fase. */
+function faseRingkas(pack) {
+  const list = stagesWithStatus(pack);
+  return { done: list.filter((s) => s.raw === 'selesai').length, total: list.length };
+}
+
+/** "Baru saja", "5 menit lalu", "2 jam lalu", "Kemarin, 09.15", atau tanggal. */
+function waktuRelatif(iso) {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  const menit = Math.floor((Date.now() - d.getTime()) / 60000);
+  const jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+  if (menit < 1) return 'Baru saja';
+  if (menit < 60) return `${menit} menit lalu`;
+  const kemarin = new Date();
+  kemarin.setDate(kemarin.getDate() - 1);
+  if (d.toDateString() === new Date().toDateString()) return `${Math.floor(menit / 60)} jam lalu`;
+  if (d.toDateString() === kemarin.toDateString()) return `Kemarin, ${jam}`;
+  return `${d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, ${jam}`;
+}
+
+function ikonAktivitas(teks) {
+  if (/unggah/i.test(teks)) return FaUpload;
+  if (/selesai/i.test(teks)) return FaCheck;
+  return FaRegFileAlt;
+}
 
 export default function Dashboard() {
-  const { userData, userRole, currentUser } = useAuth();
+  const { currentUser, userData, isAdmin, isSuperAdmin } = useAuth();
   const navigate = useNavigate();
+  const uid = currentUser?.uid || '';
+  const { packs } = useLPJPacks({ isAdmin: !!(isAdmin || isSuperAdmin), userUid: uid });
 
-  const isSuperAdmin = userRole === 'Super Admin' || userRole === 'Admin';
+  const [q, setQ] = useState('');
+  const [type, setType] = useState('all');
+  const [status, setStatus] = useState('all');
+  const [filterOpen, setFilterOpen] = useState(false);
 
-  // ── Tugas LPJ untuk user ini ────────────────────────────────────────────────
-  const { tasks: lpjTasks, loading: loadingLpj } = useMyLPJTasks(currentUser?.uid);
+  // "Berkas LPJ Saya": berkas yang dibuat pengguna atau mencantumkan dirinya sebagai pelaksana
+  const milikSaya = useMemo(
+    () =>
+      packs.filter(
+        (p) =>
+          isSkemaBaru(p) &&
+          (p.created_by === uid || pelaksanaOf(p).some((x) => x.uid && x.uid === uid)),
+      ),
+    [packs, uid],
+  );
 
-  // Status mapping
-  const statusCounts = {
-    baru: lpjTasks.filter((t) => t.status === 'not_started').length,
-    draft: lpjTasks.filter((t) => t.status === 'in_progress').length,
-    selesai: lpjTasks.filter((t) => t.status === 'completed').length,
-  };
-  const totalTasks = lpjTasks.length || 1;
+  const filtered = useMemo(() => {
+    const qq = q.trim().toLowerCase();
+    return milikSaya.filter((p) => {
+      if (type !== 'all' && lpjDashType(p) !== type) return false;
+      if (status !== 'all' && lpjDashStatus(p) !== status) return false;
+      if (qq && !uraianOf(p).toLowerCase().includes(qq) && !p.id.toLowerCase().includes(qq))
+        return false;
+      return true;
+    });
+  }, [milikSaya, type, status, q]);
 
-  // Tabs for LPJ
-  const [activeTab, setActiveTab] = useState('semua');
+  // Daftar dari Firestore sudah terurut terbaru di atas
+  const miniList = filtered.slice(0, 8);
 
-  const filteredTasks = lpjTasks.filter((t) => {
-    if (activeTab === 'perjadin') return t.kategori === 'perjadin'; // Assumes 'kategori' field exists, fallback to all if none
-    if (activeTab === 'non_perjadin') return t.kategori === 'non_perjadin';
-    return true;
+  const statusCounts = useMemo(() => {
+    const c = { baru: 0, draft: 0, selesai: 0 };
+    milikSaya.forEach((p) => c[lpjDashStatus(p)]++);
+    return c;
+  }, [milikSaya]);
+  const statusTotal = statusCounts.baru + statusCounts.draft + statusCounts.selesai;
+
+  const perluDilengkapi = useMemo(
+    () =>
+      milikSaya
+        .filter((p) => p.status !== 'selesai')
+        .map((p) => ({ pack: p, fase: faseRingkas(p) }))
+        .sort((a, b) => a.fase.done - b.fase.done)
+        .slice(0, 2),
+    [milikSaya],
+  );
+
+  const aktivitas = useMemo(
+    () =>
+      milikSaya
+        .filter((p) => p.aktivitas?.at)
+        .sort((a, b) => String(b.aktivitas.at).localeCompare(String(a.aktivitas.at)))
+        .slice(0, 3),
+    [milikSaya],
+  );
+
+  const today = new Date().toLocaleDateString('id-ID', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
   });
+  const namaDepan = userData?.nama
+    ? userData.nama.split(' ')[0]
+    : currentUser?.email?.split('@')[0] || 'Pengguna';
+
+  // Segmen bar status (SVG, lebar dalam persen)
+  const segmen = [];
+  if (statusTotal > 0) {
+    let x = 0;
+    [
+      ['baru', 'fill-[#eda100] dark:fill-[#c98500]'],
+      ['draft', 'fill-[#2a78d6] dark:fill-[#3987e5]'],
+      ['selesai', 'fill-[#1baf7a] dark:fill-[#199e70]'],
+    ].forEach(([key, cls]) => {
+      const w = (statusCounts[key] / statusTotal) * 100;
+      if (w > 0) segmen.push({ key, cls, x, w });
+      x += w;
+    });
+  }
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 p-4 sm:p-6 lg:p-8 transition-colors">
-      <div className="max-w-[1400px] mx-auto grid grid-cols-1 xl:grid-cols-4 gap-6">
-        {/* Main Content (Left 3 Columns) */}
-        <div className="xl:col-span-3 space-y-6">
-          {/* Hero Card */}
-          <div className="bg-[#1e293b] rounded-2xl p-6 sm:p-8 shadow-sm relative overflow-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-            <div className="absolute right-0 top-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none -mr-20 -mt-20"></div>
-            <div className="relative z-10">
-              <p className="text-amber-500 font-bold text-[11px] uppercase tracking-widest mb-3">
-                {new Date().toLocaleDateString('id-ID', {
-                  weekday: 'long',
-                  day: 'numeric',
-                  month: 'long',
-                  year: 'numeric',
-                })}
-              </p>
-              <h1 className="text-2xl sm:text-3xl font-bold text-white tracking-tight mb-2">
-                Selamat datang kembali,{' '}
-                {userData?.nama
-                  ? userData.nama.split(' ')[0]
-                  : currentUser?.email?.split('@')[0] || 'Pengguna'}
-              </h1>
-              <p className="text-slate-400 text-sm max-w-md">
-                Segera selesaikan SPBy dengan tepat agar istirahat lebih cepat.
-              </p>
-            </div>
-            <div className="relative z-10 shrink-0">
-              <button
-                onClick={() => navigate('/e-persuratan/lpj')}
-                className="bg-white hover:bg-slate-50 text-slate-800 rounded-2xl p-3 pr-8 flex items-center gap-5 transition-all shadow-lg hover:shadow-xl active:scale-95"
-              >
-                <div className="w-14 h-14 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-inner">
-                  <FaPlus size={18} />
-                </div>
-                <div className="text-left">
-                  <p className="font-extrabold text-lg leading-none">Buat LPJ</p>
-                  <p className="text-xs font-medium text-slate-500 mt-1.5">Buat SPBy baru</p>
-                </div>
-              </button>
-            </div>
-          </div>
-
-          {/* Status Berkas */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm transition-colors">
-            <h2 className="font-bold text-slate-800 dark:text-slate-200 text-lg mb-6">
-              Status Berkas
-            </h2>
-
-            {/* Progress Bar Segmented */}
-            <div className="flex h-3 w-full rounded-full overflow-hidden mb-4 bg-slate-100 dark:bg-slate-800">
-              <div
-                style={{ width: `${(statusCounts.baru / totalTasks) * 100}%` }}
-                className="bg-amber-400 transition-all duration-500"
-              ></div>
-              <div
-                style={{ width: `${(statusCounts.draft / totalTasks) * 100}%` }}
-                className="bg-blue-500 border-l border-white dark:border-slate-900 transition-all duration-500"
-              ></div>
-              <div
-                style={{ width: `${(statusCounts.selesai / totalTasks) * 100}%` }}
-                className="bg-emerald-500 border-l border-white dark:border-slate-900 transition-all duration-500"
-              ></div>
-            </div>
-
-            {/* Legend */}
-            <div className="flex items-center gap-6 text-sm">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-amber-400"></div>
-                <span className="text-slate-500 dark:text-slate-400">
-                  Baru{' '}
-                  <span className="font-bold text-slate-800 dark:text-slate-200 ml-1">
-                    {statusCounts.baru}
-                  </span>
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-blue-500"></div>
-                <span className="text-slate-500 dark:text-slate-400">
-                  Draft{' '}
-                  <span className="font-bold text-slate-800 dark:text-slate-200 ml-1">
-                    {statusCounts.draft}
-                  </span>
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
-                <span className="text-slate-500 dark:text-slate-400">
-                  Selesai{' '}
-                  <span className="font-bold text-slate-800 dark:text-slate-200 ml-1">
-                    {statusCounts.selesai}
-                  </span>
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Berkas LPJ Saya */}
-          <div>
-            <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-4">
-              <div>
-                <h2 className="font-bold text-slate-800 dark:text-slate-200 text-lg">
-                  Berkas LPJ Saya
-                </h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                  Berkas yang Anda buat sendiri
+    <div className={`min-h-full ${T.ground} ${FONT.body}`}>
+      <div className="grid grid-cols-1 gap-[18px] w-full max-w-[1400px] mx-auto px-4 pt-[18px] pb-[100px] sm:pb-11 min-[1080px]:grid-cols-[minmax(0,1fr)_360px] min-[1080px]:gap-[22px] min-[1080px]:px-8 min-[1080px]:pt-[26px] min-[1080px]:items-start">
+        {/* Sambutan */}
+        <section className="order-1 min-w-0 min-[1080px]:col-start-1 min-[1080px]:row-start-1">
+          <div className="rounded-[20px] overflow-hidden text-[#EAF0FA] bg-gradient-to-br from-[#0E2340] to-[#1F4C80] dark:from-[#081524] dark:to-[#173A60] shadow-[0_10px_28px_-10px_rgba(16,26,44,.18)]">
+            <div className="flex flex-wrap items-center gap-[22px] p-6">
+              <div className="flex-1 min-w-[220px]">
+                <p className="text-[12.5px] font-semibold tracking-[.04em] uppercase text-[#C9973B] mb-2">
+                  {today}
+                </p>
+                <h1
+                  className={`${FONT.head} text-[clamp(20px,3.6vw,26px)] font-extrabold mb-[9px]`}
+                >
+                  Selamat datang kembali, {namaDepan}
+                </h1>
+                <p className="text-sm text-[#B7C7DE] max-w-[46ch] leading-[1.55]">
+                  Segera selesaikan SPBy dengan tepat agar istirahat lebih cepat.
                 </p>
               </div>
-              <button
-                onClick={() => navigate('/e-persuratan/lpj')}
-                className="text-blue-600 dark:text-blue-400 text-sm font-bold hover:underline"
-              >
-                Lihat semua &gt;
-              </button>
-            </div>
-
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-sm transition-colors">
-              {/* Toolbar */}
-              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-                <div className="relative flex-1 max-w-md">
-                  <FaSearch className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="text"
-                    placeholder="Cari nama kegiatan atau nomor LPJ..."
-                    className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-full py-2.5 pl-10 pr-4 text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-shadow"
-                  />
-                </div>
-                <div className="flex items-center gap-3">
-                  <div className="bg-slate-50 dark:bg-slate-950 p-1 rounded-full border border-slate-200 dark:border-slate-800 flex items-center text-sm font-medium">
-                    <button
-                      onClick={() => setActiveTab('semua')}
-                      className={`px-4 py-1.5 rounded-full transition-colors ${activeTab === 'semua' ? 'bg-[#1e293b] text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
-                    >
-                      Semua
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('perjadin')}
-                      className={`px-4 py-1.5 rounded-full transition-colors ${activeTab === 'perjadin' ? 'bg-[#1e293b] text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
-                    >
-                      Perjadin
-                    </button>
-                    <button
-                      onClick={() => setActiveTab('non_perjadin')}
-                      className={`px-4 py-1.5 rounded-full transition-colors ${activeTab === 'non_perjadin' ? 'bg-[#1e293b] text-white' : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'}`}
-                    >
-                      Non Perjadin
-                    </button>
-                  </div>
-                  <button className="flex items-center gap-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-full py-2 px-4 text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
-                    <FaFilter size={12} /> Filter
-                  </button>
-                </div>
+              <div className="shrink-0">
+                <button
+                  type="button"
+                  onClick={() => navigate('/e-persuratan/lpj')}
+                  className="group flex items-center gap-4 py-[17px] pl-[17px] pr-[26px] rounded-[18px] bg-white text-[#16213C] shadow-[0_16px_34px_-12px_rgba(4,10,22,.5)] transition hover:-translate-y-[3px] active:-translate-y-px"
+                >
+                  <span className="w-[46px] h-[46px] shrink-0 rounded-[13px] flex items-center justify-center bg-gradient-to-br from-[#C9973B] to-[#A97C24] shadow-[0_5px_12px_-3px_rgba(169,124,36,.6)] transition-transform group-hover:scale-105">
+                    <FaPlus size={18} className="text-white" />
+                  </span>
+                  <span className="flex flex-col items-start gap-0.5">
+                    <strong className={`${FONT.head} font-extrabold text-[18.5px] leading-tight`}>
+                      Buat LPJ
+                    </strong>
+                    <small className="text-[12.5px] font-semibold text-[#7C8798]">
+                      Buat SPBy baru
+                    </small>
+                  </span>
+                </button>
               </div>
+            </div>
+          </div>
+        </section>
 
-              {/* List LPJ */}
-              {loadingLpj ? (
-                <div className="space-y-4">
-                  {[1, 2].map((i) => (
-                    <div
-                      key={i}
-                      className="h-32 bg-slate-100 dark:bg-slate-800 animate-pulse rounded-xl"
-                    />
-                  ))}
-                </div>
-              ) : filteredTasks.length === 0 ? (
-                <div className="text-center py-10 border-2 border-dashed border-slate-200 dark:border-slate-700 rounded-xl">
-                  <FaFolderOpen
-                    size={40}
-                    className="mx-auto text-slate-300 dark:text-slate-600 mb-3"
+        {/* Status Berkas */}
+        <section
+          className={`order-3 min-w-0 ${CARD} min-[1080px]:col-start-1 min-[1080px]:row-start-2`}
+        >
+          <div className="mb-3.5">
+            <h2 className={H2}>Status Berkas</h2>
+          </div>
+          <svg
+            viewBox="0 0 100 14"
+            preserveAspectRatio="none"
+            role="img"
+            aria-label={`Distribusi status berkas: ${statusCounts.baru} baru, ${statusCounts.draft} draft, ${statusCounts.selesai} selesai`}
+            className="block w-full h-3.5 rounded-[7px] overflow-hidden"
+          >
+            <rect
+              x="0"
+              y="0"
+              width="100"
+              height="14"
+              className="fill-[#F3F5F8] dark:fill-[#16243A]"
+            />
+            {segmen.map((s, i) => (
+              <rect
+                key={s.key}
+                x={s.x + (i > 0 ? 0.3 : 0)}
+                y="0"
+                width={Math.max(s.w - (i > 0 ? 0.3 : 0), 0)}
+                height="14"
+                className={s.cls}
+              />
+            ))}
+          </svg>
+          <ul className="flex flex-wrap gap-x-5 gap-y-3.5 mt-4">
+            {[
+              ['baru', 'Baru', 'bg-[#eda100] dark:bg-[#c98500]'],
+              ['draft', 'Draft', 'bg-[#2a78d6] dark:bg-[#3987e5]'],
+              ['selesai', 'Selesai', 'bg-[#1baf7a] dark:bg-[#199e70]'],
+            ].map(([key, label, dot]) => (
+              <li key={key} className={`flex items-center gap-[7px] text-[13px] ${T.ink2}`}>
+                <i className={`w-[9px] h-[9px] rounded-full shrink-0 ${dot}`} />
+                {label} <b className={`${FONT.mono} ml-0.5 ${T.ink}`}>{statusCounts[key]}</b>
+              </li>
+            ))}
+          </ul>
+        </section>
+
+        {/* Berkas LPJ Saya */}
+        <section
+          className={`order-4 min-w-0 ${CARD} min-[1080px]:col-start-1 min-[1080px]:row-start-3`}
+        >
+          <div className="flex items-baseline justify-between gap-3 mb-3.5">
+            <div>
+              <h2 className={H2}>Berkas LPJ Saya</h2>
+              <p className={`text-[13px] mt-[3px] ${T.inkMuted}`}>
+                Berkas yang Anda buat atau ikuti sebagai pelaksana
+              </p>
+            </div>
+            <Link
+              to="/e-persuratan/lpj"
+              className={`text-[13px] font-semibold whitespace-nowrap flex items-center gap-[3px] hover:underline ${STATUS.infoInk}`}
+            >
+              Lihat semua <FaChevronRight size={11} />
+            </Link>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2.5 mb-3.5">
+            <div
+              className={`flex items-center gap-2 flex-1 min-w-[180px] h-9 px-[11px] rounded-[9px] border border-transparent ${T.surface2} ${T.inkMuted} focus-within:border-[#2A78D6] focus-within:bg-white dark:focus-within:bg-[#111D2E]`}
+            >
+              <FaSearch size={13} className="shrink-0" />
+              <input
+                type="search"
+                placeholder="Cari nama kegiatan atau nomor LPJ…"
+                aria-label="Cari berkas LPJ"
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                className={`flex-1 min-w-0 bg-transparent border-0 outline-none text-sm ${T.ink} ${T.placeholder}`}
+              />
+            </div>
+            <div className="flex flex-wrap gap-[7px]">
+              {[
+                ['all', 'Semua'],
+                ['perjadin', 'Perjadin'],
+                ['non-perjadin', 'Non Perjadin'],
+              ].map(([val, label]) => (
+                <button
+                  key={val}
+                  type="button"
+                  onClick={() => setType(val)}
+                  className={`${CHIP} ${type === val ? CHIP_ON : CHIP_OFF}`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="ml-auto relative">
+              <button
+                type="button"
+                aria-haspopup="true"
+                aria-expanded={filterOpen}
+                onClick={() => setFilterOpen((v) => !v)}
+                className={`${CHIP} flex items-center gap-1.5 ${status !== 'all' ? CHIP_ON : CHIP_OFF}`}
+              >
+                <FaFilter size={11} />
+                <span>{FILTER_LABEL[status]}</span>
+                <FaChevronDown size={11} />
+              </button>
+              {filterOpen && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Tutup filter"
+                    className="fixed inset-0 z-20 cursor-default"
+                    onClick={() => setFilterOpen(false)}
                   />
-                  <p className="text-slate-500 dark:text-slate-400 font-medium">
-                    Belum ada berkas LPJ
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  {filteredTasks.map((task) => (
-                    <div
-                      key={task.id}
-                      onClick={() => navigate(`/e-persuratan/lpj/${task.packId}`)}
-                      className="group border border-slate-200 dark:border-slate-800 rounded-xl p-5 hover:shadow-md hover:border-blue-300 dark:hover:border-blue-700 transition-all cursor-pointer relative overflow-hidden bg-white dark:bg-slate-900"
-                    >
-                      <div className="flex justify-between items-start mb-3">
-                        <span className="text-[10px] font-bold px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 rounded border border-slate-200 dark:border-slate-700 uppercase tracking-wider">
-                          {task.kategori === 'non_perjadin' ? 'Non Perjadin' : 'Perjadin'}
-                        </span>
-
-                        {task.status === 'completed' && (
-                          <span className="flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-full">
-                            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500"></div> Selesai
-                          </span>
-                        )}
-                        {task.status === 'in_progress' && (
-                          <span className="flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 rounded-full">
-                            <div className="w-1.5 h-1.5 rounded-full bg-blue-500"></div> Draft
-                          </span>
-                        )}
-                        {task.status === 'not_started' && (
-                          <span className="flex items-center gap-1.5 text-[10px] font-bold px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-full">
-                            <div className="w-1.5 h-1.5 rounded-full bg-slate-400"></div> Baru
-                          </span>
-                        )}
-                      </div>
-
-                      <p className="text-[10px] text-slate-400 mb-1">{task.kode || 'LPJ - Baru'}</p>
-                      <h3 className="font-bold text-slate-800 dark:text-slate-100 text-base mb-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                        {task.surat_nama || 'Dokumen LPJ'}
-                      </h3>
-
-                      <div className="flex items-center gap-4 text-xs text-slate-500 dark:text-slate-400 mb-5">
-                        <span>
-                          Dibuat{' '}
-                          {new Date(task.createdAt || Date.now()).toLocaleDateString('id-ID', {
-                            day: 'numeric',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
-                        </span>
-                        <span>•</span>
-                        <span className="font-semibold text-slate-700 dark:text-slate-300">
-                          Rp {task.amount || '0'}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-3">
-                        <div className="flex-1 h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full ${task.status === 'completed' ? 'bg-emerald-500' : 'bg-blue-600'} w-full`}
-                          ></div>
-                        </div>
-                        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 shrink-0">
-                          Tahap Selesai
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                  <div
+                    className={`absolute top-[calc(100%+8px)] right-0 z-30 min-w-[160px] p-1.5 flex flex-col gap-px rounded-xl border ${T.surface} ${T.border} ${T.shadowMd}`}
+                  >
+                    {['all', 'baru', 'draft', 'selesai'].map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => {
+                          setStatus(s);
+                          setFilterOpen(false);
+                        }}
+                        className={`w-full text-left px-3 py-[9px] rounded-lg text-[13px] font-semibold ${
+                          status === s
+                            ? 'bg-[#F7EEDC] text-[#A97C24] dark:bg-[rgba(201,151,59,.16)] dark:text-[#C9973B]'
+                            : `${T.ink2} ${T.hoverSurface2}`
+                        }`}
+                      >
+                        {s === 'all' ? 'Semua Status' : STATUS_LABEL[s]}
+                      </button>
+                    ))}
+                  </div>
+                </>
               )}
             </div>
           </div>
-        </div>
 
-        {/* Right Sidebar (Aside) */}
-        <div className="space-y-6">
-          {/* Perlu Dilengkapi */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm transition-colors">
-            <h3 className="font-bold text-slate-800 dark:text-slate-200 mb-1">Perlu Dilengkapi</h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mb-5">
-              2 berkas perlu ditindaklanjuti
+          <div className="flex flex-col gap-3">
+            {miniList.map((p) => {
+              const st = lpjDashStatus(p);
+              const fase = faseRingkas(p);
+              const dibuat = p.created_at?.toDate
+                ? formatTanggalPendek(p.created_at.toDate().toLocaleDateString('sv-SE'))
+                : '-';
+              return (
+                <button
+                  type="button"
+                  key={p.id}
+                  onClick={() => navigate(`/e-persuratan/lpj/${p.id}`)}
+                  className={`relative block w-full text-left rounded-[14px] border p-4 pr-11 transition ${T.surface} ${T.border} hover:border-[#CBD3DE] dark:hover:border-[#304864] hover:shadow-[0_1px_2px_rgba(16,26,44,.07)]`}
+                >
+                  <div className="flex items-center justify-between gap-2.5">
+                    <span
+                      className={`text-[10.5px] font-bold tracking-[.03em] px-2 py-[3px] rounded-md border ${T.surface2} ${T.ink2} ${T.border}`}
+                    >
+                      {lpjDashType(p) === 'perjadin' ? 'Perjadin' : 'Non Perjadin'}
+                    </span>
+                    <span
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-[5px] rounded-full text-[11.5px] font-bold tracking-[.02em] whitespace-nowrap ${STATUS_PILL[st]}`}
+                    >
+                      <span className="w-[7px] h-[7px] rounded-full bg-current shrink-0" />
+                      {STATUS_LABEL[st]}
+                    </span>
+                  </div>
+                  <FaChevronRight
+                    size={13}
+                    className={`absolute top-1/2 right-3.5 -translate-y-1/2 ${T.inkMuted}`}
+                  />
+                  <p className={`${FONT.mono} text-[11.5px] mt-3 ${T.inkMuted}`}>{p.id}</p>
+                  <p className={`font-bold text-[14.5px] mt-[3px] leading-[1.35] ${T.ink}`}>
+                    {uraianOf(p)}
+                  </p>
+                  <div className={`flex flex-wrap gap-2.5 text-[12.5px] mt-2 ${T.inkMuted}`}>
+                    <span>Dibuat {dibuat}</span>
+                    <span className={FONT.mono}>Rp {lpjRowTotal(p).toLocaleString('id-ID')}</span>
+                  </div>
+                  <div className="flex items-center gap-2.5 mt-3">
+                    <progress
+                      value={fase.total ? Math.round((fase.done / fase.total) * 100) : 0}
+                      max={100}
+                      aria-label={`Fase ${fase.done} dari ${fase.total}`}
+                      className="block flex-1 h-1.5 appearance-none border-0 rounded-full overflow-hidden bg-[#F3F5F8] dark:bg-[#16243A] [&::-webkit-progress-bar]:bg-[#F3F5F8] dark:[&::-webkit-progress-bar]:bg-[#16243A] [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-[#2a78d6] [&::-moz-progress-bar]:bg-[#2a78d6]"
+                    />
+                    <span className={`text-[11.5px] font-semibold whitespace-nowrap ${T.inkMuted}`}>
+                      Fase {fase.done}/{fase.total}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+          {miniList.length === 0 && (
+            <p className={`text-center py-[34px] px-2.5 text-[13.5px] ${T.inkMuted}`}>
+              {milikSaya.length === 0
+                ? 'Belum ada berkas. Klik "Buat LPJ" untuk memulai.'
+                : 'Tidak ada berkas yang cocok dengan pencarian ini.'}
             </p>
+          )}
+        </section>
 
-            <div className="space-y-4">
-              {/* Dummy Item 1 */}
-              <div className="flex items-start gap-3 cursor-pointer group">
-                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-2 shrink-0"></div>
-                <div className="flex-1">
-                  <div className="flex justify-between items-start mb-1">
-                    <p className="text-[10px] text-slate-400">LPJ-2026-0003</p>
-                    <FaChevronRight
-                      size={10}
-                      className="text-slate-300 group-hover:text-slate-600 dark:group-hover:text-slate-400 transition-colors"
-                    />
-                  </div>
-                  <p className="font-bold text-sm text-slate-700 dark:text-slate-200 leading-snug group-hover:text-amber-600 transition-colors">
-                    Laporan Koordinasi Layanan Keimigrasian
-                  </p>
-                  <p className="text-[10px] mt-1.5 text-slate-500">
-                    <span className="font-bold text-amber-600 dark:text-amber-500">
-                      Kurang 4 tahap
-                    </span>{' '}
-                    · baru 1/5 selesai
-                  </p>
-                </div>
-              </div>
-
-              {/* Dummy Item 2 */}
-              <div className="flex items-start gap-3 cursor-pointer group">
-                <div className="w-1.5 h-1.5 rounded-full bg-amber-400 mt-2 shrink-0"></div>
-                <div className="flex-1">
-                  <div className="flex justify-between items-start mb-1">
-                    <p className="text-[10px] text-slate-400">LPJ-2026-0006</p>
-                    <FaChevronRight
-                      size={10}
-                      className="text-slate-300 group-hover:text-slate-600 dark:group-hover:text-slate-400 transition-colors"
-                    />
-                  </div>
-                  <p className="font-bold text-sm text-slate-700 dark:text-slate-200 leading-snug group-hover:text-amber-600 transition-colors">
-                    Sosialisasi Layanan Paspor di Kecamatan Gerokgak
-                  </p>
-                  <p className="text-[10px] mt-1.5 text-slate-500">
-                    <span className="font-bold text-amber-600 dark:text-amber-500">
-                      Menunggu Bendahara
-                    </span>{' '}
-                    · 4/5 selesai
-                  </p>
-                </div>
-              </div>
+        {/* Kolom samping: di HP melebur ke grid utama supaya urutannya bisa diatur */}
+        <div className="contents min-[1080px]:flex min-[1080px]:flex-col min-[1080px]:gap-[22px] min-[1080px]:col-start-2 min-[1080px]:row-start-1 min-[1080px]:row-span-3 min-[1080px]:sticky min-[1080px]:top-6 min-[1080px]:self-start">
+          <section className={`order-2 min-w-0 ${CARD}`}>
+            <div className="mb-3.5">
+              <h2 className={H2}>Perlu Dilengkapi</h2>
+              <p className={`text-[13px] mt-[3px] ${T.inkMuted}`}>
+                {perluDilengkapi.length} berkas perlu ditindaklanjuti
+              </p>
             </div>
-          </div>
+            <ul className="flex flex-col gap-0.5 mb-2.5">
+              {perluDilengkapi.map(({ pack, fase }) => (
+                <li key={pack.id}>
+                  <Link
+                    to={`/e-persuratan/lpj/${pack.id}`}
+                    className={`flex items-start gap-[11px] px-1.5 py-2.5 rounded-[10px] ${T.hoverSurface2}`}
+                  >
+                    <span className="w-[9px] h-[9px] mt-[5px] rounded-full shrink-0 bg-[#8A5B00] dark:bg-[#F0B93E]" />
+                    <div className="min-w-0">
+                      <p className={`${FONT.mono} text-[11px] mb-0.5 ${T.inkMuted}`}>{pack.id}</p>
+                      <p className={`text-[13.5px] font-semibold leading-[1.35] ${T.ink}`}>
+                        {uraianOf(pack)}
+                      </p>
+                      <p className={`text-xs mt-[3px] ${T.inkMuted}`}>
+                        <strong className={STATUS.warnInk}>
+                          Fase {fase.done}/{fase.total}
+                        </strong>{' '}
+                        &middot; perlu ditindaklanjuti
+                      </p>
+                    </div>
+                    <FaChevronRight size={12} className={`ml-auto mt-1 shrink-0 ${T.inkMuted}`} />
+                  </Link>
+                </li>
+              ))}
+              {perluDilengkapi.length === 0 && (
+                <li className={`px-1 py-2.5 text-[13px] ${T.inkMuted}`}>
+                  Semua berkas sudah lengkap.
+                </li>
+              )}
+            </ul>
+          </section>
 
-          {/* Aktivitas Terbaru */}
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm transition-colors">
-            <h3 className="font-bold text-slate-800 dark:text-slate-200 mb-5">Aktivitas Terbaru</h3>
-
-            <div className="space-y-6 relative before:absolute before:inset-0 before:ml-3.5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-slate-100 dark:before:bg-slate-800">
-              {/* Activity Item 1 */}
-              <div className="relative flex items-start justify-between gap-4">
-                <div className="absolute left-0 w-7 h-7 rounded-full bg-blue-50 dark:bg-slate-800 border-2 border-white dark:border-slate-900 flex items-center justify-center text-blue-500 z-10 shrink-0">
-                  <FaCloudUploadAlt size={12} />
-                </div>
-                <div className="pl-10">
-                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Anda mengunggah <strong>Kuitansi & Bukti Transportasi</strong> ke{' '}
-                    <span className="font-semibold text-slate-800 dark:text-white">
-                      LPJ-2026-0001
-                    </span>
-                  </p>
-                  <p className="text-[10px] text-slate-400 mt-1">2 jam lalu</p>
-                </div>
-              </div>
-
-              {/* Activity Item 2 */}
-              <div className="relative flex items-start justify-between gap-4">
-                <div className="absolute left-0 w-7 h-7 rounded-full bg-emerald-50 dark:bg-slate-800 border-2 border-white dark:border-slate-900 flex items-center justify-center text-emerald-500 z-10 shrink-0">
-                  <FaCheckCircle size={12} />
-                </div>
-                <div className="pl-10">
-                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Anda menandai{' '}
-                    <span className="font-semibold text-slate-800 dark:text-white">
-                      LPJ-2026-0002
-                    </span>{' '}
-                    sebagai <strong>Selesai</strong>
-                  </p>
-                  <p className="text-[10px] text-slate-400 mt-1">Kemarin, 09:15</p>
-                </div>
-              </div>
-
-              {/* Activity Item 3 */}
-              <div className="relative flex items-start justify-between gap-4">
-                <div className="absolute left-0 w-7 h-7 rounded-full bg-slate-100 dark:bg-slate-800 border-2 border-white dark:border-slate-900 flex items-center justify-center text-slate-500 z-10 shrink-0">
-                  <FaLock size={10} />
-                </div>
-                <div className="pl-10">
-                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Anda membuat berkas baru{' '}
-                    <span className="font-semibold text-slate-800 dark:text-white">
-                      LPJ-2026-0006
-                    </span>
-                  </p>
-                  <p className="text-[10px] text-slate-400 mt-1">Kemarin, 08:00</p>
-                </div>
-              </div>
-
-              {/* Activity Item 4 */}
-              <div className="relative flex items-start justify-between gap-4">
-                <div className="absolute left-0 w-7 h-7 rounded-full bg-blue-50 dark:bg-slate-800 border-2 border-white dark:border-slate-900 flex items-center justify-center text-blue-500 z-10 shrink-0">
-                  <FaCloudUploadAlt size={12} />
-                </div>
-                <div className="pl-10">
-                  <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
-                    Anda mengunggah <strong>SPT</strong> untuk{' '}
-                    <span className="font-semibold text-slate-800 dark:text-white">
-                      LPJ-2026-0006
-                    </span>
-                  </p>
-                  <p className="text-[10px] text-slate-400 mt-1">2 hari lalu</p>
-                </div>
-              </div>
+          <section className={`order-5 min-w-0 ${CARD}`}>
+            <div className="mb-3.5">
+              <h2 className={H2}>Aktivitas Terbaru</h2>
             </div>
-          </div>
+            <ul className="flex flex-col">
+              {aktivitas.map((p) => {
+                const a = p.aktivitas;
+                const Icon = ikonAktivitas(a.teks);
+                const siapa = a.uid && a.uid === uid ? 'Anda' : a.oleh || 'Seseorang';
+                return (
+                  <li key={p.id} className="flex gap-[11px] px-1 py-2.5">
+                    <div
+                      className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center ${T.surface2} ${T.ink2}`}
+                    >
+                      <Icon size={12} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className={`text-[13px] leading-[1.45] ${T.ink}`}>
+                        {siapa} {a.teks}
+                        {!a.teks.includes(p.id) && (
+                          <>
+                            {' '}
+                            pada <strong className="font-semibold">{p.id}</strong>
+                          </>
+                        )}
+                      </p>
+                      <p className={`text-[11.5px] mt-0.5 ${T.inkMuted}`}>{waktuRelatif(a.at)}</p>
+                    </div>
+                  </li>
+                );
+              })}
+              {aktivitas.length === 0 && (
+                <li className={`px-1 py-2.5 text-[13px] ${T.inkMuted}`}>Belum ada aktivitas.</li>
+              )}
+            </ul>
+          </section>
         </div>
       </div>
     </div>

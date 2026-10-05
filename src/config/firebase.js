@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 import { getAnalytics } from 'firebase/analytics';
 import { getAuth } from 'firebase/auth';
+import { getStorage } from 'firebase/storage';
 
 // Konfigurasi dibaca dari file .env (lihat .env.example). Jangan menulis nilainya langsung di kode.
 const env = import.meta.env;
@@ -26,6 +27,8 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const db = getFirestore(app, env.VITE_FIREBASE_DATABASE_ID || 'imigrasi');
+// Firebase Storage (berkas LPJ: scan TTE, foto laporan, lampiran). Aturan akses di storage.rules.
+export const storage = getStorage(app);
 
 // Secondary App for creating users without logging out the primary user
 export const secondaryApp = initializeApp(firebaseConfig, 'Secondary');

@@ -1,154 +1,169 @@
 import React, { useState } from 'react';
+import { FaArrowRight, FaCheck, FaCircleNotch, FaTimes } from 'react-icons/fa';
 import { createLPJPack } from '../hooks/useLPJ';
-import { FaTimes, FaRegFileAlt, FaCircleNotch, FaMagic } from 'react-icons/fa';
+import { URAIAN_MAX } from '../data/masterLpj';
+import Modal from '../ui/Modal';
+import { BTN, FONT, FORM, NAVY, STATUS, T } from '../ui/tokens';
 
-export default function CreatePackModal({ onClose, onSuccess, currentUser }) {
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [form, setForm] = useState({
-    type: '',
-    judul: '',
-  });
+const CARDS = [
+  {
+    type: 'perjadin',
+    name: 'LPJ Perjadin',
+    desc: 'Laporan Pertanggungjawaban Perjalanan Dinas — Surat Perintah, SPD, & SPBy',
+    badge: '4 Fase',
+  },
+  {
+    type: 'non-perjadin',
+    name: 'LPJ Non-Perjadin',
+    desc: 'Laporan Pertanggungjawaban Kegiatan Non-Perjalanan Dinas',
+    badge: '2 Fase',
+  },
+];
 
-  const set = (key, val) => setForm((f) => ({ ...f, [key]: val }));
+/**
+ * Jendela "Buat Berkas Baru" (TypeModal purwarupa): pilih jenis LPJ + isi uraian kegiatan,
+ * lalu berkas dibuat dan pengguna diarahkan ke Detail Dokumen.
+ * @param {{ onClose, onCreated: (id) => void, uid, nama, pegawaiLogin }} props
+ */
+export default function CreatePackModal({ onClose, onCreated, uid, nama, pegawaiLogin }) {
+  const [type, setType] = useState('');
+  const [uraian, setUraian] = useState('');
+  const [errType, setErrType] = useState(false);
+  const [errUraian, setErrUraian] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [errSubmit, setErrSubmit] = useState('');
 
-  const handleSubmit = async () => {
-    setIsSubmitting(true);
+  async function handleNext() {
+    const val = uraian.trim().slice(0, URAIAN_MAX);
+    let ok = true;
+    if (!type) {
+      setErrType(true);
+      ok = false;
+    } else setErrType(false);
+    if (!val) {
+      setErrUraian(true);
+      ok = false;
+    } else setErrUraian(false);
+    if (!ok) return;
+
+    setBusy(true);
+    setErrSubmit('');
     try {
-      const displayName = currentUser?.displayName || currentUser?.email || 'Pengguna';
-      const packId = await createLPJPack({
-        type: form.type,
-        judul: form.judul,
-        perihal: '',
-        tujuan: '',
-        tanggal_mulai: '',
-        tanggal_selesai: '',
-        mak: '',
-        pegawai_list: [],
-        created_by: { uid: currentUser?.uid, nama: displayName },
-      });
-      // index.jsx passes onSuccess instead of onCreated
-      onSuccess(packId);
+      const id = await createLPJPack({ jenis: type, uraian: val, uid, nama, pegawaiLogin });
+      onCreated(id);
     } catch (err) {
       console.error('createLPJPack error:', err);
-      alert('Gagal membuat laporan.');
-    } finally {
-      setIsSubmitting(false);
+      setErrSubmit('Gagal membuat berkas. Periksa koneksi lalu coba lagi.');
+      setBusy(false);
     }
-  };
-
-  const canSubmit = !!form.type && !!form.judul;
+  }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-      <div className="bg-white dark:bg-[#0f172a] rounded-[24px] shadow-2xl w-full max-w-3xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-        {/* Header */}
-        <div className="flex items-center justify-between p-8 pb-6 border-b border-slate-100 dark:border-slate-800">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-900 dark:text-white">
-              Pilih Jenis Laporan
-            </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-              Pilih jenis LPJ yang akan dibuat
-            </p>
-          </div>
-          <button
-            onClick={onClose}
-            className="w-10 h-10 flex items-center justify-center text-slate-400 hover:text-slate-600 border border-slate-200 dark:border-slate-700 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-          >
-            <FaTimes size={14} />
-          </button>
+    <Modal onClose={busy ? undefined : onClose} widthClass="max-w-[560px]" labelledBy="judul-buat">
+      <div className="flex items-start justify-between px-6 pt-5 pb-1">
+        <div>
+          <h2 id="judul-buat" className={`${FONT.head} font-extrabold text-[17px] ${T.ink}`}>
+            Buat Berkas Baru
+          </h2>
+          <p className={`mt-1 text-[12.5px] ${T.ink2}`}>Pilih jenis LPJ dan isi uraian kegiatan</p>
         </div>
-
-        {/* Konten */}
-        <div className="p-8 space-y-8 overflow-y-auto custom-scrollbar">
-          {/* Judul Input */}
-          <div>
-            <label className="block text-sm font-bold text-slate-700 dark:text-slate-300 mb-2">
-              Judul LPJ <span className="text-rose-500">*</span>
-            </label>
-            <input
-              type="text"
-              placeholder="Masukkan judul laporan kegiatan..."
-              value={form.judul}
-              onChange={(e) => set('judul', e.target.value)}
-              className="w-full border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#162032] text-slate-900 dark:text-white rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-            />
-          </div>
-
-          {/* Grid Pilihan */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Opsi 1: Perjadin */}
-            <button
-              onClick={() => set('type', 'perjadin')}
-              className={`text-left p-6 rounded-2xl border-2 transition-all ${
-                form.type === 'perjadin'
-                  ? 'border-[#1e293b] dark:border-indigo-500 bg-slate-50 dark:bg-[#1e293b]/50 shadow-md ring-4 ring-slate-100 dark:ring-indigo-500/20'
-                  : 'border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
-              }`}
-            >
-              <div className="w-16 h-16 rounded-2xl bg-[#1e293b] flex items-center justify-center text-white mb-6 shadow-sm">
-                <FaMagic size={24} />
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
-                LPJ Perjadin
-              </h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed min-h-[40px]">
-                Laporan Pertanggungjawaban Perjalanan Dinas - Surat Perintah, SPD, & SPBy
-              </p>
-              <span className="inline-flex items-center px-3 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-xs font-bold rounded-full">
-                3 Dokumen Utama
-              </span>
-            </button>
-
-            {/* Opsi 2: Non-Perjadin */}
-            <button
-              onClick={() => set('type', 'non-perjadin')}
-              className={`text-left p-6 rounded-2xl border-2 transition-all ${
-                form.type === 'non-perjadin'
-                  ? 'border-[#335d88] dark:border-blue-500 bg-slate-50 dark:bg-[#335d88]/20 shadow-md ring-4 ring-slate-100 dark:ring-blue-500/20'
-                  : 'border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-600'
-              }`}
-            >
-              <div className="w-16 h-16 rounded-2xl bg-[#335d88] flex items-center justify-center text-white mb-6 shadow-sm">
-                <FaRegFileAlt size={24} />
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
-                LPJ Non-Perjadin
-              </h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 leading-relaxed min-h-[40px]">
-                Laporan Pertanggungjawaban Kegiatan Non-Perjalanan Dinas
-              </p>
-              <span className="inline-flex items-center px-3 py-1 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 text-xs font-bold rounded-full">
-                5 Dokumen Pack
-              </span>
-            </button>
-          </div>
-        </div>
-
-        {/* Footer */}
-        <div className="p-6 px-8 border-t border-slate-100 dark:border-slate-800 flex justify-end gap-3 bg-slate-50 dark:bg-[#162032] rounded-b-[24px]">
-          <button
-            onClick={onClose}
-            className="px-6 py-2.5 text-sm font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
-          >
-            Batal
-          </button>
-
-          <button
-            onClick={handleSubmit}
-            disabled={!canSubmit || isSubmitting}
-            className="px-8 py-2.5 bg-slate-900 dark:bg-indigo-600 hover:bg-slate-800 dark:hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-          >
-            {isSubmitting ? (
-              <>
-                <FaCircleNotch className="animate-spin" /> Membuat...
-              </>
-            ) : (
-              <>Buat Laporan</>
-            )}
-          </button>
-        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          disabled={busy}
+          aria-label="Tutup"
+          className={`p-1 leading-none ${T.inkMuted}`}
+        >
+          <FaTimes size={17} />
+        </button>
       </div>
-    </div>
+      <div className={`h-px my-3.5 ${T.bgBorder}`} />
+
+      <div className="grid grid-cols-1 min-[560px]:grid-cols-2 gap-3 px-6">
+        {CARDS.map((c) => {
+          const active = type === c.type;
+          return (
+            <button
+              key={c.type}
+              type="button"
+              onClick={() => {
+                setType(c.type);
+                setErrType(false);
+              }}
+              className={`relative text-left px-3.5 py-4 rounded-xl transition-colors ${
+                active
+                  ? `border-2 ${NAVY.border} dark:border-[#7DB6F3] ${T.surface2}`
+                  : `border ${T.border} ${T.surface} ${T.hoverSurface2}`
+              }`}
+            >
+              {active && (
+                <span className={`absolute top-2.5 right-2.5 ${NAVY.text}`}>
+                  <FaCheck size={13} />
+                </span>
+              )}
+              <div className={`font-bold text-sm mb-1.5 ${T.ink}`}>{c.name}</div>
+              <div className={`text-xs leading-[1.45] mb-2 ${T.ink2}`}>{c.desc}</div>
+              <span
+                className={`inline-block text-[10.5px] font-bold px-[9px] py-[3px] rounded-full border ${'bg-[#eff6ff] text-[#1d4ed8] border-[#bfdbfe] dark:bg-[rgba(57,135,229,.18)] dark:text-[#7DB6F3] dark:border-[rgba(125,182,243,.35)]'}`}
+              >
+                {c.badge}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {errType && (
+        <p className={`${FORM.err} px-6 pt-2`}>Pilih salah satu jenis LPJ terlebih dahulu.</p>
+      )}
+
+      <div className="px-6 pt-[18px] pb-1">
+        <label htmlFor="uraian-kegiatan" className={FORM.label}>
+          Uraian Kegiatan <span className="text-[#ef4444]">*</span>
+        </label>
+        <textarea
+          id="uraian-kegiatan"
+          rows={3}
+          maxLength={URAIAN_MAX}
+          placeholder="Contoh: Koordinasi teknis keimigrasian ke Direktorat Jenderal Imigrasi Jakarta"
+          value={uraian}
+          onChange={(e) => {
+            setUraian(e.target.value);
+            setErrUraian(false);
+          }}
+          className={`${FORM.textarea} ${errUraian ? FORM.borderErr : FORM.borderOk}`}
+        />
+        <div className="flex justify-between gap-2.5 mt-1.5">
+          <p className="text-[11.5px] text-[#94a3b8]">
+            Uraian singkat ini akan tampil sebagai judul pada Detail Dokumen dan Daftar LPJ.
+          </p>
+          <p className="text-[11.5px] text-[#94a3b8] whitespace-nowrap">
+            {uraian.length}/{URAIAN_MAX}
+          </p>
+        </div>
+        {errUraian && <p className={FORM.err}>Uraian kegiatan wajib diisi.</p>}
+      </div>
+
+      {errSubmit && (
+        <p
+          role="alert"
+          className={`mx-6 mt-3 px-3 py-2 rounded-lg text-[12.5px] ${STATUS.critBg} ${STATUS.critInk}`}
+        >
+          {errSubmit}
+        </p>
+      )}
+      <div className="flex justify-end px-6 pt-4 pb-6">
+        <button type="button" className={BTN.primaryDark} onClick={handleNext} disabled={busy}>
+          {busy ? (
+            <>
+              <FaCircleNotch className="animate-spin" size={12} /> Membuat...
+            </>
+          ) : (
+            <>
+              Lanjutkan <FaArrowRight size={12} />
+            </>
+          )}
+        </button>
+      </div>
+    </Modal>
   );
 }
