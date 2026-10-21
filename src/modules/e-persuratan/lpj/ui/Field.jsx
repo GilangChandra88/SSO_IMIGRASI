@@ -1,5 +1,6 @@
 import React from 'react';
 import { FORM } from '@/utils/uiTokens';
+import { ANIM } from '@/utils/animasi';
 
 /** Label + isian + petunjuk/pesan error (komponen `Field` purwarupa). */
 export default function Field({ label, htmlFor, required, hint, err, children }) {
@@ -12,7 +13,7 @@ export default function Field({ label, htmlFor, required, hint, err, children })
       )}
       {children}
       {hint && !err && <p className={FORM.hint}>{hint}</p>}
-      {err && <p className={FORM.err}>{err}</p>}
+      {err && <p className={`${FORM.err} ${ANIM.muncul}`}>{err}</p>}
     </div>
   );
 }

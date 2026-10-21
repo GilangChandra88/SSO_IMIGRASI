@@ -1,12 +1,20 @@
 import React from 'react';
 import { FaFileAlt, FaPrint, FaTimes } from 'react-icons/fa';
 import { ADMIN, FONT, NAVY, T } from '@/utils/uiTokens';
+import { ANIM } from '@/utils/animasi';
+import { useDariTombol } from '@/components/animasi';
 
 /** Pratinjau surat dari riwayat (kertas A4 + kop), bisa dicetak lewat browser. */
 export default function PreviewSuratModal({ surat, onClose }) {
+  // Tumbuh dari tombol "Lihat" & kembali ke sana saat ditutup
+  const { dialogRef, latarRef } = useDariTombol();
   return (
-    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-[rgba(10,18,32,.55)] print:bg-white print:inset-auto print:relative print:w-full print:p-0">
+    <div
+      ref={latarRef}
+      className={`${ANIM.latar} fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-[rgba(10,18,32,.55)] print:bg-white print:inset-auto print:relative print:w-full print:p-0`}
+    >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="judul-preview-surat"

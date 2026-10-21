@@ -8,12 +8,14 @@ import {
   FaFolderOpen,
   FaHistory,
   FaArrowLeft,
+  FaArchive,
 } from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
 import AppLayout from '@/layouts/AppLayout';
+import TransisiHalaman from './TransisiHalaman';
 import { Dashboard } from './dashboard';
 import { PersuratanPage, SuratForm, NomorSuratKanim } from './surat-keluar';
-import { LPJPage } from './lpj';
+import { LPJPage, ArsipPage } from './lpj';
 import { MakSetup, MakHistory } from './data-master';
 
 const BRAND = {
@@ -120,6 +122,14 @@ export default function AppModule() {
             <FaFolderOpen size={16} className="shrink-0" />
             <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Berkas LPJ</span>
           </Link>
+          <Link
+            to="/e-persuratan/arsip"
+            title="Arsip"
+            className={navItemClass(isActive('/e-persuratan/arsip'))}
+          >
+            <FaArchive size={16} className="shrink-0" />
+            <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Arsip</span>
+          </Link>
         </div>
       </div>
 
@@ -170,37 +180,40 @@ export default function AppModule() {
         renderNav,
       }}
     >
-      <Routes>
-        <Route path="/" element={<Dashboard />} />
-        <Route path="/persuratan" element={<PersuratanPage />} />
-        <Route path="/persuratan/form/:suratId" element={<SuratForm />} />
-        <Route path="/lpj" element={<LPJPage />} />
-        <Route path="/lpj/:packId" element={<LPJPage />} />
-        <Route
-          path="/mak-setup"
-          element={
-            <ProtectedRoute requireRole="Super Admin">
-              <MakSetup />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/mak-history"
-          element={
-            <ProtectedRoute requireRole="Admin">
-              <MakHistory />
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/nomor-surat-kanim"
-          element={
-            <ProtectedRoute requireRole="Admin">
-              <NomorSuratKanim />
-            </ProtectedRoute>
-          }
-        />
-      </Routes>
+      <TransisiHalaman>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/persuratan" element={<PersuratanPage />} />
+          <Route path="/persuratan/form/:suratId" element={<SuratForm />} />
+          <Route path="/lpj" element={<LPJPage />} />
+          <Route path="/lpj/:packId" element={<LPJPage />} />
+          <Route path="/arsip/*" element={<ArsipPage />} />
+          <Route
+            path="/mak-setup"
+            element={
+              <ProtectedRoute requireRole="Super Admin">
+                <MakSetup />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/mak-history"
+            element={
+              <ProtectedRoute requireRole="Admin">
+                <MakHistory />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/nomor-surat-kanim"
+            element={
+              <ProtectedRoute requireRole="Admin">
+                <NomorSuratKanim />
+              </ProtectedRoute>
+            }
+          />
+        </Routes>
+      </TransisiHalaman>
     </AppLayout>
   );
 }

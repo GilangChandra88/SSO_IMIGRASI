@@ -2,14 +2,29 @@ import React, { useState } from 'react';
 import { FaCircleNotch, FaRegSave, FaRegTrashAlt, FaUpload } from 'react-icons/fa';
 import { LAP_FOTO_MAX_BYTES, LAP_FOTO_MAX_COUNT, LAP_SECTIONS } from '../../data/masterLpj';
 import { formatTanggal } from '../../utils/formatTanggal';
+import { lpjIdOf } from '../../utils/lpjLogic';
 import { deleteLpjFile, pesanGagalUnggah, uploadLpjFile } from '../../services/lpjStorage';
+import PegawaiPicker from '../../components/PegawaiPicker';
 import Field from '../../ui/Field';
 import { BTN, FORM, T } from '@/utils/uiTokens';
+import { ANIM, hapusBaris, rayakan } from '@/utils/animasi';
 
 /** Fase 4 — Laporan Kegiatan + foto dokumentasi, lalu berkas diselesaikan. */
 export default function StepLaporan({ ctx }) {
-  const { pack, pf, setPf, errors, setErrors, persist, askConfirm, closeConfirm, showToast, user } =
-    ctx;
+  const {
+    pack,
+    pf,
+    setPf,
+    errors,
+    setErrors,
+    persist,
+    askConfirm,
+    closeConfirm,
+    showToast,
+    user,
+    pegawai,
+    loadingPeg,
+  } = ctx;
   const { sp, spd, lap } = pf;
   const fotos = lap.fotos || [];
   const fotoRoom = LAP_FOTO_MAX_COUNT - fotos.length;
@@ -108,6 +123,8 @@ export default function StepLaporan({ ctx }) {
     LAP_SECTIONS.forEach(([key, , required]) => {
       if (required && !String(lap[key] || '').trim()) e[key] = 'Wajib diisi';
     });
+    if (!lap.penandatangan) e.penandatangan = 'Pilih penanda tangan';
+    if (!String(lap.jabatanTtd || '').trim()) e.jabatanTtd = 'Wajib diisi';
     setErrors(e);
     if (Object.keys(e).length) return;
     askConfirm({
@@ -119,11 +136,16 @@ export default function StepLaporan({ ctx }) {
             lap: { ...prev.lap, locked: true },
             selesai: { ...prev.selesai, laporan: true },
           }),
-          { quiet: true, teks: `menyelesaikan berkas ${pack.id}`, extra: { status: 'selesai' } },
+          {
+            quiet: true,
+            teks: `menyelesaikan berkas ${lpjIdOf(pack)}`,
+            extra: { status: 'selesai' },
+          },
         );
         closeConfirm();
         if (ok) {
           showToast('Berkas LPJ berhasil diselesaikan.');
+          rayakan({ judul: 'Berkas Selesai!', sub: lpjIdOf(pack), nada: 'final' });
           ctx.navigate('/e-persuratan/lpj');
         }
       },
@@ -176,6 +198,9 @@ export default function StepLaporan({ ctx }) {
             htmlFor={`lap-${key}`}
             required={required}
             err={errors[key]}
+            hint={
+              key === 'hasil' ? 'Satu baris = satu poin bernomor di Laporan Kegiatan' : undefined
+            }
           >
             <textarea
               id={`lap-${key}`}
@@ -185,6 +210,43 @@ export default function StepLaporan({ ctx }) {
             />
           </Field>
         ))}
+      </div>
+
+      <div className={FORM.card}>
+        <h3 className={`${FORM.cardTitle} mb-4`}>Penanda Tangan Laporan</h3>
+        <Field label="Pegawai" required err={errors.penandatangan}>
+          <PegawaiPicker
+            pegawai={pegawai}
+            loading={loadingPeg}
+            selected={lap.penandatangan ? [lap.penandatangan] : []}
+            onChange={(refs) => {
+              const baru = refs[refs.length - 1] || null;
+              setLap({
+                penandatangan: baru,
+                jabatanTtd:
+                  baru && !String(lap.jabatanTtd || '').trim()
+                    ? baru.jabatan || ''
+                    : lap.jabatanTtd || '',
+              });
+            }}
+            err={!!errors.penandatangan}
+          />
+        </Field>
+        <Field
+          label="Jabatan Penanda Tangan"
+          htmlFor="lap-jabatan-ttd"
+          required
+          err={errors.jabatanTtd}
+          hint="Dicetak di atas nama penanda tangan, mis. Kepala Subseksi Izin Tinggal"
+        >
+          <input
+            id="lap-jabatan-ttd"
+            value={lap.jabatanTtd || ''}
+            placeholder="Kepala Subseksi Izin Tinggal"
+            onChange={(e) => setLap({ jabatanTtd: e.target.value })}
+            className={`${FORM.input} ${errors.jabatanTtd ? FORM.borderErr : FORM.borderOk}`}
+          />
+        </Field>
       </div>
 
       <div className={FORM.card}>
@@ -200,7 +262,7 @@ export default function StepLaporan({ ctx }) {
             {fotos.map((f) => (
               <div
                 key={f.path}
-                className={`relative rounded-[10px] border overflow-hidden ${T.border} ${T.surface2}`}
+                className={`relative rounded-[10px] border overflow-hidden ${ANIM.meletup} ${T.border} ${T.surface2}`}
               >
                 <a href={f.url} target="_blank" rel="noreferrer">
                   <img src={f.url} alt={f.name} className="block w-full h-24 object-cover" />
@@ -212,7 +274,9 @@ export default function StepLaporan({ ctx }) {
                   type="button"
                   title="Hapus foto"
                   aria-label={`Hapus foto ${f.name}`}
-                  onClick={() => hapusFoto(f)}
+                  onClick={(e) =>
+                    hapusBaris(e.currentTarget.parentElement, () => hapusFoto(f), { geser: false })
+                  }
                   className="absolute top-[5px] right-[5px] w-[26px] h-[26px] rounded-full bg-[rgba(15,20,30,.65)] text-white flex items-center justify-center"
                 >
                   <FaRegTrashAlt size={12} />

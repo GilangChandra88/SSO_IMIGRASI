@@ -5,6 +5,7 @@ import MakDropdowns from '../../components/MakDropdowns';
 import PegawaiCards from '../../components/PegawaiCards';
 import Field from '../../ui/Field';
 import { BTN, FORM, STATUS, T } from '@/utils/uiTokens';
+import { rayakan } from '@/utils/animasi';
 
 function validateSpd(spd) {
   const e = {};
@@ -52,6 +53,7 @@ export default function StepSPD({ ctx }) {
         closeConfirm();
         if (ok) {
           showToast('SPD ditandai selesai.');
+          rayakan({ judul: 'Selesai!', sub: 'SPD' });
           goStep('cetak-spd');
         }
       },

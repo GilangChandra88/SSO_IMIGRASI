@@ -12,9 +12,12 @@ import { usePegawaiList } from '../../hooks/usePegawaiList';
 import { useMakTree } from '../../hooks/useMakTree';
 import { useDokumenLpj } from '../../hooks/useDokumenLpj';
 import { formatJam } from '../../utils/formatTanggal';
+import { lpjIdLabel } from '../../utils/lpjLogic';
 import ConfirmPopup from '../../ui/ConfirmPopup';
 import LinkBack from '../../ui/LinkBack';
 import { useToast } from '@/utils/toastStore';
+import { useMekarDariTombol } from '@/components/animasi';
+import { ANIM } from '@/utils/animasi';
 import { LAYOUT, T } from '@/utils/uiTokens';
 import StepSuratPerintah from './StepSuratPerintah';
 import StepTTE from './StepTTE';
@@ -62,6 +65,9 @@ function bolehMasuk(pf, step) {
   }
 }
 
+// Urutan langkah form: menentukan arah geser saat berpindah langkah (maju → dari kanan)
+const URUTAN_LANGKAH = ['sp', 'tte', 'spd', 'cetak-spd', 'lpj', 'laporan'];
+
 export default function PerjadinFormPage({ pack, isi, user }) {
   const navigate = useNavigate();
   const [, setSearchParams] = useSearchParams();
@@ -69,6 +75,8 @@ export default function PerjadinFormPage({ pack, isi, user }) {
   const { pegawai, loading: loadingPeg } = usePegawaiList();
   const mak = useMakTree();
   const topRef = useRef(null);
+  // Dibuka dari "Buat Sekarang/Edit/Upload": kartu form mekar dari tombol itu
+  const kartuRef = useMekarDariTombol();
 
   const [pf, setPfState] = useState(() => ambilBagian(pack));
   const pfRef = useRef(pf);
@@ -92,10 +100,11 @@ export default function PerjadinFormPage({ pack, isi, user }) {
 
   /** Simpan bagian berkas ke Firestore. Terima objek pf baru atau fungsi (pf lama → pf baru). */
   async function persist(nextOrFn, opts = {}) {
-    const next = typeof nextOrFn === 'function' ? nextOrFn(pfRef.current) : nextOrFn;
+    const prev = pfRef.current;
+    const next = typeof nextOrFn === 'function' ? nextOrFn(prev) : nextOrFn;
     setPf(next);
     try {
-      await saveLPJ(
+      const nomor = await saveLPJ(
         pack,
         {
           sp: next.sp,
@@ -106,12 +115,16 @@ export default function PerjadinFormPage({ pack, isi, user }) {
           ...(opts.extra || {}),
         },
         { teks: opts.teks, uid: user.uid, nama: user.nama },
+        { beriNomor: !!opts.beriNomor },
       );
       setLastSaved(new Date());
       if (!opts.quiet) showToast('Draft tersimpan.');
-      return true;
+      // beriNomor: kembalikan nomor LPJ (string, tetap truthy) untuk stempel perayaan
+      return opts.beriNomor ? nomor || true : true;
     } catch (err) {
       console.error('saveLPJ error:', err);
+      // SPBy selesai + nomor LPJ: kembalikan isian agar fase tidak tampak terkunci tanpa nomor
+      if (opts.beriNomor) setPf(prev);
       showToast('Gagal menyimpan. Periksa koneksi lalu coba lagi.', 'error');
       return false;
     }
@@ -133,6 +146,16 @@ export default function PerjadinFormPage({ pack, isi, user }) {
     setConfirm(null);
     setConfirmBusy(false);
   };
+
+  // Arah geser antar langkah (state "langkah sebelumnya" diperbarui saat render)
+  const [langkahLalu, setLangkahLalu] = useState(step);
+  const [arah, setArah] = useState('maju');
+  if (step && step !== langkahLalu) {
+    setArah(
+      URUTAN_LANGKAH.indexOf(step) >= URUTAN_LANGKAH.indexOf(langkahLalu) ? 'maju' : 'mundur',
+    );
+    setLangkahLalu(step);
+  }
 
   if (!step) return <Navigate to={detailUrl} replace />;
 
@@ -162,7 +185,7 @@ export default function PerjadinFormPage({ pack, isi, user }) {
   return (
     <div className={`min-h-full ${T.ground}`}>
       <div className={LAYOUT.page}>
-        <section className={LAYOUT.card}>
+        <section ref={kartuRef} className={`${LAYOUT.card} overflow-x-clip`}>
           <div ref={topRef} className="scroll-mt-4">
             <LinkBack onClick={backToDetail}>Kembali ke Detail Dokumen</LinkBack>
           </div>
@@ -171,7 +194,7 @@ export default function PerjadinFormPage({ pack, isi, user }) {
               <div>
                 <h1 className={LAYOUT.h1}>Buat LPJ Perjadin</h1>
                 <p className={LAYOUT.sub}>
-                  Laporan Pertanggungjawaban Perjalanan Dinas · {pack.id}
+                  Laporan Pertanggungjawaban Perjalanan Dinas · {lpjIdLabel(pack)}
                 </p>
               </div>
               <span className="px-2.5 py-[3px] rounded-[20px] text-[11px] font-bold tracking-[.04em] bg-[#fef9c3] text-[#92400e] border border-[#fde68a]">
@@ -181,16 +204,21 @@ export default function PerjadinFormPage({ pack, isi, user }) {
           </div>
           {lastSaved && (
             <div className={`-mt-2 pb-4 text-[11.5px] flex items-center gap-1.5 ${T.inkMuted}`}>
-              <FaRegClock size={11} /> Terakhir disimpan: {formatJam(lastSaved)}
+              <FaRegClock size={11} /> Terakhir disimpan:{' '}
+              <span key={lastSaved.getTime()} className={`font-semibold ${ANIM.meletup}`}>
+                {formatJam(lastSaved)}
+              </span>
             </div>
           )}
 
-          {step === 'sp' && <StepSuratPerintah ctx={ctx} />}
-          {step === 'tte' && <StepTTE ctx={ctx} />}
-          {step === 'spd' && <StepSPD ctx={ctx} />}
-          {step === 'cetak-spd' && <StepCetakSPD ctx={ctx} />}
-          {step === 'lpj' && <StepLPJ ctx={ctx} />}
-          {step === 'laporan' && <StepLaporan ctx={ctx} />}
+          <div key={step} className={arah === 'maju' ? ANIM.geserKiri : ANIM.geserKanan}>
+            {step === 'sp' && <StepSuratPerintah ctx={ctx} />}
+            {step === 'tte' && <StepTTE ctx={ctx} />}
+            {step === 'spd' && <StepSPD ctx={ctx} />}
+            {step === 'cetak-spd' && <StepCetakSPD ctx={ctx} />}
+            {step === 'lpj' && <StepLPJ ctx={ctx} />}
+            {step === 'laporan' && <StepLaporan ctx={ctx} />}
+          </div>
         </section>
       </div>
 

@@ -64,6 +64,8 @@ export const emptyLap = () => ({
   hasil: '',
   kesimpulan: '',
   rekomendasi: '',
+  penandatangan: null,
+  jabatanTtd: '',
   fotos: [],
   locked: false,
 });

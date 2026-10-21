@@ -11,9 +11,11 @@ import { FONT, FORM, STATUS, T } from '@/utils/uiTokens';
 
 /**
  * Dropdown MAK bertingkat (Tahun → … → Akun). Tiap tingkat terkunci sampai tingkat
- * sebelumnya dipilih. Nilai: { kode, akunNodeId, tahunNodeId, pilihan: { <tingkat>: nodeId } }.
+ * sebelumnya dipilih; dengan `bertahap`, tingkat yang belum bisa dipilih disembunyikan
+ * (baru muncul setelah tingkat sebelumnya diisi).
+ * Nilai: { kode, akunNodeId, tahunNodeId, pilihan: { <tingkat>: nodeId } }.
  */
-export default function MakDropdowns({ nodes, byId, loading, mak, onChange }) {
+export default function MakDropdowns({ nodes, byId, loading, mak, onChange, bertahap = false }) {
   const pilihan = mak?.pilihan || {};
 
   if (loading) return <p className={`text-[13px] ${T.inkMuted}`}>Memuat data MAK…</p>;
@@ -52,6 +54,7 @@ export default function MakDropdowns({ nodes, byId, loading, mak, onChange }) {
         // Tingkat setelah Akun tidak perlu dipilih lagi
         const sesudahAkun = MAK_LEVELS.slice(0, i).some((lv) => isAkun(byId[pilihan[lv]]));
         const disabled = sesudahAkun || (i > 0 && !parentId);
+        if (bertahap && disabled) return null;
         const opts = disabled ? [] : makOptions(nodes, i, parentId);
         return (
           <div key={level} className="mb-2.5">

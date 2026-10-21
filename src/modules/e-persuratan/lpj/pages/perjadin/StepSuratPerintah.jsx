@@ -7,6 +7,7 @@ import PejabatPicker from '../../components/PejabatPicker';
 import PegawaiCards from '../../components/PegawaiCards';
 import Field from '../../ui/Field';
 import { BTN, FORM, NAVY, T } from '@/utils/uiTokens';
+import { ANIM, hapusBaris, rayakan } from '@/utils/animasi';
 
 function validateSp(sp) {
   const e = {};
@@ -38,7 +39,10 @@ export default function StepSuratPerintah({ ctx }) {
           { quiet: true, teks: 'menandai Surat Perintah selesai' },
         );
         closeConfirm();
-        if (ok) goStep('tte');
+        if (ok) {
+          rayakan({ judul: 'Selesai!', sub: 'Draft Surat Perintah' });
+          goStep('tte');
+        }
       },
       onNo: async () => {
         await persist(ctx.pfRef.current, { quiet: true });
@@ -130,7 +134,7 @@ function DasarList({ items, onChange }) {
   return (
     <div>
       {items.map((val, i) => (
-        <div key={i} className="flex items-center gap-2 mb-2">
+        <div key={i} className={`flex items-center gap-2 mb-2 ${ANIM.muncul}`}>
           <div className={`${nomor} ${T.ink2}`}>{i + 1}</div>
           <input
             aria-label={`Dasar ${i + 1}`}
@@ -146,7 +150,11 @@ function DasarList({ items, onChange }) {
           <button
             type="button"
             aria-label={`Hapus dasar ${i + 1}`}
-            onClick={() => onChange(items.filter((_, j) => j !== i))}
+            onClick={(e) =>
+              hapusBaris(e.currentTarget.parentElement, () =>
+                onChange(items.filter((_, j) => j !== i)),
+              )
+            }
             className={`${BTN.trash} !h-8`}
           >
             <FaRegTrashAlt size={12} />

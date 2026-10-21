@@ -17,7 +17,7 @@ export const ALAT_ANGKUT = ['Kendaraan', 'Pesawat', 'Kendaraan dan Pesawat'];
 
 // Dasar baku yang otomatis menjadi dasar terakhir Surat Perintah (sama dengan SuratForm)
 export const DIPA_DASAR_TEXT =
-  'DIPA Kantor Imigrasi Kelas II TPI Buleleng, nomor: SP DIPA-137.03.2.692951/2026 tanggal 29 Desember 2025.';
+  'Daftar Isian Penggunaan Anggaran (DIPA) Kantor Imigrasi Kelas II TPI Singaraja Nomor SP DIPA-137.03.2.692951/2026 tanggal 01 Desember 2025;';
 
 // Poin 2–4 "Untuk" Surat Perintah yang baku (poin 1 diisi pengguna)
 export const UNTUK_FIXED = [

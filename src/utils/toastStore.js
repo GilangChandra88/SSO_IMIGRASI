@@ -6,6 +6,7 @@
 import { useSyncExternalStore } from 'react';
 
 let items = [];
+const KELUAR_MS = 300; // samakan dengan durasi transisi keluar di ToastViewport
 let nextId = 0;
 const subscribers = new Set();
 
@@ -14,15 +15,18 @@ const emit = () => subscribers.forEach((fn) => fn());
 /** showToast('Draft tersimpan.') atau showToast('Gagal menyimpan.', 'error') */
 export function showToast(msg, tipe = 'sukses') {
   const id = ++nextId;
-  items = [...items, { id, msg, tipe }];
+  items = [...items, { id, msg, tipe, keluar: false }];
   emit();
-  setTimeout(
-    () => {
-      items = items.filter((t) => t.id !== id);
-      emit();
-    },
-    tipe === 'error' ? 4500 : 2600,
-  );
+  const lama = tipe === 'error' ? 4500 : 2600;
+  // Tandai "keluar" dulu agar ToastViewport sempat menganimasikannya memudar, lalu buang
+  setTimeout(() => {
+    items = items.map((t) => (t.id === id ? { ...t, keluar: true } : t));
+    emit();
+  }, lama - KELUAR_MS);
+  setTimeout(() => {
+    items = items.filter((t) => t.id !== id);
+    emit();
+  }, lama);
 }
 
 function subscribe(fn) {

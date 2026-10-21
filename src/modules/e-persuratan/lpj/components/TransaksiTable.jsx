@@ -2,6 +2,7 @@ import React from 'react';
 import { FaRegTrashAlt } from 'react-icons/fa';
 import { formatNum } from '../utils/lpjLogic';
 import { BTN, FORM, T } from '@/utils/uiTokens';
+import { ANIM, hapusBaris } from '@/utils/animasi';
 
 const GRID = 'grid grid-cols-[minmax(0,1fr)_minmax(0,1.6fr)_130px_36px] gap-2';
 
@@ -26,7 +27,7 @@ export default function TransaksiTable({
   }
 
   return (
-    <div className="overflow-x-auto">
+    <div className="overflow-x-auto overflow-y-hidden">
       <div className="min-w-[520px]">
         <div className={`${GRID} py-2 border-b mb-2 ${T.border}`}>
           {['Pelaksana', `Item (Akun ${akunKode || '—'})`, 'Jumlah (Rp)', ''].map((h, i) => (
@@ -36,7 +37,7 @@ export default function TransaksiTable({
           ))}
         </div>
         {rows.map((tx, i) => (
-          <div key={i} className={`${GRID} mb-2`}>
+          <div key={i} className={`${GRID} mb-2 ${ANIM.muncul}`}>
             <select
               aria-label={`Pelaksana baris ${i + 1}`}
               value={tx.pelaksanaId}
@@ -84,7 +85,11 @@ export default function TransaksiTable({
               type="button"
               aria-label={`Hapus baris ${i + 1}`}
               disabled={rows.length <= 1}
-              onClick={() => onChange(rows.filter((_, j) => j !== i))}
+              onClick={(e) =>
+                hapusBaris(e.currentTarget.parentElement, () =>
+                  onChange(rows.filter((_, j) => j !== i)),
+                )
+              }
               className={BTN.trash}
             >
               <FaRegTrashAlt size={13} />

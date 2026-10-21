@@ -7,6 +7,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FaColumns, FaFolder, FaSearch, FaSitemap } from 'react-icons/fa';
 import { showToast } from '@/utils/toastStore';
 import { ADMIN, FONT, STATUS, T } from '@/utils/uiTokens';
+import { ANIM } from '@/utils/animasi';
 import ExplorerView from './ExplorerView';
 import KolomView from './KolomView';
 import NodeModal from './NodeModal';
@@ -204,62 +205,64 @@ export default function StrukturHierarki({
         </div>
       </div>
 
-      {q ? (
-        <div>
-          <p className={`${ADMIN.sub} mb-3`}>
-            Hasil Pencarian ({hasil.length})
-            {hasil.length > MAKS_HASIL && ` · menampilkan ${MAKS_HASIL} teratas`}
-          </p>
-          {hasil.length === 0 ? (
-            <p className={ADMIN.empty}>Tidak ada data yang cocok dengan pencarian Anda.</p>
-          ) : (
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3">
-              {hasil.slice(0, MAKS_HASIL).map((n) => (
-                <button
-                  type="button"
-                  key={n.id}
-                  className={`flex flex-col gap-1.5 p-[13px] rounded-xl border text-left cursor-pointer transition-[border-color,box-shadow] ${T.surface} ${T.border} hover:border-[#CBD3DE] dark:hover:border-[#304864] hover:shadow-[0_1px_2px_rgba(16,26,44,.07)]`}
-                  onClick={() => pilihHasil(n)}
-                >
-                  <span
-                    className={`w-fit text-[9.5px] font-bold uppercase tracking-[.04em] px-2 py-0.5 rounded-full ${STATUS.infoBg} ${STATUS.infoInk}`}
+      <div key={q ? 'cari' : view} className={ANIM.muncul}>
+        {q ? (
+          <div>
+            <p className={`${ADMIN.sub} mb-3`}>
+              Hasil Pencarian ({hasil.length})
+              {hasil.length > MAKS_HASIL && ` · menampilkan ${MAKS_HASIL} teratas`}
+            </p>
+            {hasil.length === 0 ? (
+              <p className={ADMIN.empty}>Tidak ada data yang cocok dengan pencarian Anda.</p>
+            ) : (
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(210px,1fr))] gap-3">
+                {hasil.slice(0, MAKS_HASIL).map((n) => (
+                  <button
+                    type="button"
+                    key={n.id}
+                    className={`flex flex-col gap-1.5 p-[13px] rounded-xl border text-left cursor-pointer transition-[border-color,box-shadow] ${T.surface} ${T.border} hover:border-[#CBD3DE] dark:hover:border-[#304864] hover:shadow-[0_1px_2px_rgba(16,26,44,.07)]`}
+                    onClick={() => pilihHasil(n)}
                   >
-                    {n.type}
-                  </span>
-                  {n.kode && (
-                    <span className={`${FONT.mono} text-[11.5px] font-bold ${T.ink2}`}>
-                      {n.kode}
+                    <span
+                      className={`w-fit text-[9.5px] font-bold uppercase tracking-[.04em] px-2 py-0.5 rounded-full ${STATUS.infoBg} ${STATUS.infoInk}`}
+                    >
+                      {n.type}
                     </span>
-                  )}
-                  <span className={`text-[13px] font-semibold leading-[1.4] ${T.ink}`}>
-                    {n.name}
-                  </span>
-                  {denganPagu && n.type === tipeAkhir && Number(n.pagu) > 0 && (
-                    <span className={`text-[11.5px] font-semibold ${STATUS.goodInk}`}>
-                      Rp {formatRupiah(n.pagu)}
+                    {n.kode && (
+                      <span className={`${FONT.mono} text-[11.5px] font-bold ${T.ink2}`}>
+                        {n.kode}
+                      </span>
+                    )}
+                    <span className={`text-[13px] font-semibold leading-[1.4] ${T.ink}`}>
+                      {n.name}
                     </span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      ) : viewTambahanAktif ? (
-        viewTambahanAktif.render(indeks)
-      ) : view === 'tree' ? (
-        <PohonView
-          {...ctx}
-          wadahRef={pohonRef}
-          tertutup={tertutup}
-          onToggle={toggle}
-          sorotId={sorotId}
-          pesanKosong={pesanPohonKosong}
-        />
-      ) : view === 'explorer' ? (
-        <ExplorerView {...ctx} jalur={jalur} setJalur={setJalur} />
-      ) : (
-        <KolomView {...ctx} pilihan={pilihan} setPilihan={setPilihan} detailKolom={detailKolom} />
-      )}
+                    {denganPagu && n.type === tipeAkhir && Number(n.pagu) > 0 && (
+                      <span className={`text-[11.5px] font-semibold ${STATUS.goodInk}`}>
+                        Rp {formatRupiah(n.pagu)}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : viewTambahanAktif ? (
+          viewTambahanAktif.render(indeks)
+        ) : view === 'tree' ? (
+          <PohonView
+            {...ctx}
+            wadahRef={pohonRef}
+            tertutup={tertutup}
+            onToggle={toggle}
+            sorotId={sorotId}
+            pesanKosong={pesanPohonKosong}
+          />
+        ) : view === 'explorer' ? (
+          <ExplorerView {...ctx} jalur={jalur} setJalur={setJalur} />
+        ) : (
+          <KolomView {...ctx} pilihan={pilihan} setPilihan={setPilihan} detailKolom={detailKolom} />
+        )}
+      </div>
 
       {modal && (
         <NodeModal

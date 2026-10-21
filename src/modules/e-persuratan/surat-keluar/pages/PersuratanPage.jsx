@@ -26,6 +26,7 @@ import { useSuratDefinitions } from '../hooks/useSuratDefinitions';
 import { useAuth } from '@/context/AuthContext';
 import CardView from '../components/CardView';
 import FlowView from '../components/FlowView';
+import { ANIM } from '@/utils/animasi';
 import SuratPreviewModal from '@/components/SuratPreview/SuratPreviewModal';
 
 export default function Persuratan() {
@@ -236,21 +237,25 @@ export default function Persuratan() {
 
           {/* CardView — semua user */}
           {!loading && activeTab === 'kartu' && (
-            <CardView
-              suratList={suratList}
-              onSelectSurat={handleSelectSurat}
-              onPreviewSurat={setPreviewSurat}
-              onShowInFlow={canSeeFlow ? handleShowInFlow : null}
-            />
+            <div className={`flex-1 min-h-0 flex flex-col ${ANIM.muncul}`}>
+              <CardView
+                suratList={suratList}
+                onSelectSurat={handleSelectSurat}
+                onPreviewSurat={setPreviewSurat}
+                onShowInFlow={canSeeFlow ? handleShowInFlow : null}
+              />
+            </div>
           )}
 
           {/* FlowView — admin only */}
           {!loading && activeTab === 'flow' && canSeeFlow && (
-            <FlowView
-              suratList={suratList}
-              highlightId={highlightId}
-              onSelectSurat={handleSelectSurat}
-            />
+            <div className={`flex-1 min-h-0 flex flex-col ${ANIM.pudar}`}>
+              <FlowView
+                suratList={suratList}
+                highlightId={highlightId}
+                onSelectSurat={handleSelectSurat}
+              />
+            </div>
           )}
         </div>
       </div>

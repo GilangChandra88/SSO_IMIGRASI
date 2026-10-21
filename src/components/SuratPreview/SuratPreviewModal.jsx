@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { FaTimes, FaSpinner } from 'react-icons/fa';
 import SuratPreviewCanvas from './SuratPreviewCanvas';
+import { ANIM } from '@/utils/animasi';
+import { useDariTombol } from '@/components/animasi';
 
 /**
  * Komponen modal untuk mem-preview dokumen menggunakan PDF react-pdf.
  */
 export default function SuratPreviewModal({ surat, onClose }) {
+  // Tumbuh dari tombol "Lihat" & kembali ke sana saat ditutup
+  const { dialogRef, latarRef } = useDariTombol();
   const [loading, setLoading] = useState(true);
 
   // Simulasi loading sebentar agar komponen PDF siap
@@ -17,8 +21,14 @@ export default function SuratPreviewModal({ surat, onClose }) {
   const dummyData = surat.instanceData || {};
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md">
-      <div className="bg-slate-100 dark:bg-slate-950 border dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl h-[95vh] flex flex-col overflow-hidden">
+    <div
+      ref={latarRef}
+      className={`${ANIM.latar} fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 dark:bg-slate-950/80 backdrop-blur-md`}
+    >
+      <div
+        ref={dialogRef}
+        className={`bg-slate-100 dark:bg-slate-950 border dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-5xl h-[95vh] flex flex-col overflow-hidden`}
+      >
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 shrink-0">
           <div>

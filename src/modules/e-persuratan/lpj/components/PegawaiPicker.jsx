@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { FaSearch, FaTimes } from 'react-icons/fa';
 import { toPegawaiRef } from '../utils/emptyModels';
 import { FORM, NAVY, T } from '@/utils/uiTokens';
+import { ANIM, hapusBaris } from '@/utils/animasi';
 
 /**
  * Cari & pilih beberapa pegawai (dipakai untuk "Kepada" Surat Perintah).
@@ -25,13 +26,19 @@ export default function PegawaiPicker({ pegawai, selected, onChange, err, loadin
           {selected.map((p) => (
             <div
               key={p.id}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-[20px] text-xs text-white ${NAVY.bg}`}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-[20px] text-xs text-white ${NAVY.bg} ${ANIM.meletup}`}
             >
               {p.nip || '-'} — {p.nama}
               <button
                 type="button"
                 aria-label={`Hapus ${p.nama}`}
-                onClick={() => onChange(selected.filter((s) => s.id !== p.id))}
+                onClick={(e) =>
+                  hapusBaris(
+                    e.currentTarget.parentElement,
+                    () => onChange(selected.filter((s) => s.id !== p.id)),
+                    { geser: false },
+                  )
+                }
                 className="flex text-white/70 hover:text-white"
               >
                 <FaTimes size={10} />
@@ -60,7 +67,7 @@ export default function PegawaiPicker({ pegawai, selected, onChange, err, loadin
       </div>
       {open && filtered.length > 0 && (
         <div
-          className={`absolute top-[calc(100%+4px)] left-0 right-0 z-[100] max-h-[220px] overflow-y-auto rounded-[10px] border ${T.surface} ${T.border} shadow-[0_8px_24px_rgba(0,0,0,.1)]`}
+          className={`absolute top-[calc(100%+4px)] left-0 right-0 z-[100] max-h-[220px] overflow-y-auto rounded-[10px] border ${ANIM.popover} ${T.surface} ${T.border} shadow-[0_8px_24px_rgba(0,0,0,.1)]`}
         >
           {filtered.map((p) => (
             <div

@@ -17,9 +17,13 @@ import {
 } from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
 import { FONT, STATUS, T } from '@/utils/uiTokens';
+import { ANIM, jedaKe } from '@/utils/animasi';
+import { AngkaBerjalan, useMunculBerurutan } from '@/components/animasi';
 import {
   formatTanggalPendek,
   isSkemaBaru,
+  lpjIdLabel,
+  lpjIdOf,
   lpjDashStatus,
   lpjDashType,
   lpjRowTotal,
@@ -39,8 +43,7 @@ const STATUS_PILL = {
 
 const CARD = `${T.surface} ${T.border} ${T.shadowSm} ${T.ink} border rounded-[20px] p-5`;
 const H2 = `${FONT.head} text-[16.5px] font-bold ${T.ink}`;
-const CHIP =
-  'px-[13px] py-[7px] rounded-full text-[12.5px] font-semibold whitespace-nowrap border border-transparent transition-colors';
+const CHIP = `px-[13px] py-[7px] rounded-full text-[12.5px] font-semibold whitespace-nowrap border border-transparent ${ANIM.pilih}`;
 const CHIP_OFF = `${T.surface2} ${T.ink2} ${T.hoverSurfaceHover}`;
 const CHIP_ON = 'bg-[#0E2340] text-[#EAF0FA] dark:bg-[#1F4C80]';
 
@@ -98,7 +101,7 @@ export default function Dashboard() {
     return milikSaya.filter((p) => {
       if (type !== 'all' && lpjDashType(p) !== type) return false;
       if (status !== 'all' && lpjDashStatus(p) !== status) return false;
-      if (qq && !uraianOf(p).toLowerCase().includes(qq) && !p.id.toLowerCase().includes(qq))
+      if (qq && !uraianOf(p).toLowerCase().includes(qq) && !lpjIdOf(p).toLowerCase().includes(qq))
         return false;
       return true;
     });
@@ -113,6 +116,9 @@ export default function Dashboard() {
     return c;
   }, [milikSaya]);
   const statusTotal = statusCounts.baru + statusCounts.draft + statusCounts.selesai;
+
+  // Kartu berkas muncul berurutan (diulang saat filter berganti)
+  const daftarRef = useMunculBerurutan(`${type}|${status}|${q}|${miniList.length > 0}`);
 
   const perluDilengkapi = useMemo(
     () =>
@@ -162,7 +168,9 @@ export default function Dashboard() {
     <div className={`min-h-full ${T.ground} ${FONT.body}`}>
       <div className="grid grid-cols-1 gap-[18px] w-full max-w-[1400px] mx-auto px-4 pt-[18px] pb-[100px] sm:pb-11 min-[1080px]:grid-cols-[minmax(0,1fr)_360px] min-[1080px]:gap-[22px] min-[1080px]:px-8 min-[1080px]:pt-[26px] min-[1080px]:items-start">
         {/* Sambutan */}
-        <section className="order-1 min-w-0 min-[1080px]:col-start-1 min-[1080px]:row-start-1">
+        <section
+          className={`order-1 min-w-0 min-[1080px]:col-start-1 min-[1080px]:row-start-1 ${ANIM.muncul}`}
+        >
           <div className="rounded-[20px] overflow-hidden text-[#EAF0FA] bg-gradient-to-br from-[#0E2340] to-[#1F4C80] dark:from-[#081524] dark:to-[#173A60] shadow-[0_10px_28px_-10px_rgba(16,26,44,.18)]">
             <div className="flex flex-wrap items-center gap-[22px] p-6">
               <div className="flex-1 min-w-[220px]">
@@ -185,7 +193,10 @@ export default function Dashboard() {
                   className="group flex items-center gap-4 py-[17px] pl-[17px] pr-[26px] rounded-[18px] bg-white text-[#16213C] shadow-[0_16px_34px_-12px_rgba(4,10,22,.5)] transition hover:-translate-y-[3px] active:-translate-y-px"
                 >
                   <span className="w-[46px] h-[46px] shrink-0 rounded-[13px] flex items-center justify-center bg-gradient-to-br from-[#C9973B] to-[#A97C24] shadow-[0_5px_12px_-3px_rgba(169,124,36,.6)] transition-transform group-hover:scale-105">
-                    <FaPlus size={18} className="text-white" />
+                    <FaPlus
+                      size={18}
+                      className="text-white motion-safe:transition-transform motion-safe:duration-300 motion-safe:group-hover:rotate-90"
+                    />
                   </span>
                   <span className="flex flex-col items-start gap-0.5">
                     <strong className={`${FONT.head} font-extrabold text-[18.5px] leading-tight`}>
@@ -203,7 +214,7 @@ export default function Dashboard() {
 
         {/* Status Berkas */}
         <section
-          className={`order-3 min-w-0 ${CARD} min-[1080px]:col-start-1 min-[1080px]:row-start-2`}
+          className={`order-3 min-w-0 ${CARD} min-[1080px]:col-start-1 min-[1080px]:row-start-2 ${ANIM.muncul} ${jedaKe(2)}`}
         >
           <div className="mb-3.5">
             <h2 className={H2}>Status Berkas</h2>
@@ -213,7 +224,7 @@ export default function Dashboard() {
             preserveAspectRatio="none"
             role="img"
             aria-label={`Distribusi status berkas: ${statusCounts.baru} baru, ${statusCounts.draft} draft, ${statusCounts.selesai} selesai`}
-            className="block w-full h-3.5 rounded-[7px] overflow-hidden"
+            className={`block w-full h-3.5 rounded-[7px] overflow-hidden ${ANIM.tumbuhX}`}
           >
             <rect
               x="0"
@@ -241,7 +252,10 @@ export default function Dashboard() {
             ].map(([key, label, dot]) => (
               <li key={key} className={`flex items-center gap-[7px] text-[13px] ${T.ink2}`}>
                 <i className={`w-[9px] h-[9px] rounded-full shrink-0 ${dot}`} />
-                {label} <b className={`${FONT.mono} ml-0.5 ${T.ink}`}>{statusCounts[key]}</b>
+                {label}{' '}
+                <b className={`${FONT.mono} ml-0.5 ${T.ink}`}>
+                  <AngkaBerjalan nilai={statusCounts[key]} />
+                </b>
               </li>
             ))}
           </ul>
@@ -249,7 +263,7 @@ export default function Dashboard() {
 
         {/* Berkas LPJ Saya */}
         <section
-          className={`order-4 min-w-0 ${CARD} min-[1080px]:col-start-1 min-[1080px]:row-start-3`}
+          className={`order-4 min-w-0 ${CARD} min-[1080px]:col-start-1 min-[1080px]:row-start-3 ${ANIM.muncul} ${jedaKe(3)}`}
         >
           <div className="flex items-baseline justify-between gap-3 mb-3.5">
             <div>
@@ -306,7 +320,10 @@ export default function Dashboard() {
               >
                 <FaFilter size={11} />
                 <span>{FILTER_LABEL[status]}</span>
-                <FaChevronDown size={11} />
+                <FaChevronDown
+                  size={11}
+                  className={`motion-safe:transition-transform motion-safe:duration-200 ${filterOpen ? 'rotate-180' : ''}`}
+                />
               </button>
               {filterOpen && (
                 <>
@@ -317,7 +334,7 @@ export default function Dashboard() {
                     onClick={() => setFilterOpen(false)}
                   />
                   <div
-                    className={`absolute top-[calc(100%+8px)] right-0 z-30 min-w-[160px] p-1.5 flex flex-col gap-px rounded-xl border ${T.surface} ${T.border} ${T.shadowMd}`}
+                    className={`absolute top-[calc(100%+8px)] right-0 z-30 min-w-[160px] p-1.5 flex flex-col gap-px rounded-xl border origin-top-right ${ANIM.popover} ${T.surface} ${T.border} ${T.shadowMd}`}
                   >
                     {['all', 'baru', 'draft', 'selesai'].map((s) => (
                       <button
@@ -342,7 +359,7 @@ export default function Dashboard() {
             </div>
           </div>
 
-          <div className="flex flex-col gap-3">
+          <div ref={daftarRef} className="flex flex-col gap-3">
             {miniList.map((p) => {
               const st = lpjDashStatus(p);
               const fase = faseRingkas(p);
@@ -353,8 +370,9 @@ export default function Dashboard() {
                 <button
                   type="button"
                   key={p.id}
+                  data-bertahap
                   onClick={() => navigate(`/e-persuratan/lpj/${p.id}`)}
-                  className={`relative block w-full text-left rounded-[14px] border p-4 pr-11 transition ${T.surface} ${T.border} hover:border-[#CBD3DE] dark:hover:border-[#304864] hover:shadow-[0_1px_2px_rgba(16,26,44,.07)]`}
+                  className={`group relative block w-full text-left rounded-[14px] border p-4 pr-11 motion-safe:transition-[translate,border-color,box-shadow,scale] motion-safe:duration-200 motion-safe:ease-out motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[.99] ${T.surface} ${T.border} hover:border-[#CBD3DE] dark:hover:border-[#304864] hover:shadow-[0_6px_16px_-8px_rgba(16,26,44,.25)]`}
                 >
                   <div className="flex items-center justify-between gap-2.5">
                     <span
@@ -371,9 +389,9 @@ export default function Dashboard() {
                   </div>
                   <FaChevronRight
                     size={13}
-                    className={`absolute top-1/2 right-3.5 -translate-y-1/2 ${T.inkMuted}`}
+                    className={`absolute top-1/2 right-3.5 -translate-y-1/2 motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-0.5 ${T.inkMuted}`}
                   />
-                  <p className={`${FONT.mono} text-[11.5px] mt-3 ${T.inkMuted}`}>{p.id}</p>
+                  <p className={`${FONT.mono} text-[11.5px] mt-3 ${T.inkMuted}`}>{lpjIdLabel(p)}</p>
                   <p className={`font-bold text-[14.5px] mt-[3px] leading-[1.35] ${T.ink}`}>
                     {uraianOf(p)}
                   </p>
@@ -386,7 +404,7 @@ export default function Dashboard() {
                       value={fase.total ? Math.round((fase.done / fase.total) * 100) : 0}
                       max={100}
                       aria-label={`Fase ${fase.done} dari ${fase.total}`}
-                      className="block flex-1 h-1.5 appearance-none border-0 rounded-full overflow-hidden bg-[#F3F5F8] dark:bg-[#16243A] [&::-webkit-progress-bar]:bg-[#F3F5F8] dark:[&::-webkit-progress-bar]:bg-[#16243A] [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-[#2a78d6] [&::-moz-progress-bar]:bg-[#2a78d6]"
+                      className={`${ANIM.tumbuhX} block flex-1 h-1.5 appearance-none border-0 rounded-full overflow-hidden bg-[#F3F5F8] dark:bg-[#16243A] [&::-webkit-progress-bar]:bg-[#F3F5F8] dark:[&::-webkit-progress-bar]:bg-[#16243A] [&::-webkit-progress-value]:rounded-full [&::-webkit-progress-value]:bg-[#2a78d6] [&::-moz-progress-bar]:bg-[#2a78d6]`}
                     />
                     <span className={`text-[11.5px] font-semibold whitespace-nowrap ${T.inkMuted}`}>
                       Fase {fase.done}/{fase.total}
@@ -407,7 +425,7 @@ export default function Dashboard() {
 
         {/* Kolom samping: di HP melebur ke grid utama supaya urutannya bisa diatur */}
         <div className="contents min-[1080px]:flex min-[1080px]:flex-col min-[1080px]:gap-[22px] min-[1080px]:col-start-2 min-[1080px]:row-start-1 min-[1080px]:row-span-3 min-[1080px]:sticky min-[1080px]:top-6 min-[1080px]:self-start">
-          <section className={`order-2 min-w-0 ${CARD}`}>
+          <section className={`order-2 min-w-0 ${CARD} ${ANIM.muncul} ${jedaKe(1)}`}>
             <div className="mb-3.5">
               <h2 className={H2}>Perlu Dilengkapi</h2>
               <p className={`text-[13px] mt-[3px] ${T.inkMuted}`}>
@@ -415,15 +433,17 @@ export default function Dashboard() {
               </p>
             </div>
             <ul className="flex flex-col gap-0.5 mb-2.5">
-              {perluDilengkapi.map(({ pack, fase }) => (
-                <li key={pack.id}>
+              {perluDilengkapi.map(({ pack, fase }, i) => (
+                <li key={pack.id} className={`${ANIM.muncul} ${jedaKe(i)}`}>
                   <Link
                     to={`/e-persuratan/lpj/${pack.id}`}
-                    className={`flex items-start gap-[11px] px-1.5 py-2.5 rounded-[10px] ${T.hoverSurface2}`}
+                    className={`group flex items-start gap-[11px] px-1.5 py-2.5 rounded-[10px] ${T.hoverSurface2}`}
                   >
                     <span className="w-[9px] h-[9px] mt-[5px] rounded-full shrink-0 bg-[#8A5B00] dark:bg-[#F0B93E]" />
                     <div className="min-w-0">
-                      <p className={`${FONT.mono} text-[11px] mb-0.5 ${T.inkMuted}`}>{pack.id}</p>
+                      <p className={`${FONT.mono} text-[11px] mb-0.5 ${T.inkMuted}`}>
+                        {lpjIdLabel(pack)}
+                      </p>
                       <p className={`text-[13.5px] font-semibold leading-[1.35] ${T.ink}`}>
                         {uraianOf(pack)}
                       </p>
@@ -434,7 +454,10 @@ export default function Dashboard() {
                         &middot; perlu ditindaklanjuti
                       </p>
                     </div>
-                    <FaChevronRight size={12} className={`ml-auto mt-1 shrink-0 ${T.inkMuted}`} />
+                    <FaChevronRight
+                      size={12}
+                      className={`ml-auto mt-1 shrink-0 motion-safe:transition-transform motion-safe:duration-200 motion-safe:group-hover:translate-x-0.5 ${T.inkMuted}`}
+                    />
                   </Link>
                 </li>
               ))}
@@ -446,17 +469,20 @@ export default function Dashboard() {
             </ul>
           </section>
 
-          <section className={`order-5 min-w-0 ${CARD}`}>
+          <section className={`order-5 min-w-0 ${CARD} ${ANIM.muncul} ${jedaKe(4)}`}>
             <div className="mb-3.5">
               <h2 className={H2}>Aktivitas Terbaru</h2>
             </div>
             <ul className="flex flex-col">
-              {aktivitas.map((p) => {
+              {aktivitas.map((p, i) => {
                 const a = p.aktivitas;
                 const Icon = ikonAktivitas(a.teks);
                 const siapa = a.uid && a.uid === uid ? 'Anda' : a.oleh || 'Seseorang';
                 return (
-                  <li key={p.id} className="flex gap-[11px] px-1 py-2.5">
+                  <li
+                    key={p.id}
+                    className={`flex gap-[11px] px-1 py-2.5 ${ANIM.muncul} ${jedaKe(i)}`}
+                  >
                     <div
                       className={`w-7 h-7 shrink-0 rounded-full flex items-center justify-center ${T.surface2} ${T.ink2}`}
                     >
@@ -465,10 +491,11 @@ export default function Dashboard() {
                     <div className="min-w-0">
                       <p className={`text-[13px] leading-[1.45] ${T.ink}`}>
                         {siapa} {a.teks}
-                        {!a.teks.includes(p.id) && (
+                        {!a.teks.includes(lpjIdOf(p) || uraianOf(p)) && (
                           <>
                             {' '}
-                            pada <strong className="font-semibold">{p.id}</strong>
+                            pada{' '}
+                            <strong className="font-semibold">{lpjIdOf(p) || uraianOf(p)}</strong>
                           </>
                         )}
                       </p>

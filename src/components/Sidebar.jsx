@@ -1,10 +1,11 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
-import { FaSignOutAlt, FaSun, FaMoon, FaBars } from 'react-icons/fa';
+import { FaSignOutAlt, FaSun, FaMoon, FaBars, FaUserShield } from 'react-icons/fa';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { APP_ACCENTS } from '@/utils/appAccents';
+import { ANIM } from '@/utils/animasi';
 
 /**
  * Sidebar bersama untuk semua aplikasi (e-Persuratan, Inventory, Kepegawaian).
@@ -30,7 +31,17 @@ export default function Sidebar({
 }) {
   const location = useLocation();
   const path = location.pathname;
-  const { currentUser, userData, userRole, isDark, toggleDarkMode } = useAuth();
+  const {
+    currentUser,
+    userData,
+    userRole,
+    isRealSuperAdmin,
+    viewAsRole,
+    setViewAsRole,
+    roles,
+    isDark,
+    toggleDarkMode,
+  } = useAuth();
   const accentClasses = APP_ACCENTS[accent];
 
   const isActive = (prefix) => path === prefix || path.startsWith(prefix + '/');
@@ -40,7 +51,7 @@ export default function Sidebar({
   };
 
   const navItemClass = (active) => `
-    flex items-center gap-3 py-2.5 px-4 rounded-xl font-medium transition-all text-sm
+    flex items-center gap-3 py-2.5 px-4 rounded-xl font-medium transition-all text-sm motion-safe:active:scale-[.98]
     ${active ? accentClasses.navActive : 'text-slate-400 hover:bg-slate-800 hover:text-slate-200'}
     ${isCollapsed ? 'md:justify-center px-4 md:px-0' : ''}
   `;
@@ -126,9 +137,80 @@ export default function Sidebar({
             <p className="text-xs font-bold text-slate-200 truncate">
               {userData?.nama || currentUser.email}
             </p>
-            <p className="text-[10px] text-slate-500 truncate">{userRole || 'Pegawai'}</p>
+            <p
+              className={`text-[10px] truncate ${viewAsRole ? 'text-amber-400 font-semibold' : 'text-slate-500'}`}
+            >
+              {userRole || 'Pegawai'}
+              {viewAsRole ? ' · mode jelajah' : ''}
+            </p>
           </div>
         </div>
+
+        {/* Pengalih peran: Super Admin menjelajahi tampilan & aksi peran lain tanpa kehilangan
+            peran aslinya (hanya di sisi klien, lihat AuthContext) */}
+        {isRealSuperAdmin && (
+          <div className="mt-4">
+            <div className={isCollapsed ? 'md:hidden' : ''}>
+              <p className="px-1 mb-1.5 text-[10px] font-bold uppercase tracking-widest text-slate-500">
+                Tampilan Peran
+              </p>
+              <div
+                role="radiogroup"
+                aria-label="Tampilan peran"
+                className="flex gap-1 p-1 rounded-lg bg-slate-900/80 border border-slate-700/50"
+              >
+                {roles.map((r) => {
+                  const aktif = (viewAsRole || 'Super Admin') === r;
+                  return (
+                    <button
+                      key={r}
+                      type="button"
+                      role="radio"
+                      aria-checked={aktif}
+                      title={`Lihat sebagai ${r}`}
+                      aria-label={r}
+                      onClick={() => setViewAsRole(r)}
+                      className={`flex-1 min-w-0 truncate px-1.5 py-1.5 rounded-md text-[10px] font-bold motion-safe:transition-[color,background-color,scale] motion-safe:duration-200 motion-safe:active:scale-90 ${
+                        aktif
+                          ? r === 'Super Admin'
+                            ? 'bg-slate-700 text-white'
+                            : 'bg-amber-500 text-slate-900'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
+                      }`}
+                    >
+                      {r === 'Super Admin' ? 'Super' : r}
+                    </button>
+                  );
+                })}
+              </div>
+              {viewAsRole && (
+                <button
+                  type="button"
+                  onClick={() => setViewAsRole(null)}
+                  className={`${ANIM.muncul} mt-1.5 w-full text-[10px] font-semibold text-amber-400 hover:text-amber-300 underline`}
+                >
+                  Kembali ke Super Admin
+                </button>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                const urut = roles.indexOf(viewAsRole || 'Super Admin');
+                setViewAsRole(roles[(urut + 1) % roles.length]);
+              }}
+              title={`Tampilan peran: ${userRole} (klik untuk ganti)`}
+              aria-label={`Ganti tampilan peran, saat ini ${userRole}`}
+              className={`${isCollapsed ? 'hidden md:flex' : 'hidden'} w-full justify-center p-2.5 rounded-lg transition-colors ${
+                viewAsRole
+                  ? 'text-amber-400 bg-amber-500/10'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-800'
+              }`}
+            >
+              <FaUserShield size={15} />
+            </button>
+          </div>
+        )}
         <button
           onClick={handleLogout}
           className={`mt-4 w-full flex items-center justify-center gap-2 font-semibold text-xs text-slate-400 hover:text-white hover:bg-rose-500/10 p-2.5 rounded-lg transition-colors ${isCollapsed ? 'md:px-0' : ''}`}

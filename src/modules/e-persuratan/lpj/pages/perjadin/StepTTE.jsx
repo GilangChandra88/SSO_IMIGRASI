@@ -12,6 +12,7 @@ import { PEJABAT_KATEGORI, SCAN_MAX_BYTES } from '../../data/masterLpj';
 import { deleteLpjFile, pesanGagalUnggah, uploadLpjFile } from '../../services/lpjStorage';
 import Field from '../../ui/Field';
 import { BTN, FORM, NAVY, STATUS, T } from '@/utils/uiTokens';
+import { rayakan } from '@/utils/animasi';
 
 /**
  * Fase 1 lanjutan — TTE Srikandi: unggah scan Surat Perintah ber-TTE (opsional) dan
@@ -87,6 +88,7 @@ export default function StepTTE({ ctx }) {
     );
     if (ok) {
       showToast('Surat Perintah ditandai selesai.');
+      rayakan({ judul: 'Selesai!', sub: 'Surat Perintah' });
       goStep('spd');
     }
   }

@@ -5,7 +5,7 @@
  * dokumen (PDF asli bila templatenya ada).
  */
 
-import React from 'react';
+import React, { useLayoutEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FaCheck,
@@ -29,6 +29,8 @@ import {
   isSkemaBaru,
   jenisLabel,
   lpjGroupStatus,
+  lpjIdLabel,
+  lpjIdOf,
   lpjGroupSubDone,
   lpjRowTotal,
   lpjSingleStatus,
@@ -44,6 +46,11 @@ import LinkBack from '../ui/LinkBack';
 import ProgressBar from '../ui/ProgressBar';
 import { useToast } from '@/utils/toastStore';
 import { BTN, FONT, LAYOUT, NAVY, STAGE_CLS, STATUS, T } from '@/utils/uiTokens';
+import { ANIM, munculBerurutan } from '@/utils/animasi';
+import { AngkaBerjalan } from '@/components/animasi';
+
+const persen = (n) => `${Math.round(n)}%`;
+const rupiah = (n) => `Rp ${Math.round(n).toLocaleString('id-ID')}`;
 
 export default function PackDetail({ packId }) {
   const navigate = useNavigate();
@@ -52,6 +59,14 @@ export default function PackDetail({ packId }) {
   const { pack, loading, error } = useLPJPack(packId);
   const { pegawai } = usePegawaiList();
   const dok = useDokumenLpj({ pack, pegawai, showToast });
+  // Saat berkas pertama tampil, isi halaman muncul bertahap dari atas ke bawah (data-bertahap)
+  const isiRef = useRef(null);
+  const sudahMuncul = useRef(false);
+  useLayoutEffect(() => {
+    if (!pack || sudahMuncul.current || !isiRef.current) return;
+    sudahMuncul.current = true;
+    munculBerurutan(isiRef.current);
+  }, [pack]);
 
   const backToList = () => navigate('/e-persuratan/lpj');
 
@@ -82,6 +97,8 @@ export default function PackDetail({ packId }) {
   }
 
   const canEdit = canEditPack(pack, user);
+  const nomor = lpjIdOf(pack);
+
   const tahap = lpjTahapDisplay(pack);
   const total = lpjRowTotal(pack);
   const stages = stagesWithStatus(pack);
@@ -104,22 +121,26 @@ export default function PackDetail({ packId }) {
   ];
 
   return (
-    <Shell>
+    <Shell wadahRef={isiRef}>
       <LinkBack onClick={backToList}>Kembali ke Daftar LPJ</LinkBack>
 
       {/* Kartu judul */}
-      <div className={`${NAVY.gradient} rounded-[14px] px-5 sm:px-6 py-5 mb-5`}>
+      <div data-bertahap className={`${NAVY.gradient} rounded-[14px] px-5 sm:px-6 py-5 mb-5`}>
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2 mb-2.5">
-              <span className="text-[11.5px] font-bold px-2.5 py-[3px] rounded-[20px] bg-white/15 text-white border border-white/20">
-                {pack.id}
+              <span
+                className={`text-[11.5px] font-bold px-2.5 py-[3px] rounded-[20px] bg-white/15 border border-white/20 ${nomor ? 'text-white' : 'text-white/70 italic'}`}
+                title={nomor ? undefined : 'Nomor LPJ terbit setelah SPBy selesai'}
+              >
+                {lpjIdLabel(pack)}
               </span>
               <span className="text-[11.5px] font-bold px-2.5 py-[3px] rounded-[20px] bg-white/15 text-white border border-white/20">
                 {jenisLabel(pack)}
               </span>
               <span
-                className={`text-[11.5px] font-semibold px-2.5 py-[3px] rounded-[20px] bg-white border border-white/40 ${
+                key={tahap.label}
+                className={`text-[11.5px] font-semibold px-2.5 py-[3px] rounded-[20px] bg-white border border-white/40 ${ANIM.meletup} ${
                   tahap.done ? 'text-[#15803d]' : 'text-[#1d4ed8]'
                 }`}
               >
@@ -133,12 +154,14 @@ export default function PackDetail({ packId }) {
             </h1>
             <p className="text-[12.5px] text-white/65 mt-2">
               {pelaksana.map((p) => p.nama).join(', ') || '—'} · TOTAL BIAYA{' '}
-              <strong className="text-white">Rp {total.toLocaleString('id-ID')}</strong>
+              <strong className="text-white">
+                <AngkaBerjalan nilai={total} format={rupiah} />
+              </strong>
             </p>
           </div>
           <div className="text-right shrink-0">
             <div className={`${FONT.head} text-[26px] font-extrabold text-white leading-none`}>
-              {overall.pct}%
+              <AngkaBerjalan nilai={overall.pct} format={persen} />
             </div>
             <div className="text-[11.5px] text-white/65 font-semibold mt-1 whitespace-nowrap">
               {overall.done}/{overall.total} dokumen selesai
@@ -158,6 +181,7 @@ export default function PackDetail({ packId }) {
       {/* Ringkasan (Perjadin) */}
       {isPerjadin(pack) && (
         <div
+          data-bertahap
           className={`rounded-[10px] border px-5 py-3.5 mb-6 flex flex-wrap gap-x-8 gap-y-3 ${T.surface2} ${T.border}`}
         >
           {summary.map(([label, val]) => (
@@ -178,13 +202,15 @@ export default function PackDetail({ packId }) {
         {stages.map(({ stage, display, locked, tally, pct }, si) => (
           <div
             key={stage.num}
+            data-bertahap
             className={`${T.surface} border rounded-[14px] mb-4 overflow-hidden ${
               locked ? `${T.border} opacity-80` : STAGE_CLS[display].border
             }`}
           >
             <div className="flex flex-wrap items-center gap-3 px-4 sm:px-5 py-4">
               <div
-                className={`w-9 h-9 shrink-0 rounded-[10px] flex items-center justify-center ${
+                key={display}
+                className={`w-9 h-9 shrink-0 rounded-[10px] flex items-center justify-center ${ANIM.meletup} ${
                   display === 'selesai' || display === 'proses'
                     ? `${NAVY.bg} text-white`
                     : `${T.surface2} ${T.inkMuted}`
@@ -208,7 +234,8 @@ export default function PackDetail({ packId }) {
                 </p>
               </div>
               <span
-                className={`text-[11px] font-bold px-2.5 py-[3px] rounded-[20px] border whitespace-nowrap shrink-0 ${STAGE_CLS[display].badge}`}
+                key={display}
+                className={`text-[11px] font-bold px-2.5 py-[3px] rounded-[20px] border whitespace-nowrap shrink-0 ${ANIM.meletup} ${STAGE_CLS[display].badge}`}
               >
                 {STAGE_STATUS_LABEL[display]}
               </span>
@@ -224,6 +251,7 @@ export default function PackDetail({ packId }) {
 
             {locked ? (
               <div
+                data-bertahap
                 className={`flex items-center gap-2 px-4 sm:px-5 py-4 text-[12.5px] border-t ${T.border} ${T.inkMuted}`}
               >
                 <FaLock size={13} className="shrink-0" />
@@ -273,11 +301,13 @@ export default function PackDetail({ packId }) {
 
 // ─── Sub-komponen ─────────────────────────────────────────────────────────────
 
-function Shell({ children }) {
+function Shell({ wadahRef, children }) {
   return (
     <div className={`min-h-full ${T.ground}`}>
       <div className={LAYOUT.page}>
-        <section className={LAYOUT.card}>{children}</section>
+        <section ref={wadahRef} className={LAYOUT.card}>
+          {children}
+        </section>
       </div>
     </div>
   );
@@ -292,7 +322,9 @@ function DocIcon({ status }) {
     }[status] || `${T.surface2} ${T.inkMuted}`;
   const Icon = { selesai: FaCheck, proses: FaClock, menunggu: FaLock }[status] || FaRegFileAlt;
   return (
-    <div className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center ${cls}`}>
+    <div
+      className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center ${ANIM.meletup} ${cls}`}
+    >
       <Icon size={13} />
     </div>
   );
@@ -320,7 +352,7 @@ function SingleCard({ doc, status, canEdit, onForm, onLihat, onPrint }) {
           <FaPrint size={12} /> Print
         </button>
         {!doc.noEdit && canEdit && (
-          <button type="button" className={BTN.sm} onClick={() => onForm(doc.isi)}>
+          <button type="button" className={BTN.sm} data-mekar onClick={() => onForm(doc.isi)}>
             <FaRegEdit size={12} /> Edit
           </button>
         )}
@@ -333,7 +365,7 @@ function SingleCard({ doc, status, canEdit, onForm, onLihat, onPrint }) {
           <FaRegEye size={12} /> Lihat
         </button>
         {canEdit && (
-          <button type="button" className={BTN.warnSolid} onClick={() => onForm('tte')}>
+          <button type="button" className={BTN.warnSolid} data-mekar onClick={() => onForm('tte')}>
             <FaUpload size={12} /> Upload
           </button>
         )}
@@ -346,7 +378,7 @@ function SingleCard({ doc, status, canEdit, onForm, onLihat, onPrint }) {
           <FaRegEye size={12} /> Lihat
         </button>
         {canEdit && (
-          <button type="button" className={BTN.sm} onClick={() => onForm(doc.isi)}>
+          <button type="button" className={BTN.sm} data-mekar onClick={() => onForm(doc.isi)}>
             <FaRegEdit size={12} /> Edit
           </button>
         )}
@@ -354,7 +386,7 @@ function SingleCard({ doc, status, canEdit, onForm, onLihat, onPrint }) {
     );
   } else if (canEdit) {
     actions = (
-      <button type="button" className={BTN.action} onClick={() => onForm(doc.isi)}>
+      <button type="button" className={BTN.action} data-mekar onClick={() => onForm(doc.isi)}>
         <FaPlus size={11} /> Buat Sekarang
       </button>
     );
@@ -362,10 +394,11 @@ function SingleCard({ doc, status, canEdit, onForm, onLihat, onPrint }) {
 
   return (
     <div
+      data-bertahap
       className={`flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-[13px] border-t ${T.border}`}
     >
       <div className="flex items-center gap-2.5 flex-1 min-w-0">
-        <DocIcon status={status} />
+        <DocIcon key={status} status={status} />
         <CodeBadge code={doc.code} />
         <div className="flex-1 min-w-0">
           <div className={`text-[13px] font-semibold ${T.ink}`}>{doc.label}</div>
@@ -391,7 +424,7 @@ function GroupCard({ pack, stage, group, status, canEdit, onForm, onLihat, onPri
   if (status === 'selesai') {
     if (!group.noEdit && canEdit) {
       headerAction = (
-        <button type="button" className={BTN.sm} onClick={() => onForm(group.isi)}>
+        <button type="button" className={BTN.sm} data-mekar onClick={() => onForm(group.isi)}>
           <FaRegEdit size={12} /> Edit
         </button>
       );
@@ -399,7 +432,12 @@ function GroupCard({ pack, stage, group, status, canEdit, onForm, onLihat, onPri
   } else if (status === 'menunggu') {
     if (canEdit) {
       headerAction = (
-        <button type="button" className={BTN.warnSolid} onClick={() => onForm('cetak-spd')}>
+        <button
+          type="button"
+          className={BTN.warnSolid}
+          data-mekar
+          onClick={() => onForm('cetak-spd')}
+        >
           <FaPrint size={12} /> Cetak SPD
         </button>
       );
@@ -407,14 +445,14 @@ function GroupCard({ pack, stage, group, status, canEdit, onForm, onLihat, onPri
   } else if (status === 'proses') {
     if (canEdit) {
       headerAction = (
-        <button type="button" className={BTN.sm} onClick={() => onForm(group.isi)}>
+        <button type="button" className={BTN.sm} data-mekar onClick={() => onForm(group.isi)}>
           <FaRegEdit size={12} /> Edit
         </button>
       );
     }
   } else if (canEdit) {
     headerAction = (
-      <button type="button" className={BTN.action} onClick={() => onForm(group.isi)}>
+      <button type="button" className={BTN.action} data-mekar onClick={() => onForm(group.isi)}>
         <FaPlus size={11} /> Buat Sekarang
       </button>
     );
@@ -423,10 +461,11 @@ function GroupCard({ pack, stage, group, status, canEdit, onForm, onLihat, onPri
   return (
     <div>
       <div
+        data-bertahap
         className={`flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-[13px] border-t ${T.border}`}
       >
         <div className="flex items-center gap-2.5 flex-1 min-w-0">
-          <DocIcon status={status} />
+          <DocIcon key={status} status={status} />
           <CodeBadge code={group.code} />
           <div className="flex-1 min-w-0">
             <div className={`text-[13px] font-semibold ${T.ink}`}>{group.label}</div>
@@ -457,11 +496,13 @@ function GroupCard({ pack, stage, group, status, canEdit, onForm, onLihat, onPri
         return (
           <div
             key={item.key}
+            data-bertahap
             className={`flex items-center justify-between gap-2.5 py-[9px] pl-6 sm:pl-[52px] pr-4 sm:pr-5 border-t ${T.border}`}
           >
             <div className="flex items-center gap-2 min-w-0">
               <span
-                className={`w-[18px] h-[18px] shrink-0 rounded-md flex items-center justify-center ${
+                key={subDone ? 'ya' : 'belum'}
+                className={`w-[18px] h-[18px] shrink-0 rounded-md flex items-center justify-center ${ANIM.meletup} ${
                   subDone
                     ? `${STATUS.goodSolid} text-white dark:text-[#0A121D]`
                     : `${T.bgBorder} ${T.inkMuted}`
@@ -494,7 +535,10 @@ function GroupCard({ pack, stage, group, status, canEdit, onForm, onLihat, onPri
 function StatusPembayaran({ pembayaran }) {
   const p = pembayaran || {};
   return (
-    <div className={`rounded-xl border p-[22px] mb-3.5 ${T.surface} ${T.border} ${T.ink}`}>
+    <div
+      data-bertahap
+      className={`rounded-xl border p-[22px] mb-3.5 ${T.surface} ${T.border} ${T.ink}`}
+    >
       <h3 className={`text-[13.5px] font-bold mb-1 ${T.ink}`}>Status Pembayaran dari Bendahara</h3>
       <p className={`text-xs mb-3.5 ${T.ink2}`}>
         Bukti transfer diunggah oleh Bendahara setelah verifikasi selesai

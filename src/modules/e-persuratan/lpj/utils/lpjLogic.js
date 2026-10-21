@@ -116,6 +116,7 @@ export function pfHasLapData(lap) {
     lap.hasil ||
     lap.kesimpulan ||
     lap.rekomendasi ||
+    lap.penandatangan ||
     (lap.fotos && lap.fotos.length)
   );
 }
@@ -459,4 +460,43 @@ export function tanggalRingkas(pack) {
   }
   const t = pack.np?.tanggal || '';
   return { berangkat: t, kembali: t, tanggalLPJ: t };
+}
+
+// ─── Nomor (ID) LPJ ──────────────────────────────────────────────────────────
+
+/**
+ * SPBy sudah selesai: fase "LPJ & SPBy" (Perjadin) atau "SPBy & Rincian Bayar" (Non-Perjadin).
+ * Saat itulah nomor LPJ diterbitkan (lihat saveLPJ opsi `beriNomor`).
+ */
+export function spbySelesai(pack) {
+  if (!isSkemaBaru(pack)) return false;
+  return isPerjadin(pack) ? !!pack.lpj?.locked : !!pack.np?.formLocked;
+}
+
+/**
+ * Nomor LPJ (`LPJ-TAHUN-BULAN-NNNN`) atau '' bila belum terbit. Berkas lama yang ID dokumennya
+ * sudah berformat nomor LPJ dianggap bernomor hanya bila SPBy-nya sudah selesai.
+ */
+export function lpjIdOf(pack) {
+  if (!pack) return '';
+  if (pack.nomor_lpj) return pack.nomor_lpj;
+  // Format lama (surat_items): ID dokumen sudah nomor resmi sejak dibuat
+  if (!isSkemaBaru(pack)) return /^LPJ-/.test(pack.id || '') ? pack.id : '';
+  return spbySelesai(pack) && /^LPJ-/.test(pack.id || '') ? pack.id : '';
+}
+
+/** Label nomor untuk tampilan: nomor LPJ, atau keterangan bila belum terbit. */
+export const lpjIdLabel = (pack) => lpjIdOf(pack) || 'Belum bernomor';
+
+/**
+ * Berkas boleh dihapus selama nomor LPJ belum terbit, oleh pembuat atau admin.
+ * Super Admin boleh menghapus berkas apa pun, termasuk yang sudah bernomor dan berkas format
+ * lama (surat_items) yang sudah tidak bisa dibuka.
+ */
+export function canDeletePack(pack, { uid, isAdmin, isSuperAdmin }) {
+  if (!pack) return false;
+  if (isSuperAdmin) return true;
+  if (!isSkemaBaru(pack)) return false;
+  if (lpjIdOf(pack)) return false;
+  return isAdmin || pack.created_by === uid;
 }

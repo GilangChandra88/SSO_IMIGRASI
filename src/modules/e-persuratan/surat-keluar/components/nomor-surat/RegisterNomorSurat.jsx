@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { FaEye, FaPen, FaSearch } from 'react-icons/fa';
 import { ADMIN, FONT, T } from '@/utils/uiTokens';
+import { ANIM, jedaKe } from '@/utils/animasi';
 import EditNomorSuratModal from './EditNomorSuratModal';
 import NomorSuratDetailModal from './NomorSuratDetailModal';
 import { formatTanggalNomor, kodeKop, kodeLanjutan } from './nomorSuratTampil';
@@ -91,8 +92,8 @@ export default function RegisterNomorSurat({ rows, loading }) {
                 </td>
               </tr>
             ) : (
-              filtered.map((r) => (
-                <tr key={r.id} className={ADMIN.tr}>
+              filtered.map((r, i) => (
+                <tr key={r.id} className={`${ADMIN.tr} ${ANIM.muncul} ${jedaKe(i)}`}>
                   <td className={ADMIN.td}>{r.nomorUrut || '-'}</td>
                   <td className={ADMIN.td}>
                     <span className={ADMIN.mono}>{formatTanggalNomor(r.tanggal)}</span>

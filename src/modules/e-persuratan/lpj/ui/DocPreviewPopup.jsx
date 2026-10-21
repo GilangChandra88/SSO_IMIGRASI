@@ -9,7 +9,7 @@ import { BTN, FONT, T } from '@/utils/uiTokens';
  */
 export default function DocPreviewPopup({ label, onClose }) {
   return (
-    <Modal widthClass="max-w-[520px]" onClose={onClose} labelledBy="judul-pratinjau">
+    <Modal widthClass="max-w-[520px]" onClose={onClose} labelledBy="judul-pratinjau" dariTombol>
       <div className={`flex items-center justify-between px-[22px] py-[18px] border-b ${T.border}`}>
         <h3 id="judul-pratinjau" className={`${FONT.head} font-bold text-[15px] ${T.ink}`}>
           Pratinjau Dokumen

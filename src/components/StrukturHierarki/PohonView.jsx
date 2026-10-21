@@ -4,6 +4,7 @@ import { ADMIN, GOLD, STATUS } from '@/utils/uiTokens';
 import { ROW } from './hierarkiKelas';
 import { formatRupiah, indentKelas, tipeBerikut } from './hierarkiUtils';
 import KonfirmasiHapus from './KonfirmasiHapus';
+import { hapusBaris } from '@/utils/animasi';
 
 function PohonBaris({ node, depth, ctx }) {
   const { indeks, hierarchy, tipeAkhir, denganPagu, tertutup, onToggle, sorotId, pendingHapus } =
@@ -44,7 +45,11 @@ function PohonBaris({ node, depth, ctx }) {
         <span className={menungguHapus ? ROW.actionsShow : ROW.actions}>
           {menungguHapus ? (
             <KonfirmasiHapus
-              onYa={() => aksi.hapus(node.id)}
+              onYa={(e) =>
+                hapusBaris(e.currentTarget.closest('[data-node-id]'), () => aksi.hapus(node.id), {
+                  geser: false,
+                })
+              }
               onBatal={aksi.batalHapus}
               busy={sibuk}
             />

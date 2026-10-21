@@ -2,6 +2,7 @@ import React from 'react';
 import { FaChevronRight, FaPen, FaTrashAlt } from 'react-icons/fa';
 import { ADMIN, FONT, STATUS, T } from '@/utils/uiTokens';
 import KonfirmasiHapus from './KonfirmasiHapus';
+import { ANIM } from '@/utils/animasi';
 
 const kolomKelas = (lebar = 'w-[230px]') =>
   `${lebar} shrink-0 border-r last:border-r-0 overflow-y-auto max-h-[520px] ${T.border}`;
@@ -26,7 +27,7 @@ export default function KolomView(props) {
       break;
     }
     kolom.push(
-      <div className={kolomKelas()} key={`kolom${depth}`}>
+      <div className={`${kolomKelas()} ${ANIM.muncul}`} key={`kolom${depth}`}>
         {list.map((n) => {
           const dipilih = pilihan[depth] === n.id;
           return (
@@ -60,7 +61,7 @@ export default function KolomView(props) {
 
     const menungguHapus = pendingHapus === sel.id;
     kolom.push(
-      <div className={kolomKelas('w-[260px]')} key={`detail${depth}`}>
+      <div className={`${kolomKelas('w-[260px]')} ${ANIM.muncul}`} key={`detail${sel.id}`}>
         <div className="p-4 text-[13px]">
           <div className={`${FONT.mono} text-[11px] mb-1 ${T.inkMuted}`}>{sel.kode || '-'}</div>
           <div className={`font-bold mb-3 ${T.ink}`}>{sel.name}</div>

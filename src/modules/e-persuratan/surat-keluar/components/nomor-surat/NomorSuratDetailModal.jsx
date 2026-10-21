@@ -28,7 +28,7 @@ export default function NomorSuratDetailModal({ row, onClose }) {
   ];
 
   return (
-    <Modal onClose={onClose} widthClass="max-w-[480px]" labelledBy="judul-detail-nomor">
+    <Modal onClose={onClose} widthClass="max-w-[480px]" labelledBy="judul-detail-nomor" dariTombol>
       <div className={ADMIN.modalBody}>
         <div className="flex justify-between items-start gap-3 mb-0.5">
           <h3 id="judul-detail-nomor" className={ADMIN.modalTitle}>

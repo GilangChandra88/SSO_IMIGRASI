@@ -5,13 +5,29 @@ import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase
 
 const AuthContext = createContext({});
 
+/** Peran yang tersedia (nilai persis, lihat CLAUDE.md). */
+const ROLES = ['Super Admin', 'Admin', 'Pegawai'];
+
+// Mode "lihat sebagai" Super Admin disimpan per tab; login ulang kembali ke Super Admin
+const VIEW_AS_KEY = 'viewAsRole';
+const bacaViewAs = () => {
+  try {
+    const v = sessionStorage.getItem(VIEW_AS_KEY);
+    return ROLES.includes(v) ? v : null;
+  } catch {
+    return null;
+  }
+};
+
 export function useAuth() {
   return useContext(AuthContext);
 }
 
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
+  // Peran asli dari dokumen pegawai (tidak pernah diubah oleh mode "lihat sebagai")
   const [userRole, setUserRole] = useState(null);
+  const [viewAsRole, setViewAsRoleState] = useState(bacaViewAs);
   const [userData, setUserData] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -89,18 +105,43 @@ export function AuthProvider({ children }) {
       } else {
         setUserRole(null);
         setUserData(null);
+        setViewAsRole(null);
       }
       setLoading(false);
     });
     return unsubscribe;
   }, []);
 
+  /**
+   * Super Admin dapat menjelajahi aplikasi sebagai peran lain (tampilan & aksi mengikuti peran
+   * itu) tanpa kehilangan peran aslinya. null = kembali ke peran asli. Hanya di sisi klien.
+   */
+  function setViewAsRole(role) {
+    const v = ROLES.includes(role) && role !== 'Super Admin' ? role : null;
+    setViewAsRoleState(v);
+    try {
+      if (v) sessionStorage.setItem(VIEW_AS_KEY, v);
+      else sessionStorage.removeItem(VIEW_AS_KEY);
+    } catch {
+      // penyimpanan sesi tidak tersedia: mode hanya berlaku sampai halaman dimuat ulang
+    }
+  }
+
+  const isRealSuperAdmin = userRole === 'Super Admin';
+  // Peran efektif yang dipakai seluruh aplikasi
+  const role = isRealSuperAdmin && viewAsRole ? viewAsRole : userRole;
+
   const value = {
     currentUser,
-    userRole,
+    userRole: role,
+    realRole: userRole,
+    isRealSuperAdmin,
+    viewAsRole: isRealSuperAdmin ? viewAsRole : null,
+    setViewAsRole,
+    roles: ROLES,
     userData,
-    isSuperAdmin: userRole === 'Super Admin',
-    isAdmin: userRole === 'Admin' || userRole === 'Super Admin',
+    isSuperAdmin: role === 'Super Admin',
+    isAdmin: role === 'Admin' || role === 'Super Admin',
     isDark,
     toggleDarkMode,
   };
