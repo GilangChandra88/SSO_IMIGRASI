@@ -31,7 +31,8 @@ const salin = (obj) => JSON.parse(JSON.stringify(obj ?? null));
 const ambilBagian = (pack) => ({
   sp: salin(pack.sp),
   spd: salin(pack.spd),
-  lpj: salin(pack.lpj),
+  // Keterangan SPBy mengikuti uraian kegiatan yang diisi saat Buat LPJ (bila belum diisi)
+  lpj: { ...salin(pack.lpj), keterangan: pack.lpj?.keterangan || pack.uraian || '' },
   lap: salin(pack.lap),
   selesai: salin(pack.selesai) || { sp: false, lpjDocs: {}, laporan: false },
 });
