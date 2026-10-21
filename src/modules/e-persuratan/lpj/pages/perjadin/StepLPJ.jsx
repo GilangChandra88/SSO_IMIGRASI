@@ -131,7 +131,7 @@ export default function StepLPJ({ ctx }) {
           <textarea
             id="lpj-ket"
             value={lpj.keterangan}
-            placeholder="Catatan tambahan..."
+            placeholder="Uraian kegiatan"
             onChange={(e) => setLpj({ keterangan: e.target.value })}
             className={`${FORM.textarea} ${FORM.borderOk}`}
           />

@@ -1089,7 +1089,8 @@ const SuratPerintahBayar = ({ data }) => {
   const makOutput = makFull.split(' ').pop() || makFull;
 
   const idValue = data.nomor_bundle || '...';
-  const nomorPb = `/PB/692951/${data.tanggal_spby ? data.tanggal_spby.split('-')[0] : '2026'}`;
+  const tahunSpby = data.tanggal_spby ? data.tanggal_spby.split('-')[0] : '2026';
+  const nomorPb = `/PB/692951/${tahunSpby}`;
 
   return (
     <View style={{ fontSize: 10, fontFamily: 'Helvetica', lineHeight: 1.5, paddingTop: 10 }}>
@@ -1256,6 +1257,11 @@ const SuratPerintahBayar = ({ data }) => {
           <Text>NIP. {nipPpk}</Text>
         </View>
       </View>
+
+      {/* Nomor kwitansi SAKTI diisi tangan */}
+      <Text style={{ marginTop: 24 }}>
+        No Kwitansi : _______________/KW/692951/{tahunSpby}/_______________
+      </Text>
     </View>
   );
 };
@@ -1613,6 +1619,7 @@ const Nominatif = ({ data }) => {
     lama = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
   }
   if (!lama) lama = '-';
+  else if (!/hari/i.test(String(lama))) lama = `${lama} Hari`;
 
   const fixedTotal = 4 + 18 + 10 + 10 + 5 + 10 + 10 + 8; // 75
   const dynWidth = expenseColumns.length > 0 ? 25 / expenseColumns.length : 10;
@@ -2614,13 +2621,12 @@ const NotaDinas = ({ data }) => {
     data.detail_transaksi?.[0]?.pegawai ||
     '[NAMA PENERIMA]';
 
-  // Ambil nama PPK
-  const namaPpk = data.pejabat_ppk?.split('\n')[0] || '[NAMA PPK]';
-
   // Penanda tangan: pelaksana pertama
   const pelaksana = data.pegawai_list?.[0]?.split('\n') || [];
   const namaPelaksana = pelaksana[0] || '[NAMA PELAKSANA]';
   const nipPelaksana = pelaksana[1]?.replace('NIP. ', '') || '[NIP PELAKSANA]';
+  // "Dari": penerima (pelaksana pertama pada transaksi); tanpa transaksi: pelaksana pertama
+  const namaDari = data.detail_transaksi?.length ? namaPenerima : namaPelaksana;
 
   return (
     <View style={{ fontSize: 11, fontFamily: 'Helvetica', lineHeight: 1.5, paddingRight: 20 }}>
@@ -2644,7 +2650,7 @@ const NotaDinas = ({ data }) => {
           <Text>Dari</Text>
         </View>
         <View style={{ flex: 1 }}>
-          <Text>: {namaPpk.toUpperCase()}</Text>
+          <Text>: {namaDari.toUpperCase()}</Text>
         </View>
       </View>
       <View style={{ flexDirection: 'row', marginBottom: 20 }}>
