@@ -3,7 +3,7 @@
  * Path: lpj/{packId}/{folder}/{waktu}-{nama}
  */
 
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { ref, uploadBytes, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
 import { storage } from '@/config/firebase';
 
 /**
@@ -34,6 +34,37 @@ export async function deleteLpjFile(path) {
   } catch (err) {
     if (err?.code !== 'storage/object-not-found') throw err;
   }
+}
+
+/** Hapus seluruh isi folder Storage `prefix` (rekursif); diam bila gagal. */
+export async function deleteLpjFolder(prefix) {
+  try {
+    const res = await listAll(ref(storage, prefix));
+    await Promise.all([
+      ...res.items.map((it) => deleteObject(it).catch(() => {})),
+      ...res.prefixes.map((p) => deleteLpjFolder(p.fullPath)),
+    ]);
+  } catch (err) {
+    console.error('deleteLpjFolder error:', err);
+  }
+}
+
+/**
+ * Validasi berkas pindaian (gambar/PDF, < 5 MB sesuai storage.rules).
+ * @returns {string} pesan galat, atau '' bila sah
+ */
+export function validasiBerkas(file) {
+  if (!file) return 'Pilih berkas terlebih dahulu.';
+  if (!(file.type.startsWith('image/') || file.type === 'application/pdf')) {
+    return 'File harus berupa gambar (JPG/PNG) atau PDF.';
+  }
+  if (file.size >= 5 * 1024 * 1024) return 'Ukuran file harus kurang dari 5 MB.';
+  return '';
+}
+
+/** Buka berkas unggahan di tab baru (penampil PDF/gambar bawaan browser, termasuk cetak). */
+export function bukaBerkas(file) {
+  if (file?.url) window.open(file.url, '_blank', 'noopener');
 }
 
 /** Pesan error unggah yang bisa dibaca pengguna. */

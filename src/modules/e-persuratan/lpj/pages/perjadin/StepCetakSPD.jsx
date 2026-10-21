@@ -8,6 +8,7 @@ import {
   FaRegEye,
 } from 'react-icons/fa';
 import { BTN, FORM, NAVY, STATUS, T } from '@/utils/uiTokens';
+import { ANIM } from '@/utils/animasi';
 
 const inisial = (nama) =>
   String(nama || '')
@@ -80,7 +81,8 @@ export default function StepCetakSPD({ ctx }) {
                 <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
                   <div className="flex items-center gap-3 min-w-0">
                     <div
-                      className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-white text-xs font-bold ${
+                      key={printed ? 'sudah' : 'belum'}
+                      className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-white text-xs font-bold ${ANIM.meletup} ${
                         printed ? 'bg-[#16a34a]' : NAVY.bg
                       }`}
                     >
@@ -95,7 +97,9 @@ export default function StepCetakSPD({ ctx }) {
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     {printed && (
-                      <span className="text-[11.5px] font-semibold text-[#16a34a] dark:text-[#4FD39B] flex items-center gap-1">
+                      <span
+                        className={`text-[11.5px] font-semibold text-[#16a34a] dark:text-[#4FD39B] flex items-center gap-1 ${ANIM.meletup}`}
+                      >
                         <FaCheck size={10} /> Sudah dicetak
                       </span>
                     )}

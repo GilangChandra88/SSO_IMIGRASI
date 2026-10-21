@@ -11,6 +11,8 @@ import ToastViewport from '@/components/ToastViewport';
 import { useAuth } from '@/context/AuthContext';
 import { showToast } from '@/utils/toastStore';
 import { ADMIN, FONT, STATUS, T } from '@/utils/uiTokens';
+import { ANIM, jedaKe } from '@/utils/animasi';
+import { AngkaBerjalan } from '@/components/animasi';
 import { useMakHistory } from '../hooks/useMakData';
 import { BULAN_NAMES, formatTanggalID } from '../utils/makUtils';
 
@@ -129,7 +131,7 @@ export default function MakHistory() {
           >
             <span>Total Transaksi Aktif (Filter):</span>
             <strong className={`${FONT.mono} text-base ${STATUS.infoInk}`}>
-              Rp {formatRupiah(total)}
+              Rp <AngkaBerjalan nilai={total} format={formatRupiah} />
             </strong>
           </div>
           <div className={`border border-t-0 rounded-b-[14px] overflow-x-auto ${T.border}`}>
@@ -159,10 +161,13 @@ export default function MakHistory() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((item) => {
+                  filtered.map((item, i) => {
                     const aktif = item.status === 'active';
                     return (
-                      <tr key={item.id} className={`${ADMIN.tr} ${aktif ? '' : 'opacity-55'}`}>
+                      <tr
+                        key={item.id}
+                        className={`${ADMIN.tr} ${ANIM.muncul} ${jedaKe(i)} ${aktif ? '' : 'opacity-55'}`}
+                      >
                         <td className={ADMIN.td}>
                           <span className={ADMIN.mono}>{formatTanggalID(item.tanggal)}</span>
                         </td>
@@ -194,12 +199,18 @@ export default function MakHistory() {
                         </td>
                         <td className={`${ADMIN.td} text-center`}>
                           {aktif ? (
-                            <span className={`${PILL} ${STATUS.goodBg} ${STATUS.goodInk}`}>
+                            <span
+                              key="aktif"
+                              className={`${PILL} ${ANIM.meletup} ${STATUS.goodBg} ${STATUS.goodInk}`}
+                            >
                               <FaCheck size={8} />
                               Aktif
                             </span>
                           ) : (
-                            <span className={`${PILL} ${STATUS.critBg} ${STATUS.critInk}`}>
+                            <span
+                              key="batal"
+                              className={`${PILL} ${ANIM.meletup} ${STATUS.critBg} ${STATUS.critInk}`}
+                            >
                               <FaTimes size={8} />
                               Dibatalkan
                             </span>

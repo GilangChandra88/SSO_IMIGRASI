@@ -1,12 +1,42 @@
 import React, { useMemo } from 'react';
-import { PDFViewer, Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer';
+import {
+  PDFViewer,
+  Document,
+  Page,
+  Text,
+  View,
+  StyleSheet,
+  Image,
+  Font,
+} from '@react-pdf/renderer';
 import { isiPlaceholder } from './isiPlaceholder';
 
+// Jangan memenggal kata dengan tanda (-) di akhir baris; kata utuh pindah ke baris berikutnya
+Font.registerHyphenationCallback((word) => [word]);
+
 // ─── UTILS ──────────────────────────────────────────────────────────────────
-const fmtDate = (v) =>
-  v
-    ? new Date(v).toLocaleDateString('id-ID', { day: '2-digit', month: 'long', year: 'numeric' })
-    : '...';
+/** NIP 18 digit → "00000000 000000 0 000"; selain itu dikembalikan apa adanya. */
+const fmtNip = (nip) => {
+  const s = String(nip || '').replace(/\s/g, '');
+  return /^\d{18}$/.test(s)
+    ? `${s.slice(0, 8)} ${s.slice(8, 14)} ${s.slice(14, 15)} ${s.slice(15)}`
+    : nip;
+};
+
+/** Pisahkan string pegawai baku ("Nama\nNIP. ...\n...") menjadi nama & NIP. */
+const namaNip = (str) => {
+  const l = String(str || '').split('\n');
+  const nip = l[1]?.replace('NIP. ', '').trim();
+  return { nama: l[0]?.trim() || '', nip: nip && nip !== '-' ? fmtNip(nip) : '' };
+};
+
+// Jabatan penandatangan Surat Perintah menurut kategori pejabat (Kepala/PLT/PLH)
+const JABATAN_SP = {
+  kepala: { judul: 'KEPALA', ttd: 'Kepala', spd: 'Kepala,' },
+  plt: { judul: 'PLT KEPALA', ttd: 'Plt. Kepala', spd: 'Plt. Kepala,' },
+  plh: { judul: 'PLH KEPALA', ttd: 'Plh. Kepala', spd: 'Plh. Kepala,' },
+};
+const jabatanSP = (kategori) => JABATAN_SP[kategori] || JABATAN_SP.kepala;
 
 const fmtDateDash = (v) => {
   if (!v) return '...';
@@ -26,21 +56,23 @@ const styles = StyleSheet.create({
     lineHeight: 1.5,
   },
   // KOP SURAT
-  kopContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
+  kopContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   logoBox: { width: 85, alignItems: 'center', justifyContent: 'center' }, // Dikurangi sedikit agar ruang teks lebih luas
   logo: { width: 75, height: 75 },
   kopText: { flex: 1, alignItems: 'center', paddingRight: 0 }, // Hapus padding kanan agar teks bisa membentang penuh
-  title1: { fontFamily: 'Helvetica', fontSize: 9.5, textTransform: 'uppercase', marginBottom: 1.5 }, // Kurangi sedikit ukurannya agar muat 1 baris
+  title1: { fontFamily: 'Helvetica', fontSize: 9.5, textTransform: 'uppercase', lineHeight: 1.25 }, // Kurangi sedikit ukurannya agar muat 1 baris
   title2: {
     fontFamily: 'Helvetica-Bold',
     fontSize: 12.5,
     textTransform: 'uppercase',
-    marginTop: 2,
-    marginBottom: 3,
+    marginTop: 1,
+    marginBottom: 1,
     letterSpacing: 0.5,
+    lineHeight: 1.25,
   },
-  address: { fontFamily: 'Helvetica', fontSize: 8.5, marginBottom: 1 },
-  line1: { borderBottomWidth: 3, borderBottomColor: '#000', marginBottom: 18 },
+  address: { fontFamily: 'Helvetica', fontSize: 8.5, lineHeight: 1.25 },
+  kopLink: { color: '#0563C1' },
+  line1: { borderBottomWidth: 3, borderBottomColor: '#000', marginBottom: 12 },
 
   // GLOBAL COMPONENTS
   header: { alignItems: 'center', marginBottom: 16 },
@@ -59,43 +91,16 @@ const styles = StyleSheet.create({
   // TANDA TANGAN
   ttdContainer: { alignItems: 'flex-end', marginTop: 30 },
   ttdBox: { width: 200 },
-  ttdTitle: { fontFamily: 'Times-Bold', marginTop: 10, marginBottom: 50 },
   ttdName: { fontFamily: 'Times-Bold', textDecoration: 'underline' },
-
-  // TABEL SPD
-  table: {
-    width: '100%',
-    borderWidth: 1,
-    borderColor: '#000',
-    borderBottomWidth: 0,
-    borderRightWidth: 0,
+  ttdTteRow: {
+    alignSelf: 'stretch',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
+    marginBottom: 8,
   },
-  tr: { flexDirection: 'row' },
-  tdNum: {
-    width: 30,
-    borderWidth: 1,
-    borderColor: '#000',
-    borderTopWidth: 0,
-    borderLeftWidth: 0,
-    padding: 5,
-    textAlign: 'center',
-  },
-  tdLabel: {
-    width: '37%',
-    borderWidth: 1,
-    borderColor: '#000',
-    borderTopWidth: 0,
-    borderLeftWidth: 0,
-    padding: 5,
-  },
-  tdVal: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#000',
-    borderTopWidth: 0,
-    borderLeftWidth: 0,
-    padding: 5,
-  },
+  ttdTteLogo: { width: 190, height: 52 },
 });
 
 // ─── SUB-COMPONENTS ────────────────────────────────────────────────────────
@@ -111,13 +116,14 @@ const KopSurat = () => (
           Kementerian Imigrasi dan Pemasyarakatan Republik Indonesia
         </Text>
         <Text style={styles.title1}>Direktorat Jenderal Imigrasi</Text>
-        <Text style={styles.title1}>Kantor Wilayah Direktorat Jenderal Imigrasi Bali</Text>
+        <Text style={styles.title1}>Kantor Wilayah Bali</Text>
         <Text style={styles.title2}>Kantor Imigrasi Kelas II TPI Buleleng</Text>
         <Text style={styles.address}>
           Jl. Raya Singaraja Seririt, Pemaron, Buleleng, Bali. Telepon ( 0362 ) 32174
         </Text>
         <Text style={styles.address}>
-          Laman: www.singaraja.imigrasi.go.id Pos-el: kanim_singaraja@imigrasi.go.id
+          Laman: <Text style={styles.kopLink}>www.singaraja.imigrasi.go.id</Text> Email:{' '}
+          <Text style={styles.kopLink}>kanim_singaraja@imigrasi.go.id</Text>
         </Text>
       </View>
     </View>
@@ -125,11 +131,15 @@ const KopSurat = () => (
   </View>
 );
 
+// Nomor dan tanda tangan diisi Srikandi saat TTE, jadi template memakai kode isian Srikandi
 const SuratPerintah = ({ data }) => (
   <View>
     <View style={styles.header}>
       <Text style={styles.headerTitle}>SURAT PERINTAH</Text>
-      <Text>NOMOR : {data['nomor_sp'] || 'WIM.20.IMI.3.UM.02.07-[ ...]'}</Text>
+      <Text>NOMOR : {'${nomor_naskah}'}</Text>
+      <Text style={{ fontFamily: 'Times-Bold', marginTop: 8 }}>
+        {jabatanSP(data['kategori_pejabat']).judul} KANTOR IMIGRASI KELAS II TPI BULELENG
+      </Text>
     </View>
 
     <View style={{ marginBottom: 10 }}>
@@ -229,50 +239,140 @@ const SuratPerintah = ({ data }) => (
 
     <View style={styles.ttdContainer} wrap={false}>
       <View style={styles.ttdBox}>
-        <View style={styles.row}>
-          <Text style={styles.labelCol}>Dikeluarkan di</Text>
-          <Text style={styles.colonCol}>:</Text>
-          <Text style={styles.valueCol}>{data['tempat_terbit'] || 'Singaraja'}</Text>
+        <Text style={{ fontFamily: 'Times-Bold' }}>
+          {jabatanSP(data['kategori_pejabat']).ttd} Kantor Imigrasi{'\n'}Kelas II TPI Buleleng
+        </Text>
+      </View>
+      {/* Kode ${ttd_pengirim} (rata kiri, sebaris dengan logo) diganti Srikandi dengan tanda tangan elektronik */}
+      <View style={styles.ttdTteRow}>
+        <Text>{'${ttd_pengirim}'}</Text>
+        <View style={styles.ttdBox}>
+          <Image
+            src={window.location.origin + '/logo-tte-kemenimipas.jpg'}
+            style={styles.ttdTteLogo}
+          />
         </View>
-        <View style={styles.row}>
-          <Text style={styles.labelCol}>Pada tanggal</Text>
-          <Text style={styles.colonCol}>:</Text>
-          <Text style={styles.valueCol}>{fmtDate(data['tanggal_sp'])}</Text>
-        </View>
-
-        <Text style={styles.ttdTitle}>Kepala Kantor Imigrasi{'\n'}Kelas II TPI Buleleng</Text>
+      </View>
+      <View style={styles.ttdBox}>
         <Text style={styles.ttdName}>
           {data['pejabat_ttd']?.split('\n')[0] || '[Nama Pejabat]'}
-        </Text>
-        <Text>
-          NIP. {data['pejabat_ttd']?.split('\n')[1]?.replace('NIP. ', '') || '000000000000000000'}
         </Text>
       </View>
     </View>
   </View>
 );
 
+// ─── SPD: lembar depan (Lampiran 1) + lembar belakang (Lampiran 2), masing-masing 1 halaman ──
+const spdStyles = StyleSheet.create({
+  page: {
+    paddingTop: 28,
+    paddingBottom: 28,
+    paddingLeft: 45,
+    paddingRight: 45,
+    fontFamily: 'Helvetica',
+    fontSize: 9.5,
+    lineHeight: 1.3,
+  },
+  kop: { alignItems: 'center', fontFamily: 'Helvetica', fontSize: 10, lineHeight: 1.25 },
+  kopLine: { borderBottomWidth: 1.2, borderBottomColor: '#000', marginTop: 5, marginBottom: 10 },
+  kanan: { marginLeft: '62%' },
+  judul: {
+    fontFamily: 'Helvetica-Bold',
+    fontSize: 11,
+    textDecoration: 'underline',
+    textAlign: 'center',
+    marginTop: 12,
+    marginBottom: 10,
+  },
+  table: { borderTopWidth: 1, borderLeftWidth: 1, borderColor: '#000' },
+  tr: { flexDirection: 'row' },
+  td: {
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#000',
+    paddingVertical: 5,
+    paddingHorizontal: 6,
+  },
+  tdNum: { width: 26, textAlign: 'center' },
+  tdLabel: { width: '42%' },
+  tdVal: { flex: 1 },
+  bold: { fontFamily: 'Helvetica-Bold' },
+  ttd: { marginLeft: '62%', marginTop: 8 },
+
+  // Lampiran 2
+  page2: {
+    paddingTop: 28,
+    paddingBottom: 28,
+    paddingLeft: 45,
+    paddingRight: 45,
+    fontFamily: 'Times-Roman',
+    fontSize: 10,
+    lineHeight: 1.25,
+  },
+  garudaRow: { position: 'relative', marginBottom: 8 },
+  garuda: { width: 52, height: 56, alignSelf: 'center' },
+  // Teks lampiran PMK rata kanan, sejajar dengan lambang Garuda
+  lampiranPmk: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 200,
+    fontSize: 6.5,
+    lineHeight: 1.2,
+    textAlign: 'right',
+  },
+  cell: {
+    width: '50%',
+    borderRightWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#000',
+    padding: 6,
+  },
+  cellFull: { flex: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#000', padding: 6 },
+  kv: { flexDirection: 'row' },
+  kvLabel: { width: 70 },
+  romawi: { width: 22 },
+  tebal: { fontFamily: 'Times-Bold' },
+});
+
+const KopSPD = () => (
+  <View>
+    <View style={spdStyles.kop}>
+      <Text>KEMENTERIAN IMIGRASI DAN PEMASYARAKATAN RI</Text>
+      <Text>KANTOR WILAYAH DIREKTORAT JENDERAL IMIGRASI BALI</Text>
+      <Text style={spdStyles.bold}>KANTOR IMIGRASI KELAS II TPI BULELENG</Text>
+      <Text>JL. SERIRIT - SINGARAJA, PEMARON</Text>
+      <Text>TELP. ( 0362 ) 32174 FAX. ( 0362 ) 31175</Text>
+    </View>
+    <View style={spdStyles.kopLine} />
+  </View>
+);
+
+const lamaPerjalanan = (berangkat, kembali) => {
+  if (!berangkat || !kembali) return '...';
+  const selisih = new Date(kembali).getTime() - new Date(berangkat).getTime();
+  return Math.max(0, Math.ceil(selisih / (1000 * 60 * 60 * 24))) + 1;
+};
+
 const SuratPerjalananDinas = ({ data }) => {
+  const ppk = namaNip(data['ppk']);
+  const pegawai = String(data['pegawai'] || '').split('\n');
   const rows = [
     [
       1,
       'Pejabat Pembuat Komitmen',
       <Text>
         Kantor Imigrasi Kelas II TPI Buleleng{'\n'}
-        <Text style={{ fontFamily: 'Times-Bold' }}>
-          {data['ppk']?.split('\n')[0]?.toUpperCase() || '[NAMA PPK]'}
-        </Text>
+        <Text style={spdStyles.bold}>{ppk.nama ? ppk.nama.toUpperCase() : '[NAMA PPK]'}</Text>
       </Text>,
     ],
     [
       2,
       'Nama/ NIP pegawai yang melaksanakan tugas',
-      <Text style={{ fontFamily: 'Times-Bold' }}>
-        {data['pegawai']?.split('\n')[0]?.toUpperCase() || '[NAMA PEGAWAI]'}
+      <Text>
+        <Text style={spdStyles.bold}>{pegawai[0]?.toUpperCase() || '[NAMA PEGAWAI]'}</Text>
         {'\n'}
-        <Text style={{ fontFamily: 'Times-Roman' }}>
-          {data['pegawai']?.split('\n')[1]?.replace('NIP. ', '') || '[NIP]'}
-        </Text>
+        {pegawai[1]?.replace('NIP. ', '') || '[NIP]'}
       </Text>,
     ],
     [
@@ -283,15 +383,16 @@ const SuratPerjalananDinas = ({ data }) => {
         <Text>c. Tingkat Biaya Perjalanan Dinas</Text>
       </View>,
       <View>
-        <Text>a. {data['pegawai']?.split('\n')[2]?.replace('Pangkat: ', '') || '[Pangkat]'}</Text>
-        <Text>
-          b.{' '}
-          {data['pegawai']?.split('\n')[3]?.replace('Jabatan: ', '')?.toUpperCase() || '[JABATAN]'}
-        </Text>
+        <Text>a. {pegawai[2]?.replace('Pangkat: ', '') || '[Pangkat]'}</Text>
+        <Text>b. {pegawai[3]?.replace('Jabatan: ', '') || '[Jabatan]'}</Text>
         <Text>c. {data['tingkat_biaya'] || 'Tingkat C'}</Text>
       </View>,
     ],
-    [4, 'Maksud Perjalanan Dinas', <Text>{data['maksud'] || '[Maksud perjalanan]'}</Text>],
+    [
+      4,
+      'Maksud Perjalanan Dinas',
+      <Text style={{ textAlign: 'justify' }}>{data['maksud'] || '[Maksud perjalanan]'}</Text>,
+    ],
     [
       5,
       'Alat Angkut Yang Digunakan',
@@ -316,19 +417,7 @@ const SuratPerjalananDinas = ({ data }) => {
         <Text>c. Tanggal Harus Kembali / Tiba Ditempat Baru</Text>
       </View>,
       <View>
-        <Text>
-          a.{' '}
-          {(() => {
-            if (data['tanggal_berangkat'] && data['tanggal_kembali']) {
-              const start = new Date(data['tanggal_berangkat']);
-              const end = new Date(data['tanggal_kembali']);
-              const diffTime = end.getTime() - start.getTime();
-              const diffDays = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24))) + 1;
-              return diffDays;
-            }
-            return '...';
-          })()}
-        </Text>
+        <Text>a. {lamaPerjalanan(data['tanggal_berangkat'], data['tanggal_kembali'])}</Text>
         <Text>b. {data['tanggal_berangkat'] ? fmtDateDash(data['tanggal_berangkat']) : '...'}</Text>
         <Text>c. {data['tanggal_kembali'] ? fmtDateDash(data['tanggal_kembali']) : '...'}</Text>
       </View>,
@@ -341,8 +430,8 @@ const SuratPerjalananDinas = ({ data }) => {
         <Text>2.</Text>
         <Text>3.</Text>
       </View>,
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-        <Text>Tanggal lahir</Text>
+      <View style={{ flexDirection: 'row' }}>
+        <Text style={{ width: '50%' }}>Tanggal lahir</Text>
         <Text>Keterangan</Text>
       </View>,
     ],
@@ -354,6 +443,7 @@ const SuratPerjalananDinas = ({ data }) => {
         <Text>b. Akun</Text>
       </View>,
       <View>
+        <Text> </Text>
         <Text>a. Kantor Imigrasi Kelas II TPI Buleleng</Text>
         <Text>b. {data['akun'] || '[Kode MAK]'}</Text>
       </View>,
@@ -362,83 +452,173 @@ const SuratPerjalananDinas = ({ data }) => {
   ];
 
   return (
-    <View>
-      <View
-        style={{
-          alignItems: 'flex-end',
-          marginBottom: 20,
-          fontSize: 10,
-          fontFamily: 'Times-Roman',
-        }}
-      >
-        <View style={{ width: 180 }}>
-          <View style={{ flexDirection: 'row' }}>
-            <Text style={{ width: 50 }}>Lembar ke I</Text>
-            <Text>: </Text>
-          </View>
-          <View style={{ flexDirection: 'row' }}>
-            <Text style={{ width: 50 }}>Kode No.</Text>
-            <Text>: </Text>
-          </View>
-          <View style={{ flexDirection: 'row' }}>
-            <Text style={{ width: 50 }}>Nomor</Text>
-            <Text>: {data['nomor_spd'] || ''}</Text>
-          </View>
+    <>
+      <Page size="A4" style={spdStyles.page}>
+        <KopSPD />
+        <View style={spdStyles.kanan}>
+          <Text>Lembar ke I:</Text>
+          <Text>Kode No. :</Text>
+          <Text>Nomor : {data['nomor_spd'] || ''}</Text>
         </View>
-      </View>
 
-      <View style={styles.header}>
-        <Text
-          style={{
-            fontFamily: 'Helvetica-Bold',
-            textDecoration: 'underline',
-            fontSize: 12,
-            marginBottom: 2,
-          }}
-        >
-          SURAT PERJALANAN DINAS (SPD)
+        <Text style={spdStyles.judul}>SURAT PERJALANAN DINAS (SPD)</Text>
+
+        <View style={spdStyles.table}>
+          {rows.map(([no, label, val]) => (
+            <View key={no} style={spdStyles.tr} wrap={false}>
+              <View style={[spdStyles.td, spdStyles.tdNum]}>
+                <Text>{no}</Text>
+              </View>
+              <View style={[spdStyles.td, spdStyles.tdLabel]}>
+                {typeof label === 'string' ? <Text>{label}</Text> : label}
+              </View>
+              <View style={[spdStyles.td, spdStyles.tdVal]}>{val}</View>
+            </View>
+          ))}
+        </View>
+
+        <View style={spdStyles.ttd} wrap={false}>
+          <Text>Dikeluarkan di : {data['tempat_dikeluarkan'] || 'Singaraja'}</Text>
+          <Text>
+            Tanggal :{' '}
+            {data['tanggal_dikeluarkan'] ? fmtDateDash(data['tanggal_dikeluarkan']) : '...'}
+          </Text>
+          <Text>Pejabat Pembuat Komitmen</Text>
+          <View style={{ height: 36 }} />
+          <Text>{ppk.nama ? ppk.nama.toUpperCase() : '[NAMA PPK]'}</Text>
+          <Text>NIP. {ppk.nip || '[NIP PPK]'}</Text>
+        </View>
+      </Page>
+      <LembarBelakangSPD data={data} />
+    </>
+  );
+};
+
+const Romawi = ({ no, children }) => (
+  <View style={{ flexDirection: 'row' }}>
+    <Text style={spdStyles.romawi}>{no}</Text>
+    <View style={{ flex: 1 }}>{children}</View>
+  </View>
+);
+
+const Kv = ({ label, value }) => (
+  <View style={spdStyles.kv}>
+    <Text style={spdStyles.kvLabel}>{label}</Text>
+    <Text>: {value}</Text>
+  </View>
+);
+
+const TtdKosong = () => (
+  <View>
+    <Text>Kepala,</Text>
+    <View style={{ height: 26 }} />
+    <Text>................................</Text>
+  </View>
+);
+
+const TtdPpk = ({ ppk }) => (
+  <View>
+    <Text>Pejabat Pembuat Komitmen</Text>
+    <View style={{ height: 32 }} />
+    <Text style={spdStyles.tebal}>{ppk.nama || '[Nama PPK]'}</Text>
+    <Text>NIP. {ppk.nip || '[NIP PPK]'}</Text>
+  </View>
+);
+
+// Lembar belakang SPD: tanpa kop, hanya lambang Garuda
+const LembarBelakangSPD = ({ data }) => {
+  const kepala = namaNip(data['pejabat_ttd']);
+  const ppk = namaNip(data['ppk']);
+  const asal = data['berangkat_dari'] || 'Singaraja';
+  const tgl = (v) => (v ? fmtDateDash(v) : '');
+
+  return (
+    <Page size="A4" style={spdStyles.page2}>
+      <View style={spdStyles.garudaRow}>
+        <Image src={window.location.origin + '/logo-garuda.png'} style={spdStyles.garuda} />
+        <Text style={spdStyles.lampiranPmk}>
+          LAMPIRAN{'\n'}
+          PERATURAN MENTERI KEUANGAN REPUBLIK INDONESIA{'\n'}
+          NOMOR 113/PMK.05/2012 TENTANG PERJALANAN DINAS{'\n'}
+          JABATAN DALAM NEGERI BAGI PEJABAT NEGARA,{'\n'}
+          PEGAWAI NEGERI, DAN PEGAWAI TIDAK TETAP
         </Text>
       </View>
+      <View style={spdStyles.table}>
+        <View style={spdStyles.tr} wrap={false}>
+          <View style={spdStyles.cell} />
+          <View style={spdStyles.cell}>
+            <Romawi no="I.">
+              <Kv label="Berangkat dari" value={asal} />
+              <Kv label="Ke" value="" />
+              <Kv label="Pada Tanggal" value={tgl(data['tanggal_berangkat'])} />
+              <Text>{jabatanSP(data['kategori_pejabat']).spd}</Text>
+              <View style={{ height: 32 }} />
+              <Text style={spdStyles.tebal}>{kepala.nama || '[Nama Pejabat]'}</Text>
+              <Text>NIP. {kepala.nip || '[NIP]'}</Text>
+            </Romawi>
+          </View>
+        </View>
 
-      <View style={styles.table}>
-        {rows.map(([no, label, val]) => (
-          <View key={no} style={styles.tr} wrap={false}>
-            <View style={styles.tdNum}>
-              <Text>{no}</Text>
+        {['II.', 'III.', 'IV.'].map((no) => (
+          <View key={no} style={spdStyles.tr} wrap={false}>
+            <View style={spdStyles.cell}>
+              <Romawi no={no}>
+                <Kv label="Tiba di" value="" />
+                <Text> </Text>
+                <Kv label="Pada Tanggal" value="" />
+                <TtdKosong />
+              </Romawi>
             </View>
-            <View style={styles.tdLabel}>
-              {typeof label === 'string' ? <Text>{label}</Text> : label}
+            <View style={spdStyles.cell}>
+              <Romawi no={no}>
+                <Kv label="Berangkat dari" value="" />
+                <Kv label="ke" value="" />
+                <Kv label="Pada Tanggal" value="" />
+                <TtdKosong />
+              </Romawi>
             </View>
-            <View style={styles.tdVal}>{typeof val === 'string' ? <Text>{val}</Text> : val}</View>
           </View>
         ))}
-      </View>
 
-      <View style={styles.ttdContainer} wrap={false}>
-        <View style={styles.ttdBox}>
-          <View style={styles.row}>
-            <Text style={styles.labelCol}>Dikeluarkan di</Text>
-            <Text style={styles.colonCol}>:</Text>
-            <Text style={styles.valueCol}>{data['tempat_dikeluarkan'] || 'Singaraja'}</Text>
+        <View style={spdStyles.tr} wrap={false}>
+          <View style={[spdStyles.cell, { justifyContent: 'space-between' }]}>
+            <Romawi no="V.">
+              <Kv label="Tiba di" value={asal} />
+              <Kv label="Pada Tanggal" value={tgl(data['tanggal_kembali'])} />
+            </Romawi>
+            <View style={{ paddingLeft: 22, marginTop: 10 }}>
+              <TtdPpk ppk={ppk} />
+            </View>
           </View>
-          <View style={styles.row}>
-            <Text style={styles.labelCol}>Tanggal</Text>
-            <Text style={styles.colonCol}>:</Text>
-            <Text style={styles.valueCol}>
-              {data['tanggal_dikeluarkan'] ? fmtDateDash(data['tanggal_dikeluarkan']) : '...'}
+          <View style={[spdStyles.cell, { justifyContent: 'space-between' }]}>
+            <Text style={{ textAlign: 'justify' }}>
+              Telah diperiksa dengan keterangan bahwa perjalanan tersebut atas perintahnya dan
+              semata-mata untuk kepentingan jabatan dalam waktu yang sesingkat-singkatnya.
+            </Text>
+            <TtdPpk ppk={ppk} />
+          </View>
+        </View>
+
+        <View style={spdStyles.tr} wrap={false}>
+          <View style={[spdStyles.cellFull, { minHeight: 24 }]}>
+            <Text>VI. Catatan lain-lain :</Text>
+          </View>
+        </View>
+
+        <View style={spdStyles.tr} wrap={false}>
+          <View style={spdStyles.cellFull}>
+            <Text style={spdStyles.tebal}>Perhatian :</Text>
+            <Text style={{ textAlign: 'justify' }}>
+              PPK yang menerbitkan SPD, pegawai yang melakukan perjalanan dinas, para pejabat yang
+              mengesahkan tanggal berangkat / tiba, serta bendaharawan bertanggung jawab berdasarkan
+              peraturan-peraturan Keuangan Negara apabila Negara menderita rugi akibat kesalahan,
+              kelalaian dan kealpaan.
             </Text>
           </View>
-
-          <Text style={{ fontFamily: 'Times-Roman', marginTop: 2, marginBottom: 50 }}>
-            Pejabat Pembuat Komitmen
-          </Text>
-          <Text style={{ fontFamily: 'Times-Roman' }}>
-            {data['ppk']?.split('\n')[0]?.toUpperCase() || '[NAMA PPK]'}
-          </Text>
-          <Text>NIP. {data['ppk']?.split('\n')[1]?.replace('NIP. ', '') || '[NIP PPK]'}</Text>
         </View>
       </View>
-    </View>
+    </Page>
   );
 };
 
@@ -550,6 +730,7 @@ const RincianSPBy = ({ data }) => {
             style={{
               fontSize: 11,
               fontFamily: 'Times-Roman',
+              lineHeight: 1.3,
               paddingTop: 40,
               paddingLeft: 60,
               paddingRight: 40,
@@ -577,10 +758,10 @@ const RincianSPBy = ({ data }) => {
             </View>
 
             {/* Body */}
-            <Text style={{ fontFamily: 'Times-Bold', fontSize: 11, marginBottom: 15 }}>
+            <Text style={{ fontFamily: 'Times-Bold', fontSize: 11, marginBottom: 8 }}>
               Yang bertanda tangan di bawah ini:
             </Text>
-            <View style={{ flexDirection: 'row', marginBottom: 5 }}>
+            <View style={{ flexDirection: 'row', marginBottom: 2 }}>
               <View style={{ width: 100 }}>
                 <Text>Nama</Text>
               </View>
@@ -588,7 +769,7 @@ const RincianSPBy = ({ data }) => {
                 <Text>: {pName}</Text>
               </View>
             </View>
-            <View style={{ flexDirection: 'row', marginBottom: 5 }}>
+            <View style={{ flexDirection: 'row', marginBottom: 2 }}>
               <View style={{ width: 100 }}>
                 <Text>NIP</Text>
               </View>
@@ -596,7 +777,7 @@ const RincianSPBy = ({ data }) => {
                 <Text>: {pNip}</Text>
               </View>
             </View>
-            <View style={{ flexDirection: 'row', marginBottom: 20 }}>
+            <View style={{ flexDirection: 'row', marginBottom: 12 }}>
               <View style={{ width: 100 }}>
                 <Text>Jabatan</Text>
               </View>
@@ -605,24 +786,22 @@ const RincianSPBy = ({ data }) => {
               </View>
             </View>
 
-            <Text style={{ marginBottom: 10, lineHeight: 1.5, textAlign: 'justify' }}>
+            <Text style={{ marginBottom: 6, textAlign: 'justify' }}>
               Berdasarkan Surat Perjalanan Dinas tanggal {tglSpd} nomor {noSpd}, dengan ini
               menyatakan dengan sesungguhnya bahwa:
             </Text>
 
-            <View
-              style={{ paddingLeft: 15, marginBottom: 20, lineHeight: 1.5, textAlign: 'justify' }}
-            >
-              <View style={{ flexDirection: 'row' }}>
+            <View style={{ paddingLeft: 15, marginBottom: 12 }}>
+              <View style={{ flexDirection: 'row', marginBottom: 3 }}>
                 <Text style={{ width: 15 }}>1.</Text>
-                <Text style={{ flex: 1 }}>
+                <Text style={{ flex: 1, textAlign: 'justify' }}>
                   Biaya transportasi pegawai dan/atau biaya penginapan di bawah ini yang tidak dapat
                   diperoleh bukti-bukti pengeluaran meliputi:
                 </Text>
               </View>
               <View style={{ flexDirection: 'row' }}>
                 <Text style={{ width: 15 }}>2.</Text>
-                <Text style={{ flex: 1 }}>
+                <Text style={{ flex: 1, textAlign: 'justify' }}>
                   Jumlah uang tersebut pada kolom di bawah benar-benar untuk pelaksanaan perjalanan
                   dinas dimaksud dan apabila dikemudian hari terdapat kelebihan atas pembayaran kami
                   bersedia menyetorkan kelebihan tersebut ke Kas Negara.
@@ -630,7 +809,7 @@ const RincianSPBy = ({ data }) => {
               </View>
             </View>
 
-            <Text style={{ marginBottom: 10 }}>Perincian Biaya:</Text>
+            <Text style={{ marginBottom: 6 }}>Perincian Biaya:</Text>
 
             {/* Tabel */}
             <View style={{ border: '1px solid black' }}>
@@ -704,18 +883,19 @@ const RincianSPBy = ({ data }) => {
               </View>
             </View>
 
-            <View style={{ height: 40 }}></View>
-
             {/* TTD */}
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}>
+            <View
+              style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 28 }}
+              wrap={false}
+            >
               <View style={{ width: 250, textAlign: 'center' }}>
-                <Text style={{ marginBottom: 5 }}>Mengetahui / Menyetujui</Text>
+                <Text style={{ marginBottom: 3 }}>Mengetahui / Menyetujui</Text>
                 <Text style={{ marginBottom: 50 }}>Pejabat Pembuat Komitmen</Text>
                 <Text style={{ fontFamily: 'Times-Bold' }}>{namaPpk.toUpperCase()}</Text>
                 <Text>NIP. {nipPpk}</Text>
               </View>
               <View style={{ width: 250, textAlign: 'center' }}>
-                <Text style={{ marginBottom: 5 }}>Singaraja, {tglPembuatan}</Text>
+                <Text style={{ marginBottom: 3 }}>Singaraja, {tglPembuatan}</Text>
                 <Text style={{ marginBottom: 50 }}>Yang Membuat Pernyataan</Text>
                 <Text style={{ fontFamily: 'Times-Bold' }}>{pName.toUpperCase()}</Text>
                 <Text>NIP. {pNip}</Text>
@@ -759,7 +939,7 @@ const Kwitansi = ({ data }) => {
   const mak = data.mak || '[Kode MAK]';
   const tanggal = data.tanggal_spby ? fmtDateDash(data.tanggal_spby) : '[Tanggal]';
 
-  // Uraian untuk keseluruhan kwitansi diambil dari data.uraian induk
+  // "Untuk Pembayaran" sama dengan SPBy: uraian berkas LPJ
   const uraian = data.uraian || '[Uraian Pembayaran]';
 
   return (
@@ -806,7 +986,8 @@ const Kwitansi = ({ data }) => {
                 <Text>No Bukti</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text>: {data.nomor_surat || '[No Bukti]'}</Text>
+                {/* No Bukti = id SPBy (ID berkas LPJ) */}
+                <Text>: {data.nomor_bundle || '[No Bukti]'}</Text>
               </View>
             </View>
           </View>
@@ -843,7 +1024,7 @@ const Kwitansi = ({ data }) => {
             <Text>Untuk Pembayaran</Text>
           </View>
           <View style={{ flex: 1, textAlign: 'justify' }}>
-            <Text>: Biaya {uraian}</Text>
+            <Text>: {uraian}</Text>
           </View>
         </View>
 
@@ -907,7 +1088,6 @@ const SuratPerintahBayar = ({ data }) => {
   const makFull = data.mak || '[Kode MAK]';
   const makOutput = makFull.split(' ').pop() || makFull;
 
-  const tanggal = data.tanggal_spby ? fmtDateDash(data.tanggal_spby) : '[Tanggal]';
   const idValue = data.nomor_bundle || '...';
   const nomorPb = `/PB/692951/${data.tanggal_spby ? data.tanggal_spby.split('-')[0] : '2026'}`;
 
@@ -940,8 +1120,9 @@ const SuratPerintahBayar = ({ data }) => {
             <View style={{ width: '30%', padding: 4 }}>
               <Text>Tanggal</Text>
             </View>
+            {/* Tanggal SPBy diisi manual */}
             <View style={{ width: '70%', padding: 4, borderLeft: '1px solid black' }}>
-              <Text>: {tanggal}</Text>
+              <Text>:</Text>
             </View>
           </View>
           <View style={{ width: '50%', flexDirection: 'row' }}>
@@ -1068,7 +1249,7 @@ const SuratPerintahBayar = ({ data }) => {
 
         {/* Right */}
         <View style={{ width: '30%' }}>
-          <Text>Singaraja, {tanggal}</Text>
+          <Text>Singaraja,</Text>
           <Text>Pejabat Pembuat Komitmen</Text>
           <View style={{ height: 50 }} />
           <Text style={{ fontFamily: 'Helvetica-Bold' }}>{namaPpk.toUpperCase()}</Text>
@@ -1770,94 +1951,109 @@ const SPTJMPelaksana = ({ data, packItem }) => {
     }
   }
 
-  const nomorSp = data.nomor_sp || data.nomor_sp_ref || '[Nomor SP]';
-  const tglSp = data.tanggal_sp
-    ? fmtDateDash(data.tanggal_sp)
-    : data.tanggal_mulai
-      ? fmtDateDash(data.tanggal_mulai)
-      : '[Tanggal SP]';
   const tglTtd = data.tanggal_spby
     ? fmtDateDash(data.tanggal_spby)
     : data.tanggal_ttd
       ? fmtDateDash(data.tanggal_ttd)
       : '[Tanggal]';
   const tempat = data.tempat_dikeluarkan || data.tempat_terbit || 'Singaraja';
+  // Non-Perjadin: uraian berkas (tanpa titik di akhir), tanggal SPBy, dan jumlah transaksi
+  // pelaksana ini (baris transaksi berlabel "NIP - Nama")
+  const uraianNp = String(data.uraian || '[Uraian Pembayaran]')
+    .trim()
+    .replace(/[.;\s]+$/, '');
+  const jumlahNp = (data.detail_transaksi || [])
+    .filter((r) => r.pegawai === `${nip} - ${pegawaiName}`)
+    .reduce((sum, r) => sum + (parseInt(String(r.jumlah).replace(/[^0-9]/g, ''), 10) || 0), 0);
 
   return (
-    <View style={{ fontSize: 11, fontFamily: 'Times-Roman', lineHeight: 1.5 }}>
-      <View style={{ alignItems: 'center', marginBottom: 20, marginTop: 10 }}>
-        <Text style={{ fontFamily: 'Times-Bold', fontSize: 12 }}>
-          SURAT PERNYATAAN TANGGUNG JAWAB MUTLAK
-        </Text>
-      </View>
+    <Page size="A4" style={sptjmStyles.page}>
+      <KopSPD />
+      <Text style={sptjmStyles.judul}>SURAT PERNYATAAN TANGGUNG JAWAB MUTLAK</Text>
 
-      <View style={{ flexDirection: 'row', marginBottom: 5 }}>
-        <View style={{ width: 80 }}>
-          <Text>Nama</Text>
+      {[
+        ['Nama', pegawaiName.toUpperCase()],
+        ['NIP', nip],
+        ['Jabatan', jabatan],
+      ].map(([label, value]) => (
+        <View key={label} style={sptjmStyles.kv}>
+          <Text style={sptjmStyles.kvLabel}>{label}</Text>
+          <Text style={{ flex: 1 }}>: {value}</Text>
         </View>
-        <View style={{ flex: 1 }}>
-          <Text>: {pegawaiName}</Text>
-        </View>
-      </View>
-      <View style={{ flexDirection: 'row', marginBottom: 5 }}>
-        <View style={{ width: 80 }}>
-          <Text>NIP</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text>: {nip}</Text>
-        </View>
-      </View>
-      <View style={{ flexDirection: 'row', marginBottom: 20 }}>
-        <View style={{ width: 80 }}>
-          <Text>Jabatan</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text>: {jabatan}</Text>
-        </View>
-      </View>
+      ))}
 
-      <Text style={{ fontFamily: 'Times-Bold', marginBottom: 15 }}>
-        Menyatakan dengan sesungguhnya bahwa:
-      </Text>
+      <Text style={sptjmStyles.menyatakan}>Menyatakan dengan sesungguhnya bahwa:</Text>
 
-      <View style={{ flexDirection: 'row', marginBottom: 10, textAlign: 'justify' }}>
-        <Text style={{ width: 20 }}>1.</Text>
-        <Text style={{ flex: 1 }}>
-          Sehubungan dengan Surat Perintah Kepala Kantor Imigrasi Kelas II TPI Buleleng Nomor{' '}
-          {nomorSp} tanggal {tglSp} , maka saya telah melaksanakan perjalanan dinas dimaksud dan
-          perhitungan sebagaimana daftar pengeluaran riil dan rincian biaya perjalanan dinas telah
-          dihitung dengan benar;
-        </Text>
-      </View>
-
-      <View style={{ flexDirection: 'row', marginBottom: 20, textAlign: 'justify' }}>
-        <Text style={{ width: 20 }}>2.</Text>
-        <Text style={{ flex: 1 }}>
-          Apabila dikemudian hari terdapat kesalahan dan/atau kelebihan atas pembayaran Surat
-          Perintah Perjalanan Dinas (SPPD) kegiatan tersebut, sebagian atau seluruhnya, kami
-          bertanggung jawab sepenuhnya dan bersedia menyetorkan atas kesalahan dan/atau kelebihan
-          pembayaran tersebut ke Kas Negara.
-        </Text>
-      </View>
-
-      <Text style={{ marginBottom: 40 }}>
+      {data.non_perjadin ? (
+        <>
+          <Text style={sptjmStyles.paragraf}>
+            1. Sehubungan dengan pembayaran {uraianNp} tanggal{' '}
+            {fmtTanggalPanjang(data.tanggal_spby)}, maka saya telah melaksanakan pembayaran sebesar
+            Rp. {new Intl.NumberFormat('id-ID').format(jumlahNp)} telah dihitung dengan benar;
+          </Text>
+          <Text style={sptjmStyles.paragraf}>
+            2. Apabila dikemudian hari terdapat kesalahan dan/atau kelebihan atas pembayaran
+            tersebut, sebagian atau seluruhnya, kami bertanggung jawab sepenuhnya dan bersedia
+            menyetorkan atas kesalahan dan/atau kelebihan pembayaran tersebut ke Kas Negara.
+          </Text>
+        </>
+      ) : (
+        <>
+          {/* Surat Perintah selalu ditandatangani KPA (Kepala Kantor) */}
+          <Text style={sptjmStyles.paragraf}>
+            1. Sehubungan dengan Surat Perintah Kepala Kantor Imigrasi Kelas II TPI Buleleng, maka
+            saya telah melaksanakan perjalanan dinas dimaksud dan perhitungan sebagaimana daftar
+            pengeluaran riil dan rincian biaya perjalanan dinas telah dihitung dengan benar;
+          </Text>
+          <Text style={sptjmStyles.paragraf}>
+            2. Apabila dikemudian hari terdapat kesalahan dan/atau kelebihan atas pembayaran Surat
+            Perintah Perjalanan Dinas (SPPD) kegiatan tersebut, sebagian atau seluruhnya, kami
+            bertanggung jawab sepenuhnya dan bersedia menyetorkan atas kesalahan dan/atau kelebihan
+            pembayaran tersebut ke Kas Negara.
+          </Text>
+        </>
+      )}
+      <Text style={sptjmStyles.paragraf}>
         Demikian pernyataan ini kami buat dengan sebenar-benarnya.
       </Text>
 
-      {/* FOOTER / TTD */}
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 20 }}>
-        <View style={{ width: 250, textAlign: 'center' }}>
-          <Text style={{ marginBottom: 5 }}>
-            {tempat}, {tglTtd}
-          </Text>
-          <Text style={{ marginBottom: 50 }}>Yang Membuat Pernyataan,</Text>
-          <Text style={{ fontFamily: 'Times-Bold' }}>{pegawaiName.toUpperCase()}</Text>
-          <Text>NIP. {nip}</Text>
-        </View>
+      {/* TTD di sisi kanan, teks rata kiri */}
+      <View style={sptjmStyles.ttd} wrap={false}>
+        <Text>
+          {tempat}, {tglTtd}
+        </Text>
+        <Text>Yang Membuat Pernyataan,</Text>
+        <View style={{ height: 60 }} />
+        <Text style={{ fontFamily: 'Times-Bold' }}>{pegawaiName.toUpperCase()}</Text>
+        <Text>NIP. {nip}</Text>
       </View>
-    </View>
+    </Page>
   );
 };
+
+const sptjmStyles = StyleSheet.create({
+  page: {
+    paddingTop: 28,
+    paddingBottom: 40,
+    paddingLeft: 60,
+    paddingRight: 55,
+    fontFamily: 'Times-Roman',
+    fontSize: 11.5,
+    lineHeight: 1.5,
+  },
+  judul: {
+    fontFamily: 'Times-Bold',
+    fontSize: 13,
+    textAlign: 'center',
+    marginTop: 10,
+    marginBottom: 18,
+  },
+  kv: { flexDirection: 'row', marginBottom: 2 },
+  kvLabel: { width: 80 },
+  menyatakan: { fontFamily: 'Times-Bold', marginTop: 22, marginBottom: 10 },
+  paragraf: { textAlign: 'justify', marginBottom: 12 },
+  ttd: { marginLeft: '62%', marginTop: 24 },
+});
 
 // ─── SURAT PERNYATAAN PENGELUARAN BIAYA PERJALANAN DINAS ────────────────────
 // Dokumen tersendiri (bukan Rincian SPBy). Format: "Rincian Biaya Perjalanan Dinas" +
@@ -2057,6 +2253,252 @@ const SuratPernyataanPengeluaran = ({ data }) => {
   );
 };
 
+// ─── LAPORAN KEGIATAN ──────────────────────────────────────────────────────
+// A. Umum (Dasar, Pendahuluan, Waktu & Tempat, Pelaksana, Pelaksanaan), B. Hasil, C. Kesimpulan,
+// D. Rekomendasi. Dasar/Waktu & Tempat/Pelaksana otomatis dari SP & SPD; sisanya dari form laporan.
+const BULAN_ID = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+];
+
+/** "2026-03-02" → "02 Maret 2026" */
+const fmtTanggalPanjang = (iso) => {
+  const [y, m, d] = String(iso || '')
+    .split('-')
+    .map(Number);
+  return y && m && d ? `${String(d).padStart(2, '0')} ${BULAN_ID[m - 1]} ${y}` : '[Tanggal]';
+};
+
+/** Isian textarea → baris tidak kosong. */
+const barisIsi = (teks) =>
+  String(teks || '')
+    .split('\n')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+/** Buang penomoran/butir yang diketik pengguna ("1.", "2)", "-", "•"). */
+const tanpaNomor = (s) => s.replace(/^(\d+[.)]|[-•*])\s*/, '');
+
+const lapStyles = StyleSheet.create({
+  page: {
+    paddingTop: 40,
+    paddingBottom: 45,
+    paddingLeft: 60,
+    paddingRight: 55,
+    fontFamily: 'Helvetica',
+    fontSize: 10.5,
+    lineHeight: 1.4,
+  },
+  judul: {
+    fontFamily: 'Helvetica-Bold',
+    fontSize: 11.5,
+    textDecoration: 'underline',
+    textAlign: 'center',
+  },
+  subjudul: {
+    fontFamily: 'Helvetica-Bold',
+    fontSize: 11,
+    textAlign: 'center',
+    marginTop: 2,
+    marginBottom: 12,
+    paddingHorizontal: 20,
+  },
+  bagian: { flexDirection: 'row', marginTop: 10 },
+  nomor: { width: 18 },
+  indent: { marginLeft: 18 },
+  baris: { flexDirection: 'row', marginTop: 2 },
+  isi: { flex: 1, textAlign: 'justify' },
+  paragraf: { textAlign: 'justify', textIndent: 36, marginTop: 2 },
+  pelaksana: { flexDirection: 'row', marginTop: 6, marginLeft: 70 },
+  kvLabel: { width: 118 },
+  ttd: { marginLeft: '56%', marginTop: 20 },
+  ttdLabel: { width: 52 },
+});
+
+// Judul tidak boleh tertinggal sendirian di bawah halaman: judul + `pembuka` selalu satu halaman,
+// dan bagian `utuh` (isi pendek) tidak dipotong antarhalaman.
+const BagianLap = ({ huruf, judul, pembuka, utuh, children }) => (
+  <View wrap={!utuh}>
+    <View wrap={false}>
+      <View style={lapStyles.bagian}>
+        <Text style={lapStyles.nomor}>{huruf}.</Text>
+        <Text>{judul}</Text>
+      </View>
+      {pembuka && <View style={lapStyles.indent}>{pembuka}</View>}
+    </View>
+    <View style={lapStyles.indent}>{children}</View>
+  </View>
+);
+
+const SubPoinLap = ({ no, judul, pembuka, utuh, children }) => (
+  <View style={{ marginTop: 4 }} wrap={!utuh}>
+    <View wrap={false}>
+      <View style={{ flexDirection: 'row' }}>
+        <Text style={lapStyles.nomor}>{no}.</Text>
+        <Text>{judul}</Text>
+      </View>
+      {pembuka && <View style={lapStyles.indent}>{pembuka}</View>}
+    </View>
+    <View style={lapStyles.indent}>{children}</View>
+  </View>
+);
+
+const DaftarLap = ({ items, penanda }) =>
+  items.map((teks, i) => (
+    <View key={i} style={lapStyles.baris}>
+      <Text style={lapStyles.nomor}>{penanda(i)}</Text>
+      <Text style={lapStyles.isi}>{tanpaNomor(teks)}</Text>
+    </View>
+  ));
+
+const ParagrafLap = ({ teks, kosong }) => {
+  const baris = barisIsi(teks);
+  return (baris.length ? baris : [kosong]).map((p, i) => (
+    <Text key={i} style={lapStyles.paragraf}>
+      {p}
+    </Text>
+  ));
+};
+
+const LaporanKegiatan = ({ data }) => {
+  const dasar = (Array.isArray(data.dasar) ? data.dasar : []).filter(Boolean);
+  const pelaksana = Array.isArray(data.pegawai_list) ? data.pegawai_list : [];
+  const hasil = barisIsi(data.lap_hasil);
+  const [namaTtd, nipTtd] = String(data.lap_ttd || '').split('\n');
+
+  const kartuPelaksana = (pelaksana.length ? pelaksana : ['[Nama Pelaksana]']).map((p, i) => {
+    const l = p.split('\n');
+    return (
+      <View key={i} style={lapStyles.pelaksana} wrap={false}>
+        <Text style={lapStyles.nomor}>{i + 1}.</Text>
+        <View style={{ flex: 1 }}>
+          {[
+            ['Nama', l[0]?.toUpperCase()],
+            ['NIP', l[1]?.replace('NIP. ', '')],
+            ['Pangkat / Gol Ruang', l[2]?.replace('Pangkat: ', '')],
+            ['Jabatan', l[3]?.replace('Jabatan: ', '')],
+          ].map(([label, nilai]) => (
+            <View key={label} style={{ flexDirection: 'row' }}>
+              <Text style={lapStyles.kvLabel}>{label}</Text>
+              <Text style={{ flex: 1 }}>: {nilai || '-'}</Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  });
+
+  // Sub-poin A dan bagian B dst. hanya dicetak bila ada isinya, nomor/huruf menyesuaikan
+  const subUmum = [
+    {
+      judul: 'Dasar',
+      isi: (
+        <DaftarLap
+          items={dasar.length ? dasar : ['[Dasar]']}
+          penanda={(i) => `${String.fromCharCode(97 + i)}.`}
+        />
+      ),
+    },
+    data.lap_pendahuluan && {
+      judul: 'Pendahuluan',
+      isi: <ParagrafLap teks={data.lap_pendahuluan} />,
+      utuh: true,
+    },
+    {
+      judul: 'Waktu dan Tempat Pelaksanaan',
+      isi: <ParagrafLap teks={data.maksud} kosong="[Waktu dan tempat pelaksanaan]" />,
+      utuh: true,
+    },
+    { judul: 'Pelaksana kegiatan :', pembuka: kartuPelaksana[0], isi: kartuPelaksana.slice(1) },
+    data.lap_pelaksanaan && {
+      judul: 'Pelaksanaan Kegiatan',
+      isi: <ParagrafLap teks={data.lap_pelaksanaan} />,
+      utuh: true,
+    },
+  ].filter(Boolean);
+
+  const bagianLain = [
+    {
+      judul: 'HASIL YANG DICAPAI',
+      pembuka: (
+        <Text style={lapStyles.paragraf}>
+          Berdasarkan hasil pelaksanaan tugas tersebut diatas, dilaporkan hasil kegiatan sebagai
+          berikut :
+        </Text>
+      ),
+      isi:
+        hasil.length > 1 ? (
+          <DaftarLap items={hasil} penanda={(i) => `${i + 1}.`} />
+        ) : (
+          <ParagrafLap teks={hasil[0] && tanpaNomor(hasil[0])} kosong="[Hasil yang dicapai]" />
+        ),
+    },
+    data.lap_kesimpulan && {
+      judul: 'KESIMPULAN',
+      isi: <ParagrafLap teks={data.lap_kesimpulan} />,
+      utuh: true,
+    },
+    data.lap_rekomendasi && {
+      judul: 'REKOMENDASI / TINDAK LANJUT',
+      isi: <ParagrafLap teks={data.lap_rekomendasi} />,
+      utuh: true,
+    },
+  ].filter(Boolean);
+
+  return (
+    <Page size="A4" style={lapStyles.page}>
+      <KopSurat />
+      <Text style={lapStyles.judul}>LAPORAN KEGIATAN</Text>
+      <Text style={lapStyles.subjudul}>{data.lap_judul || '[Judul Kegiatan]'}</Text>
+
+      <BagianLap huruf="A" judul="UMUM">
+        {subUmum.map(({ judul, pembuka, isi, utuh }, i) => (
+          <SubPoinLap key={judul} no={i + 1} judul={judul} pembuka={pembuka} utuh={utuh}>
+            {isi}
+          </SubPoinLap>
+        ))}
+      </BagianLap>
+
+      {bagianLain.map(({ judul, pembuka, isi, utuh }, i) => (
+        <BagianLap
+          key={judul}
+          huruf={String.fromCharCode(66 + i)}
+          judul={judul}
+          pembuka={pembuka}
+          utuh={utuh}
+        >
+          {isi}
+        </BagianLap>
+      ))}
+
+      <View style={lapStyles.ttd} wrap={false}>
+        <View style={{ flexDirection: 'row' }}>
+          <Text style={lapStyles.ttdLabel}>Dibuat di</Text>
+          <Text>: Singaraja</Text>
+        </View>
+        <View style={{ flexDirection: 'row' }}>
+          <Text style={lapStyles.ttdLabel}>Tanggal</Text>
+          <Text>: {fmtTanggalPanjang(data.lap_tanggal)}</Text>
+        </View>
+        <Text>{data.lap_jabatan_ttd || '[Jabatan Penanda Tangan]'}</Text>
+        <View style={{ height: 50 }} />
+        <Text>{namaTtd || '[Nama Penanda Tangan]'}</Text>
+        <Text>NIP. {nipTtd?.replace('NIP. ', '') || '[NIP]'}</Text>
+      </View>
+    </Page>
+  );
+};
+
 // Diekspor supaya modul LPJ bisa mencetak langsung (pdf().toBlob()) tanpa membuka pratinjau
 export const MyPdfDocument = ({ surat, data, packItem }) => (
   <Document>
@@ -2096,15 +2538,17 @@ export const MyPdfDocument = ({ surat, data, packItem }) => (
       <Nominatif data={data} />
     ) : surat.id === 'surat-pernyataan-pengeluaran' ? (
       <SuratPernyataanPengeluaran data={data} />
+    ) : surat.id === 'surat-perjalanan-dinas' ? (
+      <SuratPerjalananDinas data={data} />
+    ) : surat.id === 'sptjm-pelaksana' ? (
+      <SPTJMPelaksana data={data} packItem={packItem} />
+    ) : surat.id === 'laporan' ? (
+      <LaporanKegiatan data={data} />
     ) : (
       <Page size="A4" style={styles.page}>
         <KopSurat />
         {surat.id === 'surat-perintah' ? (
           <SuratPerintah data={data} />
-        ) : surat.id === 'surat-perjalanan-dinas' ? (
-          <SuratPerjalananDinas data={data} />
-        ) : surat.id === 'sptjm-pelaksana' ? (
-          <SPTJMPelaksana data={data} packItem={packItem} />
         ) : (
           <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
             <Text style={{ color: 'gray' }}>Template belum dikonfigurasi.</Text>
@@ -2172,7 +2616,11 @@ const NotaDinas = ({ data }) => {
 
   // Ambil nama PPK
   const namaPpk = data.pejabat_ppk?.split('\n')[0] || '[NAMA PPK]';
-  const nipPpk = data.pejabat_ppk?.split('\n')[1]?.replace('NIP. ', '') || '[NIP PPK]';
+
+  // Penanda tangan: pelaksana pertama
+  const pelaksana = data.pegawai_list?.[0]?.split('\n') || [];
+  const namaPelaksana = pelaksana[0] || '[NAMA PELAKSANA]';
+  const nipPelaksana = pelaksana[1]?.replace('NIP. ', '') || '[NIP PELAKSANA]';
 
   return (
     <View style={{ fontSize: 11, fontFamily: 'Helvetica', lineHeight: 1.5, paddingRight: 20 }}>
@@ -2313,8 +2761,8 @@ const NotaDinas = ({ data }) => {
             Singaraja, {data.tanggal_spby ? fmtDateDash(data.tanggal_spby) : '[Tanggal]'}
           </Text>
           <Text style={{ marginBottom: 60 }}>Pelaksana,</Text>
-          <Text style={{ fontFamily: 'Helvetica-Bold' }}>{namaPpk.toUpperCase()}</Text>
-          <Text>NIP. {nipPpk}</Text>
+          <Text style={{ fontFamily: 'Helvetica-Bold' }}>{namaPelaksana.toUpperCase()}</Text>
+          <Text>NIP. {nipPelaksana}</Text>
         </View>
       </View>
     </View>

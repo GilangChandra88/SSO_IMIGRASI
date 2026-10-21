@@ -5,9 +5,12 @@
 
 import { useState, useEffect } from 'react';
 import {
+  arrayRemove,
   collection,
   doc,
+  getDocs,
   setDoc,
+  writeBatch,
   updateDoc,
   onSnapshot,
   query,
@@ -26,7 +29,8 @@ import {
   emptyNp,
   emptyPembayaran,
 } from '../utils/emptyModels';
-import { pelaksanaOf } from '../utils/lpjLogic';
+import { isSkemaBaru, lpjIdOf, pelaksanaOf, spbySelesai } from '../utils/lpjLogic';
+import { deleteLpjFile, deleteLpjFolder } from '../services/lpjStorage';
 
 // ─── Hook: Daftar berkas ─────────────────────────────────────────────────────
 
@@ -40,6 +44,9 @@ export function useLPJPacks({ isAdmin = false, userUid = '' } = {}) {
 
   useEffect(() => {
     if (!userUid) return;
+    // Kueri berganti (mis. Super Admin ganti tampilan peran): jangan tampilkan daftar lama
+    setLoading(true);
+    setPacks([]);
 
     const q = isAdmin
       ? query(collection(db, 'lpj_packs'), orderBy('created_at', 'desc'))
@@ -117,30 +124,19 @@ const uniq = (arr) => [...new Set(arr.filter(Boolean))];
 export const namaPengguna = (currentUser, userData) =>
   userData?.nama || currentUser?.displayName || currentUser?.email || 'Pengguna';
 
+/** ID dokumen acak untuk berkas baru (dibuat lebih dulu, lalu diteruskan ke createLPJPack). */
+export const idBerkasBaru = () => doc(collection(db, 'lpj_packs')).id;
+
 /**
- * Buat berkas baru. ID berurutan `LPJ-TAHUN-BULAN-NNNN` dari `counters/lpj_{tahun}`.
+ * Buat berkas baru (draf). ID dokumen dibuat acak oleh Firestore; nomor LPJ resmi
+ * (`LPJ-TAHUN-BULAN-NNNN`) baru diterbitkan saat SPBy selesai — lihat saveLPJ opsi `beriNomor`.
  * @param {{ jenis: 'perjadin'|'non-perjadin', uraian: string, uid: string, nama: string,
  *           pegawaiLogin: object|null }} data  pegawaiLogin = referensi pegawai pengguna login
- * @returns {Promise<string>} id berkas
+ * @returns {Promise<string>} id dokumen berkas
  */
-export async function createLPJPack({ jenis, uraian, uid, nama, pegawaiLogin }) {
+export async function createLPJPack({ id, jenis, uraian, uid, nama, pegawaiLogin }) {
   const now = new Date();
-  const year = now.getFullYear().toString();
-  const month = (now.getMonth() + 1).toString().padStart(2, '0');
-  const counterRef = doc(db, 'counters', `lpj_${year}`);
-  let newPackId = '';
-
-  await runTransaction(db, async (transaction) => {
-    const counterDoc = await transaction.get(counterRef);
-    let nextSeq = 1;
-    if (counterDoc.exists()) {
-      nextSeq = (counterDoc.data().count || 0) + 1;
-      transaction.update(counterRef, { count: nextSeq });
-    } else {
-      transaction.set(counterRef, { count: 1 });
-    }
-    newPackId = `LPJ-${year}-${month}-${nextSeq.toString().padStart(4, '0')}`;
-  });
+  const ref = id ? doc(db, 'lpj_packs', id) : doc(collection(db, 'lpj_packs'));
 
   const perjadin = jenis === 'perjadin';
   const bagian = perjadin
@@ -153,12 +149,13 @@ export async function createLPJPack({ jenis, uraian, uid, nama, pegawaiLogin }) 
       }
     : { np: emptyNp(pegawaiLogin, uraian) };
 
-  await setDoc(doc(db, 'lpj_packs', newPackId), {
-    id: newPackId,
+  await setDoc(ref, {
+    id: ref.id,
     skema: 2,
     jenis,
     uraian,
     status: 'draft',
+    nomor_lpj: '',
     ...bagian,
     pembayaran: emptyPembayaran(),
     pegawai_uids: uniq([uid, pegawaiLogin?.uid]),
@@ -167,10 +164,32 @@ export async function createLPJPack({ jenis, uraian, uid, nama, pegawaiLogin }) 
     created_at: serverTimestamp(),
     updated_at: serverTimestamp(),
     completed_at: null,
-    aktivitas: { teks: `membuat berkas baru ${newPackId}`, at: now.toISOString(), oleh: nama, uid },
+    aktivitas: { teks: `membuat berkas baru "${uraian}"`, at: now.toISOString(), oleh: nama, uid },
   });
 
-  return newPackId;
+  return ref.id;
+}
+
+/**
+ * Terbitkan nomor LPJ berurutan `LPJ-TAHUN-BULAN-NNNN` dari `counters/lpj_{tahun}` di dalam
+ * transaksi `transaction`. Mengembalikan nomor lama bila berkas sudah bernomor.
+ */
+async function terbitkanNomor(transaction, packRef) {
+  const snap = await transaction.get(packRef);
+  if (!snap.exists()) throw new Error('Berkas tidak ditemukan.');
+  if (snap.data().nomor_lpj) return { nomor: snap.data().nomor_lpj, baru: false };
+  // Berkas lama: ID dokumennya sudah diambil dari penghitung yang sama, pakai sebagai nomor
+  if (/^LPJ-/.test(snap.id)) return { nomor: snap.id, baru: true };
+
+  const now = new Date();
+  const year = now.getFullYear().toString();
+  const month = (now.getMonth() + 1).toString().padStart(2, '0');
+  const counterRef = doc(db, 'counters', `lpj_${year}`);
+  const counterDoc = await transaction.get(counterRef);
+  const next = (counterDoc.exists() ? counterDoc.data().count || 0 : 0) + 1;
+  if (counterDoc.exists()) transaction.update(counterRef, { count: next });
+  else transaction.set(counterRef, { count: next });
+  return { nomor: `LPJ-${year}-${month}-${next.toString().padStart(4, '0')}`, baru: true };
 }
 
 /**
@@ -179,8 +198,11 @@ export async function createLPJPack({ jenis, uraian, uid, nama, pegawaiLogin }) 
  * @param {object} pack     berkas saat ini
  * @param {object} patch    field yang diganti
  * @param {{ teks?: string, uid?: string, nama?: string }} aktivitas  catatan "Aktivitas Terbaru"
+ * @param {{ beriNomor?: boolean }} opsi  beriNomor = SPBy selesai: simpan sekaligus terbitkan
+ *   nomor LPJ dalam satu transaksi (tidak ada SPBy selesai tanpa nomor, atau sebaliknya)
+ * @returns {Promise<string>} nomor LPJ ('' bila belum terbit)
  */
-export async function saveLPJ(pack, patch, aktivitas = {}) {
+export async function saveLPJ(pack, patch, aktivitas = {}, { beriNomor = false } = {}) {
   const merged = { ...pack, ...patch };
   const data = {
     ...patch,
@@ -196,5 +218,79 @@ export async function saveLPJ(pack, patch, aktivitas = {}) {
       uid: aktivitas.uid || '',
     };
   }
-  await updateDoc(doc(db, 'lpj_packs', pack.id), data);
+  const ref = doc(db, 'lpj_packs', pack.id);
+  // Pengaman: simpanan apa pun yang membuat SPBy terkunci pada berkas belum bernomor ikut
+  // menerbitkan nomor, sehingga tidak ada SPBy selesai tanpa nomor LPJ.
+  const perluNomor = beriNomor || (!lpjIdOf(pack) && spbySelesai(merged));
+  if (!perluNomor) {
+    await updateDoc(ref, data);
+    return lpjIdOf(pack);
+  }
+  return runTransaction(db, async (transaction) => {
+    const { nomor, baru } = await terbitkanNomor(transaction, ref);
+    // Jangan mengubah `data`: fungsi transaksi bisa dijalankan ulang
+    const aktivitasNomor =
+      baru && data.aktivitas
+        ? {
+            aktivitas: {
+              ...data.aktivitas,
+              teks: `${data.aktivitas.teks} — nomor LPJ ${nomor} terbit`,
+            },
+          }
+        : {};
+    transaction.update(ref, {
+      ...data,
+      ...aktivitasNomor,
+      nomor_lpj: nomor,
+      ...(baru ? { nomor_lpj_at: serverTimestamp() } : {}),
+    });
+    return nomor;
+  });
+}
+
+/**
+ * Hapus berkas (lihat canDeletePack) beserta berkas unggahannya.
+ * - Belum bernomor: diperiksa ulang di server; sebelum SPBy selesai satu-satunya unggahan adalah
+ *   scan Surat Perintah ber-TTE.
+ * - `superAdmin`: berkas bernomor pun boleh dihapus; data turunannya ikut dibereskan — dikeluarkan
+ *   dari daftar DRPP, catatan realisasi `MAK_History` dihapus, dan seluruh folder Storage-nya.
+ *   Nomor LPJ yang terhapus tidak dipakai ulang. Berkas format lama ikut menghapus subkoleksi
+ *   `surat_items`-nya (Firestore tidak menghapus subkoleksi bersama dokumen induk).
+ */
+export async function deleteLPJPack(pack, { superAdmin = false } = {}) {
+  const formatLama = !isSkemaBaru(pack);
+  if (superAdmin && (lpjIdOf(pack) || formatLama)) {
+    const [drpps, mak, items] = await Promise.all([
+      getDocs(query(collection(db, 'drpp'), where('expectedLpjIds', 'array-contains', pack.id))),
+      getDocs(query(collection(db, 'MAK_History'), where('suratRef.packId', '==', pack.id))),
+      formatLama
+        ? getDocs(collection(db, 'lpj_packs', pack.id, 'surat_items'))
+        : Promise.resolve({ docs: [] }),
+    ]);
+    const batch = writeBatch(db);
+    items.docs.forEach((d) => batch.delete(d.ref));
+    drpps.docs.forEach((d) =>
+      batch.update(d.ref, { expectedLpjIds: arrayRemove(pack.id), updated_at: serverTimestamp() }),
+    );
+    mak.docs.forEach((d) => batch.delete(d.ref));
+    batch.delete(doc(db, 'lpj_packs', pack.id));
+    await batch.commit();
+    deleteLpjFolder(`lpj/${pack.id}`);
+    return;
+  }
+
+  const ref = doc(db, 'lpj_packs', pack.id);
+  // Periksa ulang di server: bisa saja SPBy baru saja diselesaikan rekan lain
+  const terbaru = await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(ref);
+    if (!snap.exists()) return null;
+    const data = { id: snap.id, ...snap.data() };
+    if (lpjIdOf(data)) throw new Error('Berkas yang sudah bernomor tidak dapat dihapus.');
+    transaction.delete(ref);
+    return data;
+  });
+  const paths = [(terbaru || pack).sp?.scan?.path].filter(Boolean);
+  // Pembersihan Storage tidak ditunggu (sudah diam bila gagal)
+  paths.forEach((path) => deleteLpjFile(path).catch(() => {}));
+  deleteLpjFolder(`lpj/${pack.id}`);
 }

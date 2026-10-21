@@ -118,7 +118,7 @@ export const FORM = {
 
 // ─── Tombol (btn.* purwarupa) ────────────────────────────────────────────────
 const BTN_BASE =
-  'inline-flex items-center gap-1.5 cursor-pointer transition-colors disabled:opacity-50 disabled:cursor-not-allowed';
+  'inline-flex items-center gap-1.5 cursor-pointer motion-safe:transition-[color,background-color,border-color,scale] motion-safe:duration-200 motion-safe:enabled:active:scale-[.97] disabled:opacity-50 disabled:cursor-not-allowed';
 
 export const BTN = {
   primaryDark: `${BTN_BASE} px-5 py-2.5 ${NAVY.bg} ${NAVY.hoverBg} text-white rounded-lg text-[13.5px] font-bold`,
@@ -166,8 +166,8 @@ export const ADMIN = {
   control: ADMIN_CONTROL,
   // .seg-toggle / .seg-btn
   seg: `flex ${T.surface2} p-1 rounded-[11px] gap-0.5 shrink-0 overflow-x-auto max-w-full`,
-  segBtn: `flex items-center gap-1.5 px-3 py-[7px] rounded-lg text-[12.5px] font-bold whitespace-nowrap cursor-pointer transition-colors ${T.inkMuted} hover:text-[#55627A] dark:hover:text-[#A7B6CB]`,
-  segActive: `flex items-center gap-1.5 px-3 py-[7px] rounded-lg text-[12.5px] font-bold whitespace-nowrap cursor-pointer ${T.surface} ${STATUS.infoInk} ${T.shadowSm}`,
+  segBtn: `flex items-center gap-1.5 px-3 py-[7px] rounded-lg text-[12.5px] font-bold whitespace-nowrap cursor-pointer motion-safe:transition-[color,background-color,box-shadow,scale] motion-safe:duration-200 motion-safe:active:scale-95 ${T.inkMuted} hover:text-[#55627A] dark:hover:text-[#A7B6CB]`,
+  segActive: `flex items-center gap-1.5 px-3 py-[7px] rounded-lg text-[12.5px] font-bold whitespace-nowrap cursor-pointer motion-safe:transition-[color,background-color,box-shadow,scale] motion-safe:duration-200 motion-safe:active:scale-95 ${T.surface} ${STATUS.infoInk} ${T.shadowSm}`,
   // .table-scroll / .data-table
   tableWrap: `overflow-x-auto border ${T.border} rounded-[14px]`,
   table: 'w-full border-collapse text-[13.3px]',

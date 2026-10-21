@@ -4,6 +4,8 @@ import { useAuth } from '@/context/AuthContext';
 import { namaPengguna } from '@/modules/e-persuratan/lpj';
 import { showToast } from '@/utils/toastStore';
 import { ADMIN } from '@/utils/uiTokens';
+import { rayakan } from '@/utils/animasi';
+import { useMekarDariTombol } from '@/components/animasi';
 import { SEKSI_OPTIONS, formatNomorSurat, prefixKode } from '../../data/nomorSuratConfig';
 import { buatNomorRegister } from '../../services/nomorSurat';
 import PilihKodeSurat from './PilihKodeSurat';
@@ -15,6 +17,8 @@ const hariIni = () => {
 
 /** Form "Tambah Nomor Surat" (purwarupa admin) dengan kode dari hierarki kode surat. */
 export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
+  // Dibuka dari "Tambah Nomor Surat": form mekar dari tombol itu
+  const mekarRef = useMekarDariTombol();
   const { currentUser, userData } = useAuth();
   const [form, setForm] = useState({ tanggal: hariIni(), seksi: '', perihal: '', tujuan: '' });
   const [kodeIds, setKodeIds] = useState([]);
@@ -59,6 +63,7 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
         nama: namaPengguna(currentUser, userData),
       });
       showToast(`Nomor surat ${nomor} berhasil ditambahkan.`);
+      rayakan({ judul: 'Nomor Terbit', sub: nomor, nada: 'nomor' });
       onKembali();
     } catch {
       showToast('Gagal membuat nomor surat.', 'error');
@@ -67,7 +72,7 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
   };
 
   return (
-    <>
+    <div ref={mekarRef}>
       <button type="button" className={ADMIN.crumb} onClick={onKembali}>
         <FaArrowLeft size={11} />
         Kembali ke Daftar
@@ -167,6 +172,6 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
           </button>
         </div>
       </form>
-    </>
+    </div>
   );
 }

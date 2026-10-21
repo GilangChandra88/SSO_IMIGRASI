@@ -4,6 +4,7 @@ import { ADMIN, FONT, STATUS, T } from '@/utils/uiTokens';
 import { ROW } from './hierarkiKelas';
 import { formatRupiah, tipeBerikut } from './hierarkiUtils';
 import KonfirmasiHapus from './KonfirmasiHapus';
+import { ANIM, hapusBaris, jedaKe } from '@/utils/animasi';
 
 const KARTU = `relative flex flex-col gap-2 p-3.5 rounded-xl border text-left ${T.surface} ${T.border} hover:border-[#CBD3DE] dark:hover:border-[#304864] hover:shadow-[0_1px_2px_rgba(16,26,44,.07)]`;
 
@@ -54,7 +55,7 @@ export default function ExplorerView(props) {
         <p className={ADMIN.empty}>Tidak ada data di sini.</p>
       ) : (
         <div className="grid grid-cols-[repeat(auto-fill,minmax(190px,1fr))] gap-3">
-          {anak.map((n) => {
+          {anak.map((n, i) => {
             const isAkhir = n.type === tipeAkhir;
             const menungguHapus = pendingHapus === n.id;
             const buka = () => setJalur([...jalurSah, n.id]);
@@ -81,7 +82,15 @@ export default function ExplorerView(props) {
                 >
                   {menungguHapus ? (
                     <KonfirmasiHapus
-                      onYa={() => aksi.hapus(n.id)}
+                      onYa={(e) =>
+                        hapusBaris(
+                          e.currentTarget.closest('[data-kartu]'),
+                          () => aksi.hapus(n.id),
+                          {
+                            geser: false,
+                          },
+                        )
+                      }
                       onBatal={aksi.batalHapus}
                       busy={sibuk}
                     />
@@ -111,15 +120,16 @@ export default function ExplorerView(props) {
               </>
             );
             return isAkhir ? (
-              <div key={n.id} className={`group ${KARTU}`}>
+              <div key={n.id} data-kartu className={`group ${KARTU} ${ANIM.meletup} ${jedaKe(i)}`}>
                 {isi}
               </div>
             ) : (
               <div
                 key={n.id}
+                data-kartu
                 role="button"
                 tabIndex={0}
-                className={`group cursor-pointer ${KARTU}`}
+                className={`group cursor-pointer ${KARTU} ${ANIM.meletup} ${jedaKe(i)}`}
                 onClick={buka}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' || e.key === ' ') {

@@ -10,10 +10,11 @@ import {
 } from 'react-icons/fa';
 import { NP_LAMPIRAN_MAX_COUNT, NP_PACK_DOCS, SCAN_MAX_BYTES } from '../../data/masterLpj';
 import { formatTanggal } from '../../utils/formatTanggal';
-import { lpjRowTotal } from '../../utils/lpjLogic';
+import { lpjIdOf, lpjRowTotal } from '../../utils/lpjLogic';
 import { deleteLpjFile, pesanGagalUnggah, uploadLpjFile } from '../../services/lpjStorage';
 import ProgressBar from '../../ui/ProgressBar';
 import { BTN, FONT, LAYOUT, NAVY, STATUS, T } from '@/utils/uiTokens';
+import { ANIM, hapusBaris, rayakan } from '@/utils/animasi';
 
 /** Fase 2 Non-Perjadin — unggah Foto Bukti/Produk & Nota Pembayaran, lalu berkas selesai. */
 export default function StepLampiran({ ctx }) {
@@ -104,11 +105,16 @@ export default function StepLampiran({ ctx }) {
       onYes: async () => {
         const ok = await persist(
           (prev) => ({ ...prev, np: { ...prev.np, lampiranLocked: true } }),
-          { quiet: true, teks: `menyelesaikan berkas ${pack.id}`, extra: { status: 'selesai' } },
+          {
+            quiet: true,
+            teks: `menyelesaikan berkas ${lpjIdOf(pack)}`,
+            extra: { status: 'selesai' },
+          },
         );
         closeConfirm();
         if (ok) {
-          showToast(`LPJ ${pack.id} berhasil diselesaikan.`);
+          showToast(`LPJ ${lpjIdOf(pack)} berhasil diselesaikan.`);
+          rayakan({ judul: 'Berkas Selesai!', sub: lpjIdOf(pack), nada: 'final' });
           ctx.navigate('/e-persuratan/lpj');
         }
       },
@@ -260,7 +266,7 @@ export default function StepLampiran({ ctx }) {
                     {files.map((f) => (
                       <span
                         key={f.path}
-                        className={`inline-flex items-center gap-1.5 max-w-[220px] text-[11.5px] font-medium pl-2.5 pr-1.5 py-[5px] rounded-[20px] border ${T.surface2} ${T.ink2} ${T.border}`}
+                        className={`inline-flex items-center gap-1.5 max-w-[220px] text-[11.5px] font-medium pl-2.5 pr-1.5 py-[5px] rounded-[20px] border ${ANIM.meletup} ${T.surface2} ${T.ink2} ${T.border}`}
                       >
                         <a
                           href={f.url}
@@ -275,7 +281,13 @@ export default function StepLampiran({ ctx }) {
                           type="button"
                           title="Hapus foto"
                           aria-label={`Hapus ${f.name}`}
-                          onClick={() => removeFile(doc.key, f)}
+                          onClick={(e) =>
+                            hapusBaris(
+                              e.currentTarget.parentElement,
+                              () => removeFile(doc.key, f),
+                              { geser: false },
+                            )
+                          }
                           className={`flex ${STATUS.critInk}`}
                         >
                           <FaTimes size={11} />

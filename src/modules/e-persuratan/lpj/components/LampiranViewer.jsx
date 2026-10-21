@@ -6,7 +6,7 @@ import { BTN, FONT, T } from '@/utils/uiTokens';
 /** Menampilkan berkas unggahan (foto/PDF) dari Firebase Storage. */
 export default function LampiranViewer({ label, files, onClose }) {
   return (
-    <Modal widthClass="max-w-[760px]" onClose={onClose} labelledBy="judul-lampiran">
+    <Modal widthClass="max-w-[760px]" onClose={onClose} labelledBy="judul-lampiran" dariTombol>
       <div className={`flex items-center justify-between px-[22px] py-[18px] border-b ${T.border}`}>
         <h3 id="judul-lampiran" className={`${FONT.head} font-bold text-[15px] ${T.ink}`}>
           {label}

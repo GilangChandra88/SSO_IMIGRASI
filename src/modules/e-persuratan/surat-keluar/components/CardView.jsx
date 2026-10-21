@@ -6,6 +6,8 @@
  */
 
 import React, { useState } from 'react';
+import { ANIM } from '@/utils/animasi';
+import { AngkaBerjalan, useMunculBerurutan } from '@/components/animasi';
 import { FaLink, FaFileAlt, FaProjectDiagram, FaSearch, FaRegFileAlt, FaEye } from 'react-icons/fa';
 
 // Hapus warna kategori yang bermacam-macam, ganti dengan style seragam yang elegan
@@ -32,6 +34,8 @@ export default function CardView({ suratList, onSelectSurat, onPreviewSurat, onS
   const [search, setSearch] = useState('');
   const [filterKategori, setFilterKategori] = useState('Semua');
 
+  // Kartu muncul berurutan (diulang saat filter/pencarian berganti)
+  const gridRef = useMunculBerurutan(`${search}|${filterKategori}`);
   const kategoriList = ['Semua', ...new Set(suratList.map((s) => s.kategori).filter(Boolean))];
 
   const filtered = suratList.filter((s) => {
@@ -70,7 +74,7 @@ export default function CardView({ suratList, onSelectSurat, onPreviewSurat, onS
             <button
               key={k}
               onClick={() => setFilterKategori(k)}
-              className={`px-4 py-2 rounded-lg text-xs font-semibold border transition-all ${
+              className={`px-4 py-2 rounded-lg text-xs font-semibold border ${ANIM.pilih} ${
                 filterKategori === k
                   ? 'bg-slate-800 text-white border-slate-800 shadow-sm'
                   : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700'
@@ -89,7 +93,10 @@ export default function CardView({ suratList, onSelectSurat, onPreviewSurat, onS
           <p className="font-medium text-sm">Tidak ada dokumen yang ditemukan</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+        <div
+          ref={gridRef}
+          className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5"
+        >
           {filtered.map((surat) => (
             <SuratCard
               key={surat.id}
@@ -107,7 +114,7 @@ export default function CardView({ suratList, onSelectSurat, onPreviewSurat, onS
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-6 border-t border-slate-200 dark:border-slate-700 pt-4">
           Menampilkan{' '}
           <strong className="text-slate-800 dark:text-slate-100 font-bold">
-            {filtered.length}
+            <AngkaBerjalan nilai={filtered.length} />
           </strong>{' '}
           dari{' '}
           <strong className="text-slate-800 dark:text-slate-100 font-bold">
@@ -130,12 +137,15 @@ function SuratCard({ surat, onOpen, onShowInFlow, onPreview }) {
     'bg-slate-100 dark:bg-slate-800/50 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700';
 
   return (
-    <div className="group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 transition-all duration-200 flex flex-col relative overflow-hidden">
+    <div
+      data-bertahap
+      className={`group bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl p-5 hover:shadow-md hover:border-slate-300 dark:hover:border-slate-600 flex flex-col relative overflow-hidden motion-safe:transition-[translate,box-shadow,border-color] motion-safe:duration-200 motion-safe:ease-out motion-safe:hover:-translate-y-1`}
+    >
       {/* Garis Aksen Biru Dongker di Atas */}
       <div className="absolute top-0 left-0 w-full h-1 bg-slate-800 opacity-0 group-hover:opacity-100 transition-opacity"></div>
 
       {/* ── Document Thumbnail Preview ── */}
-      <div className="w-full h-32 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 p-3 mb-4 flex flex-col relative overflow-hidden group-hover:border-slate-300 dark:hover:border-slate-600 group-hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+      <div className="w-full h-32 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 p-3 mb-4 flex flex-col relative overflow-hidden group-hover:border-slate-300 dark:hover:border-slate-600 group-hover:bg-slate-100 dark:hover:bg-slate-700 motion-safe:transition-[background-color,border-color,rotate,scale] motion-safe:duration-300 motion-safe:group-hover:-rotate-1 motion-safe:group-hover:scale-[1.02]">
         {/* KOP Surat Skeleton */}
         <div className="flex gap-2 items-center border-b-2 border-slate-300 dark:border-slate-600 pb-1.5 mb-2">
           <div className="w-5 h-5 rounded-full bg-slate-300 shrink-0"></div>
@@ -226,13 +236,14 @@ function SuratCard({ surat, onOpen, onShowInFlow, onPreview }) {
         <button
           onClick={onPreview}
           title="Lihat Format Surat"
-          className="p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 transition-colors"
+          className={`p-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700 hover:text-slate-800 ${ANIM.pilih}`}
         >
           <FaEye size={14} />
         </button>
         <button
+          data-mekar
           onClick={onOpen}
-          className="flex-1 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold py-2 px-4 rounded-lg transition-colors flex items-center justify-center gap-2 shadow-sm"
+          className={`flex-1 bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold py-2 px-4 rounded-lg flex items-center justify-center gap-2 shadow-sm ${ANIM.pilih}`}
         >
           Isi Form
         </button>

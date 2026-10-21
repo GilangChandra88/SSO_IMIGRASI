@@ -9,6 +9,7 @@ import StrukturHierarki from '@/components/StrukturHierarki/StrukturHierarki';
 import { indeksHierarki } from '@/components/StrukturHierarki/hierarkiUtils';
 import ToastViewport from '@/components/ToastViewport';
 import { ADMIN, GOLD, T } from '@/utils/uiTokens';
+import { ANIM } from '@/utils/animasi';
 import PengaturanNomor from '../components/nomor-surat/PengaturanNomor';
 import RegisterNomorSurat from '../components/nomor-surat/RegisterNomorSurat';
 import RiwayatSurat from '../components/nomor-surat/RiwayatSurat';
@@ -59,6 +60,7 @@ export default function NomorSuratKanim() {
                   <button
                     type="button"
                     className={ADMIN.btnAdd}
+                    data-mekar
                     onClick={() => setFormTambah(true)}
                   >
                     <FaPlus size={11} className={GOLD.text} />
@@ -87,29 +89,34 @@ export default function NomorSuratKanim() {
                 ))}
               </div>
 
-              {tab === 'daftar' && (
-                <RegisterNomorSurat rows={register.rows} loading={register.loading} />
-              )}
-              {tab === 'riwayat' && <RiwayatSurat rows={riwayat.rows} loading={riwayat.loading} />}
-              {tab === 'hierarki' && (
-                <>
-                  <p className={`text-[12.5px] leading-[1.6] mb-3.5 ${T.inkMuted}`}>
-                    {HIERARKI_KODE.join(' → ')}
-                  </p>
-                  {memuatKode ? (
-                    <p className={ADMIN.empty}>Memuat hierarki kode...</p>
-                  ) : (
-                    <StrukturHierarki
-                      nodes={nodes}
-                      hierarchy={HIERARKI_KODE}
-                      onSimpan={simpanKodeSurat}
-                      onHapus={hapusKodeSurat}
-                      pesanPohonKosong="Belum ada kode surat. Tambahkan KOP lewat tampilan Explorer."
-                    />
-                  )}
-                </>
-              )}
-              {tab === 'pengaturan' && <PengaturanNomor lastNumber={lastNumber} />}
+              {/* Isi tab dipasang ulang (key) agar memudar naik setiap ganti tab */}
+              <div key={tab} className={ANIM.muncul}>
+                {tab === 'daftar' && (
+                  <RegisterNomorSurat rows={register.rows} loading={register.loading} />
+                )}
+                {tab === 'riwayat' && (
+                  <RiwayatSurat rows={riwayat.rows} loading={riwayat.loading} />
+                )}
+                {tab === 'hierarki' && (
+                  <>
+                    <p className={`text-[12.5px] leading-[1.6] mb-3.5 ${T.inkMuted}`}>
+                      {HIERARKI_KODE.join(' → ')}
+                    </p>
+                    {memuatKode ? (
+                      <p className={ADMIN.empty}>Memuat hierarki kode...</p>
+                    ) : (
+                      <StrukturHierarki
+                        nodes={nodes}
+                        hierarchy={HIERARKI_KODE}
+                        onSimpan={simpanKodeSurat}
+                        onHapus={hapusKodeSurat}
+                        pesanPohonKosong="Belum ada kode surat. Tambahkan KOP lewat tampilan Explorer."
+                      />
+                    )}
+                  </>
+                )}
+                {tab === 'pengaturan' && <PengaturanNomor lastNumber={lastNumber} />}
+              </div>
             </>
           )}
         </section>

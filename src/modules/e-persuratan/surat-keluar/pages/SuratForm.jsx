@@ -34,8 +34,12 @@ import { useAuth } from '@/context/AuthContext';
 import { syncSPDItems, syncOtherSPDsData } from '@/modules/e-persuratan/lpj';
 import SuratPreviewModal from '@/components/SuratPreview/SuratPreviewModal';
 import SuratPreviewCanvas from '@/components/SuratPreview/SuratPreviewCanvas';
+import { ANIM } from '@/utils/animasi';
+import { useMekarDariTombol } from '@/components/animasi';
 
 export default function SuratForm() {
+  // Dibuka dari "Isi Form": halaman form mekar dari tombol itu
+  const mekarRef = useMekarDariTombol();
   const { suratId } = useParams();
   const navigate = useNavigate();
   const location = useLocation();
@@ -439,11 +443,18 @@ export default function SuratForm() {
   };
 
   return (
-    <div className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden">
+    <div
+      ref={mekarRef}
+      className="flex flex-col h-screen bg-slate-50 dark:bg-slate-900 overflow-hidden"
+    >
       {/* Custom Warning Modal */}
       {missingFieldInfo && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm transition-all">
-          <div className="bg-white dark:bg-slate-800 rounded-3xl shadow-2xl max-w-md w-full p-6 overflow-hidden transform transition-all">
+        <div
+          className={`${ANIM.latar} fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm`}
+        >
+          <div
+            className={`${ANIM.popup} bg-white dark:bg-slate-800 rounded-3xl shadow-2xl max-w-md w-full p-6 overflow-hidden`}
+          >
             <div className="flex items-center gap-4 mb-5">
               <div className="w-14 h-14 rounded-full bg-amber-100 flex items-center justify-center shrink-0 shadow-inner">
                 <svg

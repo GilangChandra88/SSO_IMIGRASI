@@ -3,6 +3,7 @@ import { FaSearch, FaTimes } from 'react-icons/fa';
 import { PEJABAT_KATEGORI } from '../data/masterLpj';
 import { toPegawaiRef } from '../utils/emptyModels';
 import { FORM, NAVY, T } from '@/utils/uiTokens';
+import { ANIM } from '@/utils/animasi';
 
 /**
  * Pilih kategori pejabat penandatangan (Kepala/PLT/PLH) lalu cari namanya di data pegawai.
@@ -35,7 +36,7 @@ export default function PejabatPicker({ pegawai, value, onChange, err }) {
                 setKat(k.id);
                 if (value && value.kategori !== k.id) onChange(null);
               }}
-              className={`px-4 py-[7px] rounded-[20px] text-[12.5px] font-semibold border transition-colors ${
+              className={`px-4 py-[7px] rounded-[20px] text-[12.5px] font-semibold border ${ANIM.pilih} ${
                 active
                   ? `${NAVY.bg} ${NAVY.border} text-white`
                   : `${T.surface2} ${T.ink2} ${T.border} ${T.hoverSurfaceHover}`
@@ -48,7 +49,7 @@ export default function PejabatPicker({ pegawai, value, onChange, err }) {
       </div>
       {value ? (
         <div
-          className={`flex items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-lg ${NAVY.bg}`}
+          className={`flex items-center justify-between gap-2.5 px-3.5 py-2.5 rounded-lg ${NAVY.bg} ${ANIM.meletup}`}
         >
           <div>
             <div className="text-[13px] font-semibold text-white">{value.nama}</div>
@@ -88,7 +89,7 @@ export default function PejabatPicker({ pegawai, value, onChange, err }) {
           </div>
           {open && filtered.length > 0 && (
             <div
-              className={`relative z-[100] mt-1 max-h-[220px] overflow-y-auto rounded-[10px] border ${T.surface} ${T.border} shadow-[0_8px_24px_rgba(0,0,0,.1)]`}
+              className={`relative z-[100] mt-1 max-h-[220px] overflow-y-auto rounded-[10px] border ${ANIM.popover} ${T.surface} ${T.border} shadow-[0_8px_24px_rgba(0,0,0,.1)]`}
             >
               {filtered.map((p) => (
                 <div

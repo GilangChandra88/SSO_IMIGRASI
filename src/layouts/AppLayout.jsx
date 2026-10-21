@@ -4,6 +4,7 @@ import { FaBars } from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
 import Sidebar from '@/components/Sidebar';
 import { APP_ACCENTS } from '@/utils/appAccents';
+import { ANIM } from '@/utils/animasi';
 
 /**
  * Kerangka halaman untuk semua aplikasi: sidebar, header mobile, dan area konten.
@@ -36,7 +37,7 @@ export default function AppLayout({ brand, accent = 'blue', sidebar, children })
       {/* Mobile Overlay */}
       {!isSidebarCollapsed && (
         <div
-          className="md:hidden fixed inset-0 bg-slate-900/50 z-40 backdrop-blur-sm transition-opacity"
+          className={`${ANIM.latar} md:hidden fixed inset-0 bg-slate-900/50 z-40 backdrop-blur-sm`}
           onClick={() => setIsSidebarCollapsed(true)}
         />
       )}

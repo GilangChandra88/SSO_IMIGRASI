@@ -15,6 +15,7 @@ export function useLpjUser() {
     uid,
     nama: namaPengguna(currentUser, userData),
     isAdmin: !!(isAdmin || isSuperAdmin),
+    isSuperAdmin: !!isSuperAdmin,
     pegawaiLogin,
   };
 }

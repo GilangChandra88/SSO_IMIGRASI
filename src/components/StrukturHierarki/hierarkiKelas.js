@@ -8,8 +8,9 @@ export const ROW = {
   // .mak-tree-wrap / .mak-rekap-wrap (digulir ke samping di layar sempit)
   wrap: `border ${T.border} rounded-[14px] overflow-x-auto`,
   inner: 'min-w-[640px]',
-  row: `group flex items-center gap-2 py-[9px] pr-2 border-b ${T.border} last:border-b-0 text-[13px] ${T.hoverSurface2} transition-colors duration-300`,
-  toggle: `w-5 h-5 rounded-md grid place-items-center shrink-0 transition-transform ${T.inkMuted}`,
+  // Baris yang baru tampil (cabang dibuka / node ditambah) turun-memudar masuk
+  row: `group flex items-center gap-2 py-[9px] pr-2 border-b ${T.border} last:border-b-0 text-[13px] ${T.hoverSurface2} motion-safe:transition-[background-color,opacity,translate] duration-300 ease-out motion-safe:starting:opacity-0 motion-safe:starting:-translate-y-1`,
+  toggle: `w-5 h-5 rounded-md grid place-items-center shrink-0 transition-transform duration-200 ${T.inkMuted}`,
   kode: `${FONT.mono} text-[11.5px] ${T.inkMuted} whitespace-nowrap shrink-0 min-w-16`,
   name: `flex-1 min-w-[120px] font-semibold ${T.ink}`,
   nameItem: `flex-1 min-w-[120px] font-medium ${T.ink2}`,

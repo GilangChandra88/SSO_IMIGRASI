@@ -3,6 +3,9 @@ import { FaChevronRight } from 'react-icons/fa';
 import { ROW } from '@/components/StrukturHierarki/hierarkiKelas';
 import { formatRupiah, indentKelas } from '@/components/StrukturHierarki/hierarkiUtils';
 import { ADMIN, FONT, STATUS, T } from '@/utils/uiTokens';
+import { AngkaBerjalan } from '@/components/animasi';
+
+const persen = (n) => `${Math.round(n)}%`;
 
 const NUM = `${FONT.mono} text-xs text-right min-w-[92px]`;
 const PCT = `text-[11px] font-bold min-w-[38px] text-right shrink-0 ${T.inkMuted}`;
@@ -31,11 +34,19 @@ function RekapBaris({ node, depth, ctx }) {
         <span className={node.type === 'Item' ? ROW.nameItem : ROW.name}>{node.name}</span>
         <span className={ROW.type}>{node.type}</span>
         <span className="flex gap-4 shrink-0">
-          <span className={`${NUM} ${T.ink}`}>{formatRupiah(agg.pagu)}</span>
-          <span className={`${NUM} ${STATUS.warnInk}`}>{formatRupiah(agg.realisasi)}</span>
-          <span className={`${NUM} ${STATUS.goodInk}`}>{formatRupiah(sisa)}</span>
+          <AngkaBerjalan nilai={agg.pagu} format={formatRupiah} className={`${NUM} ${T.ink}`} />
+          <AngkaBerjalan
+            nilai={agg.realisasi}
+            format={formatRupiah}
+            className={`${NUM} ${STATUS.warnInk}`}
+          />
+          <AngkaBerjalan
+            nilai={sisa}
+            format={formatRupiah}
+            className={`${NUM} ${STATUS.goodInk}`}
+          />
         </span>
-        <span className={PCT}>{pct}%</span>
+        <AngkaBerjalan nilai={pct} format={persen} className={PCT} />
         <span className="w-14 shrink-0" />
       </div>
       {punyaAnak &&

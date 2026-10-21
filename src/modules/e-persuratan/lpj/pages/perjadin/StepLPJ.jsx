@@ -9,6 +9,7 @@ import { catatMakHistory } from '../../services/makHistory';
 import TransaksiTable from '../../components/TransaksiTable';
 import Field from '../../ui/Field';
 import { BTN, FONT, FORM, STATUS, T } from '@/utils/uiTokens';
+import { rayakan } from '@/utils/animasi';
 
 /** Fase 3 — LPJ & SPBy: detail transaksi → pack dokumen pertanggungjawaban. */
 export default function StepLPJ({ ctx }) {
@@ -51,7 +52,8 @@ export default function StepLPJ({ ctx }) {
             lpj: { ...prev.lpj, locked: true },
             selesai: { ...prev.selesai, lpjDocs },
           }),
-          { quiet: true, teks: 'menandai LPJ & SPBy selesai' },
+          // SPBy selesai → nomor LPJ terbit (satu transaksi)
+          { quiet: true, teks: 'menandai LPJ & SPBy selesai', beriNomor: true },
         );
         if (ok) {
           try {
@@ -66,7 +68,12 @@ export default function StepLPJ({ ctx }) {
             console.error('catatMakHistory error:', err);
             showToast('LPJ tersimpan, tetapi pencatatan History MAK gagal.', 'error');
           }
-          showToast('LPJ & SPBy ditandai selesai.');
+          showToast('LPJ & SPBy ditandai selesai. Nomor LPJ sudah terbit.');
+          rayakan({
+            judul: 'Nomor LPJ Terbit',
+            sub: typeof ok === 'string' ? ok : 'LPJ & SPBy selesai',
+            nada: 'nomor',
+          });
         }
         closeConfirm();
         if (ok) ctx.navigate(ctx.detailUrl);

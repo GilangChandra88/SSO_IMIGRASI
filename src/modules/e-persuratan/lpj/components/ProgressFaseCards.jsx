@@ -2,6 +2,7 @@ import React from 'react';
 import { FaCheck, FaLock } from 'react-icons/fa';
 import { lpjDetailStages, lpjStageStatus, STAGE_STATUS_LABEL } from '../utils/lpjLogic';
 import { NAVY, STAGE_CLS, T } from '@/utils/uiTokens';
+import { ANIM, jedaKe } from '@/utils/animasi';
 
 /**
  * Kartu ringkas "Progress Dokumen" per fase (ProgressFaseCards purwarupa).
@@ -26,7 +27,7 @@ export default function ProgressFaseCards({ pack }) {
         return (
           <div
             key={stage.num}
-            className={`flex items-center gap-2.5 px-3 py-[9px] border rounded-[9px] ${T.surface} ${T.border}`}
+            className={`flex items-center gap-2.5 px-3 py-[9px] border rounded-[9px] ${ANIM.muncul} ${jedaKe(i + 1)} ${T.surface} ${T.border}`}
           >
             <div
               className={`w-[26px] h-[26px] shrink-0 rounded-[7px] flex items-center justify-center ${

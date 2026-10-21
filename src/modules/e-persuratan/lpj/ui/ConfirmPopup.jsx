@@ -2,13 +2,16 @@ import React from 'react';
 import { FaCheck, FaExclamationTriangle } from 'react-icons/fa';
 import Modal from '@/components/Modal';
 import { BTN, FONT, T } from '@/utils/uiTokens';
+import { ANIM } from '@/utils/animasi';
 
 /** "Tandai X selesai?" — konfirmasi sebelum sebuah fase dikunci (final). */
 export default function ConfirmPopup({ docLabel = 'Surat Perintah', onYes, onNo, busy }) {
   return (
     <Modal widthClass="max-w-[420px]" onClose={onNo} labelledBy="judul-konfirmasi">
       <div className="flex gap-3.5 px-6 pt-6">
-        <div className="w-[42px] h-[42px] shrink-0 rounded-full bg-[#fef9c3] text-[#92400e] flex items-center justify-center">
+        <div
+          className={`w-[42px] h-[42px] shrink-0 rounded-full bg-[#fef9c3] text-[#92400e] flex items-center justify-center ${ANIM.meletup} motion-safe:delay-100`}
+        >
           <FaExclamationTriangle size={18} />
         </div>
         <div>

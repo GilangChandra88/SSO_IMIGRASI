@@ -1,14 +1,16 @@
 import React from 'react';
-import { FaCheck, FaPlus, FaRegSave, FaTimes } from 'react-icons/fa';
+import { FaCheck, FaPlus, FaRegSave } from 'react-icons/fa';
 import { NP_RINCIAN_DOCS, URAIAN_MAX } from '../../data/masterLpj';
-import { emptyTransaksi, toPegawaiRef } from '../../utils/emptyModels';
+import { emptyTransaksi } from '../../utils/emptyModels';
 import { groupTransaksiByItem, parseNum } from '../../utils/lpjLogic';
 import { makItemsOfAkun } from '../../utils/makTree';
 import { catatMakHistory } from '../../services/makHistory';
 import MakDropdowns from '../../components/MakDropdowns';
+import PegawaiPicker from '../../components/PegawaiPicker';
 import TransaksiTable from '../../components/TransaksiTable';
 import Field from '../../ui/Field';
 import { BTN, FONT, FORM, LAYOUT, NAVY, STATUS, T } from '@/utils/uiTokens';
+import { rayakan } from '@/utils/animasi';
 
 function npValidateForm(np) {
   const e = {};
@@ -40,7 +42,6 @@ export default function StepRincianBayar({ ctx }) {
   const updateNp = (patch) => setPf((prev) => ({ ...prev, np: { ...prev.np, ...patch } }));
   const akun = mak.byId[np.mak?.akunNodeId];
   const akunItems = makItemsOfAkun(mak.nodes, np.mak?.akunNodeId);
-  const belumDipilih = ctx.pegawai.filter((p) => !np.pelaksana.find((s) => s.id === p.id));
 
   function handleSelesai() {
     const e = npValidateForm(np);
@@ -56,7 +57,8 @@ export default function StepRincianBayar({ ctx }) {
         });
         const ok = await persist(
           (prev) => ({ ...prev, np: { ...prev.np, formLocked: true, npDocs } }),
-          { quiet: true, teks: 'menandai SPBy & Rincian Bayar selesai' },
+          // SPBy selesai → nomor LPJ terbit (satu transaksi)
+          { quiet: true, teks: 'menandai SPBy & Rincian Bayar selesai', beriNomor: true },
         );
         if (ok) {
           try {
@@ -71,7 +73,12 @@ export default function StepRincianBayar({ ctx }) {
             console.error('catatMakHistory error:', err);
             showToast('Data tersimpan, tetapi pencatatan History MAK gagal.', 'error');
           }
-          showToast('SPBy & Rincian Bayar ditandai selesai.');
+          showToast('SPBy & Rincian Bayar ditandai selesai. Nomor LPJ sudah terbit.');
+          rayakan({
+            judul: 'Nomor LPJ Terbit',
+            sub: typeof ok === 'string' ? ok : 'SPBy & Rincian Bayar selesai',
+            nada: 'nomor',
+          });
         }
         closeConfirm();
         if (ok) ctx.navigate(ctx.detailUrl);
@@ -120,47 +127,14 @@ export default function StepRincianBayar({ ctx }) {
                 className={`${FORM.input} ${errors.tanggal ? FORM.borderErr : FORM.borderOk}`}
               />
             </Field>
-            <Field label="Pelaksana" htmlFor="np-pelaksana" required err={errors.pelaksana}>
-              <select
-                id="np-pelaksana"
-                value=""
-                onChange={(e) => {
-                  const p = ctx.pegawai.find((x) => x.id === e.target.value);
-                  if (p) updateNp({ pelaksana: [...np.pelaksana, toPegawaiRef(p)] });
-                }}
-                className={`${FORM.select} ${errors.pelaksana ? FORM.borderErr : FORM.borderOk}`}
-              >
-                <option value="">
-                  {ctx.loadingPeg ? 'Memuat daftar pegawai…' : '— Tambah Pelaksana —'}
-                </option>
-                {belumDipilih.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.nama} — {p.jabatan || '-'}
-                  </option>
-                ))}
-              </select>
-              {np.pelaksana.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mt-2">
-                  {np.pelaksana.map((p) => (
-                    <span
-                      key={p.id}
-                      className={`flex items-center gap-1.5 text-xs font-medium pl-3 pr-2.5 py-1 rounded-[20px] text-white ${NAVY.bg}`}
-                    >
-                      {p.nama}
-                      <button
-                        type="button"
-                        aria-label={`Hapus ${p.nama}`}
-                        onClick={() =>
-                          updateNp({ pelaksana: np.pelaksana.filter((x) => x.id !== p.id) })
-                        }
-                        className="flex text-white/70 hover:text-white"
-                      >
-                        <FaTimes size={10} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
+            <Field label="Pelaksana" required err={errors.pelaksana}>
+              <PegawaiPicker
+                pegawai={ctx.pegawai}
+                loading={ctx.loadingPeg}
+                selected={np.pelaksana}
+                onChange={(pelaksana) => updateNp({ pelaksana })}
+                err={!!errors.pelaksana}
+              />
             </Field>
           </div>
           <Field label="Uraian Kegiatan" htmlFor="np-uraian" required err={errors.uraian}>
@@ -195,6 +169,7 @@ export default function StepRincianBayar({ ctx }) {
             byId={mak.byId}
             loading={mak.loading}
             mak={np.mak}
+            bertahap
             onChange={(m) =>
               setPf((prev) => ({ ...prev, np: { ...prev.np, mak: { ...prev.np.mak, ...m } } }))
             }
