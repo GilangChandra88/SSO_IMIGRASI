@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { FaFileImport } from 'react-icons/fa';
 import ToastViewport from '@/components/ToastViewport';
 import { ADMIN, FONT, FORM, T } from '@/utils/uiTokens';
-import { ANIM } from '@/utils/animasi';
+import { ANIM, rayakan } from '@/utils/animasi';
+import { showToast } from '@/utils/toastStore';
 import { useStatusAgen } from '../hooks/useStatusAgen';
 import { useHalaman } from '../hooks/useHalaman';
 import { useImpor, useSeretBerkas } from '../hooks/useImpor';
@@ -23,6 +24,15 @@ export default function ScannerPage() {
   const kerja = useHalaman();
   const { halaman, tambah: tambahHalaman } = kerja;
   const agenSiap = agen.status === 'terhubung';
+  const { baruSiap, tandaiSiapDilihat } = agen;
+
+  // Agen baru saja tersambung setelah dipasang/dinyalakan dari halaman ini → rayakan
+  useEffect(() => {
+    if (!baruSiap) return;
+    rayakan({ judul: 'Agen Scanner siap', sub: 'Scanner siap dipakai', nada: 'final' });
+    showToast('Agen Scanner tersambung. Scanner siap dipakai.');
+    tandaiSiapDilihat();
+  }, [baruSiap, tandaiSiapDilihat]);
   const [aktifId, setAktifId] = useState(null);
   const [pindaian, setPindaian] = useState(null); // { jumlah, nama, hentikan } selama memindai
   const indeksAktif = useRef(0);
@@ -80,7 +90,7 @@ export default function ScannerPage() {
         <div className="grid gap-3 items-start flex-1 min-h-0 @min-[720px]/halaman:grid-cols-[clamp(250px,34%,290px)_minmax(0,1fr)] @min-[1000px]/halaman:items-stretch @min-[1000px]/halaman:grid-rows-[minmax(0,1fr)] @min-[1000px]/halaman:grid-cols-[clamp(250px,24%,300px)_minmax(0,1fr)_clamp(244px,22%,300px)]">
           {/* Kiri: pengaturan (menggulir sendiri di mode laptop) */}
           <aside className="space-y-3 min-w-0 @min-[1000px]/halaman:h-full @min-[1000px]/halaman:overflow-y-auto @min-[1000px]/halaman:overscroll-contain @min-[1000px]/halaman:pr-1 @min-[1000px]/halaman:-mr-1 @min-[1000px]/halaman:pb-1">
-            <StatusAgen {...agen} onPeriksa={agen.periksa} />
+            <StatusAgen {...agen} />
             <section className={ADMIN.card}>
               <h2 className={`${FORM.cardTitle} mb-3`}>Pindai dari Scanner</h2>
               <PanelPindai agenSiap={agenSiap} onHalaman={tambah} onProgres={setPindaian} />

@@ -1,3 +1,4 @@
+import { flushSync } from 'react-dom';
 import { kurangiGerakan } from '@/utils/animasi';
 
 /**
@@ -387,4 +388,166 @@ export function ungkapHalaman({ kartu, tirai, garis, jeda = 0, durasi = 760 }) {
     );
   }
   return Promise.all(animasi.map((x) => x.finished.catch(() => {})));
+}
+
+// ─── Hapus: "snap Thanos" merah ───────────────────────────────────────────────
+
+const MERAH = ['#A62D2D', '#E05252', '#F19191', '#7A1F1F'];
+const acak = (a, b) => a + Math.random() * (b - a);
+
+/**
+ * Hancurkan satu elemen menjadi kepingan yang terbang ke kanan atas (kiri → kanan, seperti
+ * jentikan jari Thanos). `gambar` (img) → kepingan memuat potongan gambar halaman itu berona
+ * merah; tanpa gambar → debu merah. Elemen di luar layar dilewati. Resolve saat selesai.
+ */
+function hancurkan(el, gambar) {
+  const sumber = gambar || el;
+  const r = sumber.getBoundingClientRect();
+  if (!r.width || !r.height || r.bottom < 0 || r.top > window.innerHeight) return Promise.resolve();
+
+  const wadah = document.createElement('div');
+  wadah.setAttribute('aria-hidden', 'true');
+  Object.assign(wadah.style, {
+    position: 'fixed',
+    left: `${r.left}px`,
+    top: `${r.top}px`,
+    width: `${r.width}px`,
+    height: `${r.height}px`,
+    zIndex: '960',
+    pointerEvents: 'none',
+  });
+  document.body.appendChild(wadah);
+
+  // 1. Kilatan merah + getar singkat
+  el.animate(
+    [
+      { transform: 'translateX(0)' },
+      { transform: 'translateX(-3px)' },
+      { transform: 'translateX(3px)' },
+      { transform: 'translateX(-2px)' },
+      { transform: 'translateX(0)' },
+    ],
+    { duration: 160, easing: 'linear' },
+  );
+  const kilat = document.createElement('div');
+  Object.assign(kilat.style, {
+    position: 'absolute',
+    inset: '0',
+    background: 'rgba(224,82,82,.45)',
+    borderRadius: '6px',
+  });
+  wadah.appendChild(kilat);
+  kilat.animate([{ opacity: 0 }, { opacity: 1, offset: 0.3 }, { opacity: 0 }], {
+    duration: 420,
+    fill: 'forwards',
+  });
+
+  // 2. Kepingan (grid) → lepas dari kiri ke kanan
+  const ukuran = gambar ? Math.max(14, r.width / 16) : Math.max(5, r.width / 28);
+  const kol = Math.min(gambar ? 18 : 30, Math.max(6, Math.round(r.width / ukuran)));
+  const bar = Math.min(gambar ? 26 : 10, Math.max(3, Math.round(r.height / (r.width / kol))));
+  const lw = r.width / kol;
+  const lh = r.height / bar;
+  const url = gambar?.currentSrc || gambar?.src;
+  const animasi = [];
+
+  for (let y = 0; y < bar; y++) {
+    for (let x = 0; x < kol; x++) {
+      const k = document.createElement('div');
+      const gaya = {
+        position: 'absolute',
+        left: `${x * lw}px`,
+        top: `${y * lh}px`,
+        width: `${lw + 0.5}px`,
+        height: `${lh + 0.5}px`,
+      };
+      if (url) {
+        gaya.backgroundImage = `linear-gradient(rgba(166,45,45,.38), rgba(166,45,45,.38)), url("${url}")`;
+        gaya.backgroundSize = `${r.width}px ${r.height}px`;
+        gaya.backgroundPosition = `${-x * lw}px ${-y * lh}px`;
+      } else {
+        gaya.background = MERAH[(x + y) % MERAH.length];
+        gaya.borderRadius = '1px';
+        gaya.opacity = String(acak(0.55, 1));
+      }
+      Object.assign(k.style, gaya);
+      wadah.appendChild(k);
+      const dx = acak(30, 150);
+      const dy = -acak(20, 110);
+      const rot = acak(-80, 80);
+      animasi.push(
+        k.animate(
+          [
+            { transform: 'translate(0,0) rotate(0deg) scale(1)', opacity: url ? 1 : 0 },
+            {
+              transform: `translate(${dx * 0.2}px, ${dy * 0.2}px) rotate(${rot * 0.3}deg) scale(.92)`,
+              opacity: 1,
+              offset: 0.22,
+            },
+            { transform: `translate(${dx}px, ${dy}px) rotate(${rot}deg) scale(.15)`, opacity: 0 },
+          ],
+          {
+            duration: acak(620, 960),
+            delay: 140 + (x / kol) * 440 + acak(0, 140),
+            easing: 'cubic-bezier(.3,.1,.6,1)',
+            fill: 'both',
+          },
+        ),
+      );
+    }
+  }
+
+  // 3. Elemen asli: kepingan bergambar menggantikannya seketika; kartu (debu) memudar bertahap
+  el.animate([{ opacity: 1 }, { opacity: 0 }], {
+    duration: url ? 1 : 520,
+    delay: url ? 140 : 160,
+    easing: 'ease-in',
+    fill: 'forwards',
+  });
+
+  return Promise.all(animasi.map((a) => a.finished.catch(() => {}))).then(() => wadah.remove());
+}
+
+/** Elemen tampilan halaman `ids`: halaman di kanvas & kartu di panel Urutan. */
+function elemenHalaman(ids) {
+  const els = [];
+  for (const id of ids) {
+    const sel = CSS.escape(id);
+    els.push(...document.querySelectorAll(`[data-kanvas] [data-halaman][data-id="${sel}"]`));
+    els.push(...document.querySelectorAll(`li[data-urutan-id="${sel}"]`));
+  }
+  return els;
+}
+
+/**
+ * Hapus halaman `ids` dengan animasi "snap Thanos" merah: halaman di kanvas pecah menjadi
+ * kepingan bergambar, kartunya menjadi debu, lalu data dihapus (`ubah`, sinkron lewat flushSync)
+ * dan halaman/kartu lain merapat halus (FLIP) tanpa melompat.
+ */
+export async function snapThanos(ids, ubah) {
+  const els = kurangiGerakan() ? [] : elemenHalaman(ids);
+  if (!els.length) {
+    ubah();
+    return;
+  }
+  await Promise.all(
+    els.map((el) => hancurkan(el, el.matches('[data-halaman]') ? el.querySelector('img') : null)),
+  );
+
+  const wadah = new Set(els.map((el) => el.parentElement).filter(Boolean));
+  const posisi = new Map();
+  wadah.forEach((w) =>
+    [...w.children].forEach((anak) => posisi.set(anak, anak.getBoundingClientRect().top)),
+  );
+  flushSync(() => ubah());
+  posisi.forEach((top, anak) => {
+    if (!anak.isConnected) return;
+    const dy = top - anak.getBoundingClientRect().top;
+    if (Math.abs(dy) < 0.5) return;
+    anak.animate([{ transform: `translateY(${dy}px)` }, { transform: 'translateY(0)' }], {
+      duration: 380,
+      easing: 'cubic-bezier(.2,.8,.2,1)',
+      composite: 'add',
+    });
+  });
 }
