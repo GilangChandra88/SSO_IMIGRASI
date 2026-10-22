@@ -9,6 +9,7 @@ import {
   FaHistory,
   FaArrowLeft,
   FaArchive,
+  FaPrint,
 } from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
 import AppLayout from '@/layouts/AppLayout';
@@ -17,6 +18,7 @@ import { Dashboard } from './dashboard';
 import { PersuratanPage, SuratForm, NomorSuratKanim } from './surat-keluar';
 import { LPJPage, ArsipPage } from './lpj';
 import { MakSetup, MakHistory } from './data-master';
+import { ScannerPage } from './scanner';
 
 const BRAND = {
   code: 'KI',
@@ -130,6 +132,16 @@ export default function AppModule() {
             <FaArchive size={16} className="shrink-0" />
             <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Arsip</span>
           </Link>
+          {(isSuperAdmin || isAdmin) && (
+            <Link
+              to="/e-persuratan/scanner"
+              title="Scanner"
+              className={navItemClass(path === '/e-persuratan/scanner')}
+            >
+              <FaPrint size={16} className="shrink-0" />
+              <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Scanner</span>
+            </Link>
+          )}
         </div>
       </div>
 
@@ -201,6 +213,14 @@ export default function AppModule() {
             element={
               <ProtectedRoute requireRole="Admin">
                 <MakHistory />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/scanner"
+            element={
+              <ProtectedRoute requireRole="Admin">
+                <ScannerPage />
               </ProtectedRoute>
             }
           />
