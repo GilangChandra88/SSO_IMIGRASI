@@ -57,7 +57,7 @@ export default [
  */
 function moduleBoundaryRules() {
   const APPS = ['sso', 'e-persuratan', 'inventory', 'kepegawaian'];
-  const SUBS = ['dashboard', 'lpj', 'surat-keluar', 'data-master'];
+  const SUBS = ['dashboard', 'lpj', 'surat-keluar', 'data-master', 'scanner'];
   // Pola berbasis NAMA FOLDER agar berlaku untuk impor beralias (@/modules/x) maupun relatif (../../x).
   const whole = (name) => [`**/${name}`, `**/${name}/**`];
   const deepOnly = (name) => [`**/${name}/*`]; // isi di dalam folder; index.js folder itu sendiri tetap boleh
