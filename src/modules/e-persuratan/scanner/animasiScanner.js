@@ -390,122 +390,155 @@ export function ungkapHalaman({ kartu, tirai, garis, jeda = 0, durasi = 760 }) {
   return Promise.all(animasi.map((x) => x.finished.catch(() => {})));
 }
 
-// ─── Hapus: "snap Thanos" merah ───────────────────────────────────────────────
+// ─── Hapus: gaya Daftar LPJ (animasiHapus) ───────────────────────────────────
+// Glitch merah singkat → garis pemindai merah menyapu kiri → kanan, elemen lenyap di belakangnya
+// sambil luruh menjadi debu piksel merah → celah menutup halus (FLIP). Sama dengan hapus berkas
+// di Daftar LPJ, disesuaikan untuk halaman kanvas & kartu panel Urutan. Ringan untuk hapus
+// massal: hanya elemen TERLIHAT, maksimal MAKS_DISAPU yang disapu, debu total dibatasi.
 
-const MERAH = ['#A62D2D', '#E05252', '#F19191', '#7A1F1F'];
-const acak = (a, b) => a + Math.random() * (b - a);
+const MAKS_DISAPU = 6;
+const JATAH_DEBU = 120; // total butir debu untuk satu kali hapus
+const DEBU = ['bg-[#A62D2D]', 'bg-[#E05252]', 'bg-[#F19191]'];
+
+const terlihat = (el) => {
+  const r = el.getBoundingClientRect();
+  return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < window.innerHeight;
+};
+
+const buatEl = (kelas) => {
+  const el = document.createElement('div');
+  el.setAttribute('aria-hidden', 'true');
+  el.className = `pointer-events-none ${kelas}`;
+  return el;
+};
+
+/** Satu butir debu piksel merah yang lepas pada `lepas` ms, terbawa ke kanan atas. */
+function debu(x, y, lepas, i, lama) {
+  const p = buatEl(
+    `${DEBU[i % DEBU.length]} ${i % 4 ? 'w-[3px] h-[3px]' : 'w-[4px] h-[4px] rounded-[1px]'}`,
+  );
+  Object.assign(p.style, { position: 'fixed', left: `${x}px`, top: `${y}px`, zIndex: '1100' });
+  document.body.appendChild(p);
+  const dx = 24 + Math.random() * 110;
+  const dy = -(6 + Math.random() * 60) + (Math.random() < 0.25 ? 40 : 0);
+  p.animate(
+    [
+      { transform: 'translate(0,0) scale(.6)', opacity: 0 },
+      { transform: 'translate(3px,-2px) scale(1.15)', opacity: 1, offset: 0.12 },
+      { transform: `translate(${dx}px,${dy}px) scale(.3)`, opacity: 0 },
+    ],
+    {
+      duration: lama + Math.random() * 220,
+      delay: lepas,
+      easing: 'cubic-bezier(.25,.6,.4,1)',
+      fill: 'backwards',
+    },
+  )
+    .finished.catch(() => {})
+    .finally(() => p.remove());
+}
 
 /**
- * Hancurkan satu elemen menjadi kepingan yang terbang ke kanan atas (kiri → kanan, seperti
- * jentikan jari Thanos). `gambar` (img) → kepingan memuat potongan gambar halaman itu berona
- * merah; tanpa gambar → debu merah. Elemen di luar layar dilewati. Resolve saat selesai.
+ * Sapuan hapus untuk satu elemen. Lapisan (rona, penutup, garis) dipasang `fixed` di body tepat
+ * di atas elemen; penutup berwarna latar di belakang elemen (kanvas / panel) sehingga elemen
+ * tampak lenyap di belakang garis. Resolve saat sapuan selesai.
  */
-function hancurkan(el, gambar) {
-  const sumber = gambar || el;
-  const r = sumber.getBoundingClientRect();
-  if (!r.width || !r.height || r.bottom < 0 || r.top > window.innerHeight) return Promise.resolve();
-
-  const wadah = document.createElement('div');
-  wadah.setAttribute('aria-hidden', 'true');
-  Object.assign(wadah.style, {
+async function sapuHapus(el, { glitchMs, leburMs, jatahDebu }) {
+  const r = el.getBoundingClientRect();
+  const diKanvas = el.matches('[data-halaman]');
+  // Jendela = bagian area gulir yang tampak (kanvas / daftar Urutan): lapisan dipotong di sini
+  // supaya elemen yang sebagian tergulir keluar tidak menyembul menutupi judul/kartu lain
+  const gulir = el.closest(diKanvas ? '[data-kanvas]' : 'ul') || el.parentElement;
+  const g = gulir.getBoundingClientRect();
+  const atas = Math.max(r.top, g.top);
+  const bawah = Math.min(r.bottom, g.bottom);
+  const jendela = buatEl('overflow-hidden');
+  Object.assign(jendela.style, {
     position: 'fixed',
-    left: `${r.left}px`,
-    top: `${r.top}px`,
+    left: `${g.left}px`,
+    top: `${g.top}px`,
+    width: `${g.width}px`,
+    height: `${g.height}px`,
+    zIndex: '960',
+  });
+  const lapis = buatEl(`absolute overflow-hidden ${diKanvas ? '' : 'rounded-[10px]'}`);
+  Object.assign(lapis.style, {
+    left: `${r.left - g.left}px`,
+    top: `${r.top - g.top}px`,
     width: `${r.width}px`,
     height: `${r.height}px`,
-    zIndex: '960',
-    pointerEvents: 'none',
   });
-  document.body.appendChild(wadah);
-
-  // 1. Kilatan merah + getar singkat
-  el.animate(
-    [
-      { transform: 'translateX(0)' },
-      { transform: 'translateX(-3px)' },
-      { transform: 'translateX(3px)' },
-      { transform: 'translateX(-2px)' },
-      { transform: 'translateX(0)' },
-    ],
-    { duration: 160, easing: 'linear' },
+  jendela.appendChild(lapis);
+  const rona = buatEl(
+    'absolute inset-0 opacity-0 bg-[rgba(166,45,45,.14)] dark:bg-[rgba(241,145,145,.16)]',
   );
-  const kilat = document.createElement('div');
-  Object.assign(kilat.style, {
-    position: 'absolute',
-    inset: '0',
-    background: 'rgba(224,82,82,.45)',
-    borderRadius: '6px',
-  });
-  wadah.appendChild(kilat);
-  kilat.animate([{ opacity: 0 }, { opacity: 1, offset: 0.3 }, { opacity: 0 }], {
-    duration: 420,
-    fill: 'forwards',
-  });
+  const penutup = buatEl(
+    `absolute inset-0 origin-left ${diKanvas ? 'bg-[#F3F5F8] dark:bg-[#16243A]' : 'bg-white dark:bg-[#111D2E]'}`,
+  );
+  const garis = buatEl(
+    'absolute top-0 bottom-0 left-0 w-[2px] bg-[#E05252] shadow-[0_0_14px_3px_rgba(224,82,82,.85)] opacity-0',
+  );
+  garis.appendChild(
+    buatEl(
+      'absolute top-0 bottom-0 right-full w-20 bg-gradient-to-l from-[rgba(224,82,82,.3)] to-transparent',
+    ),
+  );
+  penutup.style.transform = 'scaleX(0)';
+  lapis.append(rona, penutup, garis);
+  document.body.appendChild(jendela);
 
-  // 2. Kepingan (grid) → lepas dari kiri ke kanan
-  const ukuran = gambar ? Math.max(14, r.width / 16) : Math.max(5, r.width / 28);
-  const kol = Math.min(gambar ? 18 : 30, Math.max(6, Math.round(r.width / ukuran)));
-  const bar = Math.min(gambar ? 26 : 10, Math.max(3, Math.round(r.height / (r.width / kol))));
-  const lw = r.width / kol;
-  const lh = r.height / bar;
-  const url = gambar?.currentSrc || gambar?.src;
-  const animasi = [];
+  try {
+    // (1) Glitch merah: rona berkedip + getar kecil
+    rona.animate(
+      [
+        { opacity: 0 },
+        { opacity: 1, offset: 0.25 },
+        { opacity: 0.4, offset: 0.5 },
+        { opacity: 1, offset: 0.75 },
+        { opacity: 0.6 },
+      ],
+      { duration: glitchMs, easing: 'steps(4, end)', fill: 'forwards' },
+    );
+    await el
+      .animate(
+        [
+          { transform: 'translateX(0)' },
+          { transform: 'translateX(-3px)', offset: 0.2 },
+          { transform: 'translateX(3px)', offset: 0.45 },
+          { transform: 'translateX(-2px)', offset: 0.7 },
+          { transform: 'translateX(0)' },
+        ],
+        { duration: glitchMs, easing: 'steps(5, end)' },
+      )
+      .finished.catch(() => {});
 
-  for (let y = 0; y < bar; y++) {
-    for (let x = 0; x < kol; x++) {
-      const k = document.createElement('div');
-      const gaya = {
-        position: 'absolute',
-        left: `${x * lw}px`,
-        top: `${y * lh}px`,
-        width: `${lw + 0.5}px`,
-        height: `${lh + 0.5}px`,
-      };
-      if (url) {
-        gaya.backgroundImage = `linear-gradient(rgba(166,45,45,.38), rgba(166,45,45,.38)), url("${url}")`;
-        gaya.backgroundSize = `${r.width}px ${r.height}px`;
-        gaya.backgroundPosition = `${-x * lw}px ${-y * lh}px`;
-      } else {
-        gaya.background = MERAH[(x + y) % MERAH.length];
-        gaya.borderRadius = '1px';
-        gaya.opacity = String(acak(0.55, 1));
-      }
-      Object.assign(k.style, gaya);
-      wadah.appendChild(k);
-      const dx = acak(30, 150);
-      const dy = -acak(20, 110);
-      const rot = acak(-80, 80);
-      animasi.push(
-        k.animate(
-          [
-            { transform: 'translate(0,0) rotate(0deg) scale(1)', opacity: url ? 1 : 0 },
-            {
-              transform: `translate(${dx * 0.2}px, ${dy * 0.2}px) rotate(${rot * 0.3}deg) scale(.92)`,
-              opacity: 1,
-              offset: 0.22,
-            },
-            { transform: `translate(${dx}px, ${dy}px) rotate(${rot}deg) scale(.15)`, opacity: 0 },
-          ],
-          {
-            duration: acak(620, 960),
-            delay: 140 + (x / kol) * 440 + acak(0, 140),
-            easing: 'cubic-bezier(.3,.1,.6,1)',
-            fill: 'both',
-          },
-        ),
-      );
+    // (2) Luruh kiri → kanan di belakang garis pemindai
+    const sapu = { duration: leburMs, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'forwards' };
+    const animPenutup = penutup.animate(
+      [{ transform: 'scaleX(0)' }, { transform: 'scaleX(1)' }],
+      sapu,
+    );
+    garis.animate(
+      [
+        { transform: 'translateX(0)', opacity: 1 },
+        { transform: `translateX(${r.width}px)`, opacity: 1, offset: 0.92 },
+        { transform: `translateX(${r.width}px)`, opacity: 0 },
+      ],
+      sapu,
+    );
+    for (let i = 0; i < jatahDebu; i++) {
+      const fx = Math.random();
+      const x = r.left + fx * r.width;
+      // Debu hanya dari bagian elemen yang tampak
+      const y = atas + 4 + Math.random() * Math.max(bawah - atas - 8, 1);
+      debu(x, y, fx * leburMs, i, Math.max(420, leburMs * 0.75));
     }
+    await animPenutup.finished.catch(() => {});
+    // Elemen asli tetap tersembunyi sampai datanya dihapus (tidak berkedip muncul lagi)
+    el.animate([{ opacity: 0 }, { opacity: 0 }], { duration: 1, fill: 'forwards' });
+  } finally {
+    jendela.remove();
   }
-
-  // 3. Elemen asli: kepingan bergambar menggantikannya seketika; kartu (debu) memudar bertahap
-  el.animate([{ opacity: 1 }, { opacity: 0 }], {
-    duration: url ? 1 : 520,
-    delay: url ? 140 : 160,
-    easing: 'ease-in',
-    fill: 'forwards',
-  });
-
-  return Promise.all(animasi.map((a) => a.finished.catch(() => {}))).then(() => wadah.remove());
 }
 
 /** Elemen tampilan halaman `ids`: halaman di kanvas & kartu di panel Urutan. */
@@ -520,21 +553,47 @@ function elemenHalaman(ids) {
 }
 
 /**
- * Hapus halaman `ids` dengan animasi "snap Thanos" merah: halaman di kanvas pecah menjadi
- * kepingan bergambar, kartunya menjadi debu, lalu data dihapus (`ubah`, sinkron lewat flushSync)
- * dan halaman/kartu lain merapat halus (FLIP) tanpa melompat.
+ * Hapus halaman `ids` dengan animasi gaya Daftar LPJ, lalu data dihapus (`ubah`, sinkron lewat
+ * flushSync) dan halaman/kartu lain merapat halus (FLIP) tanpa melompat.
  */
-export async function snapThanos(ids, ubah) {
-  const els = kurangiGerakan() ? [] : elemenHalaman(ids);
-  if (!els.length) {
+export async function animasiHapusHalaman(ids, ubah) {
+  const semua = kurangiGerakan() ? [] : elemenHalaman(ids).filter(terlihat);
+  if (!semua.length) {
     ubah();
     return;
   }
-  await Promise.all(
-    els.map((el) => hancurkan(el, el.matches('[data-halaman]') ? el.querySelector('img') : null)),
-  );
+  // Halaman kanvas diprioritaskan untuk disapu, lalu kartu; sisanya cukup memudar cepat
+  const urut = [
+    ...semua.filter((el) => el.matches('[data-halaman]')),
+    ...semua.filter((el) => !el.matches('[data-halaman]')),
+  ];
+  const disapu = urut.slice(0, MAKS_DISAPU);
+  const dipudar = urut.slice(MAKS_DISAPU);
+  const sedikit = disapu.length <= 2;
+  const opsi = {
+    glitchMs: sedikit ? 220 : 160,
+    leburMs: sedikit ? 820 : 520,
+    jatahDebu: Math.max(10, Math.floor(JATAH_DEBU / disapu.length)),
+  };
 
-  const wadah = new Set(els.map((el) => el.parentElement).filter(Boolean));
+  const tunggu = disapu.map((el) => sapuHapus(el, opsi));
+  dipudar.forEach((el) =>
+    tunggu.push(
+      el
+        .animate(
+          [
+            { opacity: 1, transform: 'none' },
+            { opacity: 0, transform: 'translateX(12px)' },
+          ],
+          { duration: 220, easing: 'ease-in', fill: 'forwards' },
+        )
+        .finished.catch(() => {}),
+    ),
+  );
+  await Promise.all(tunggu);
+
+  // (3) Celah menutup: catat posisi, hapus data, lalu sisa elemen meluncur ke tempat barunya
+  const wadah = new Set(semua.map((el) => el.parentElement).filter(Boolean));
   const posisi = new Map();
   wadah.forEach((w) =>
     [...w.children].forEach((anak) => posisi.set(anak, anak.getBoundingClientRect().top)),

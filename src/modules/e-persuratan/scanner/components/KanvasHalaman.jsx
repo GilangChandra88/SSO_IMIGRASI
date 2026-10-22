@@ -10,7 +10,7 @@ import {
 import { showToast } from '@/utils/toastStore';
 import { ADMIN, BTN, FONT, FORM, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, kurangiGerakan } from '@/utils/animasi';
-import { snapThanos } from '../animasiScanner';
+import { animasiHapusHalaman } from '../animasiScanner';
 import { bacaTeks } from '../services/agenScanner';
 import { potongArea } from '../utils/gambar';
 import { BANNER_GALAT } from '../utils/kelas';
@@ -323,7 +323,7 @@ export default function KanvasHalaman({
                 memuatOcr={ocr?.id === h.id && ocr.status === 'memuat'}
                 onAktif={() => pilihDariKanvas(h.id)}
                 onPutar={(delta) => putar([h.id], delta)}
-                onHapus={() => snapThanos([h.id], () => hapus([h.id]))}
+                onHapus={() => animasiHapusHalaman([h.id], () => hapus([h.id]))}
                 onOcr={(tampil, area) => {
                   pilihDariKanvas(h.id);
                   jalankanOcr(h, i + 1, tampil, area);
