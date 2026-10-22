@@ -15,7 +15,7 @@ import {
 import { showToast } from '@/utils/toastStore';
 import { ADMIN, BTN, FONT, FORM, STATUS, T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
-import { snapThanos } from '../animasiScanner';
+import { animasiHapusHalaman } from '../animasiScanner';
 import { buatPdf } from '../utils/eksporPdf';
 import { unduhBlob } from '../utils/gambar';
 import KartuUrutan from './KartuUrutan';
@@ -129,7 +129,9 @@ export default function UrutanHalaman({ kerja, aktifId, onAktif }) {
   function hapusPilihan() {
     const ids = idPilih;
     setKonfirmasi(null);
-    snapThanos(ids, () => hapus(ids)).then(() => showToast(`${ids.length} halaman dihapus.`));
+    animasiHapusHalaman(ids, () => hapus(ids)).then(() =>
+      showToast(`${ids.length} halaman dihapus.`),
+    );
   }
 
   return (
@@ -151,7 +153,7 @@ export default function UrutanHalaman({ kerja, aktifId, onAktif }) {
                 className={ADMIN.miniYes}
                 onClick={() => {
                   setKonfirmasi(null);
-                  snapThanos(
+                  animasiHapusHalaman(
                     halaman.map((h) => h.id),
                     kosongkan,
                   );
@@ -335,7 +337,7 @@ export default function UrutanHalaman({ kerja, aktifId, onAktif }) {
                   ? geserBanyak(idPilih, arah)
                   : pindah(h.id, i + arah)
               }
-              onHapus={() => snapThanos([h.id], () => hapus([h.id]))}
+              onHapus={() => animasiHapusHalaman([h.id], () => hapus([h.id]))}
               onSeretMulai={(e) => {
                 const ids = terpilih.has(h.id) ? idPilih : [h.id];
                 e.dataTransfer.effectAllowed = 'move';
