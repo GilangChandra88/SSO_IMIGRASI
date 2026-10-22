@@ -57,6 +57,7 @@ export default function KartuUrutan({
     <li
       draggable
       aria-selected={terpilih}
+      data-urutan-id={h.id}
       onDragStart={onSeretMulai}
       onDragOver={onSeretAtas}
       onDrop={onLepas}
