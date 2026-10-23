@@ -1,26 +1,15 @@
 /**
- * Daftar LPJ (BerkasListPage purwarupa) — semua berkas yang boleh dilihat pengguna, dengan
- * baris yang bisa dibuka untuk melihat ringkasan Detail Transaksi + Progress Dokumen.
+ * Daftar LPJ (BerkasListPage purwarupa) — semua berkas yang boleh dilihat pengguna. Klik baris
+ * untuk membuka Detail LPJ (ringkasan transaksi & progres ada di sana).
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  FaChevronDown,
-  FaChevronRight,
-  FaEye,
-  FaFilter,
-  FaPlus,
-  FaRegCopy,
-  FaRegTrashAlt,
-  FaSearch,
-  FaStar,
-} from 'react-icons/fa';
+import { FaChevronDown, FaFilter, FaPlus, FaRegTrashAlt, FaSearch } from 'react-icons/fa';
 import { deleteLPJPack, useLPJPacks } from '../hooks/useLPJ';
 import { useLpjUser } from '../hooks/useLpjUser';
 import {
-  groupTransaksiByItem,
-  isSkemaBaru,
+  isPerjadin,
   canDeletePack,
   jenisLabel,
   lpjIdLabel,
@@ -29,23 +18,19 @@ import {
   lpjDashType,
   lpjRowTotal,
   lpjTahapDisplay,
-  makOf,
   pelaksanaOf,
-  tanggalRingkas,
-  transaksiOf,
   uraianOf,
 } from '../utils/lpjLogic';
-import { formatTanggal } from '../utils/formatTanggal';
 import CreatePackModal from '../components/CreatePackModal';
 import HapusBerkasModal from '../components/HapusBerkasModal';
 import { AngkaBerjalan, Lipat } from '@/components/animasi';
 import { ANIM, animasiHapus, animasiMasuk, jedaKe } from '@/utils/animasi';
-import ProgressFaseCards from '../components/ProgressFaseCards';
+import { bukaBerkas } from '../../animasiHalaman';
 import { useToast } from '@/utils/toastStore';
-import { FONT, LAYOUT, NAVY, STATUS, T } from '@/utils/uiTokens';
+import { FONT, LAYOUT, STATUS, T } from '@/utils/uiTokens';
 
 const FILTER_LABEL = { all: 'Filter', baru: 'Baru', draft: 'Draft', selesai: 'Selesai' };
-const GRID = 'grid grid-cols-[36px_120px_150px_minmax(0,1fr)_110px_140px_170px]';
+const GRID = 'grid grid-cols-[130px_160px_minmax(0,1fr)_120px_140px_52px]';
 
 // Kelas chip & tombol filter (.chip / .filter-btn purwarupa)
 const CHIP = `px-[13px] py-[7px] rounded-full text-[12.5px] font-semibold whitespace-nowrap border border-transparent ${ANIM.pilih}`;
@@ -79,25 +64,24 @@ export default function BerkasListPage() {
   const [type, setType] = useState('all');
   const [status, setStatus] = useState('all');
   const [filterOpen, setFilterOpen] = useState(false);
-  const [expanded, setExpanded] = useState(null);
   const [showCreate, setShowCreate] = useState(false);
   const [hapusPack, setHapusPack] = useState(null);
   // Baris yang sedang dianimasikan keluar (dihapus)
   const [keluarIds, setKeluarIds] = useState(() => new Set());
   const wadahRefs = useRef({}); // id berkas → elemen luar Lipat
-  // Berkas baru: { id } menunggu animasi masuk; sorot = { id, pudar } setelah terbentuk
+  // Berkas baru: { id } menunggu animasi masuk, lalu dibuka ke Detail
   const [baru, setBaru] = useState(null);
-  const [sorot, setSorot] = useState(null);
-  const sorotTimer = useRef([]);
+  const cadanganTimer = useRef(null);
   const masukRef = useRef(null); // id berkas yang animasi masuknya sudah dimulai
   const aktifRef = useRef(true); // halaman masih terpasang (animasi async bisa selesai belakangan)
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    // Disetel ulang di sini: StrictMode memasang–melepas–memasang ulang efek saat pengembangan
+    aktifRef.current = true;
+    return () => {
       aktifRef.current = false;
-      sorotTimer.current.forEach(clearTimeout);
-    },
-    [],
-  );
+      clearTimeout(cadanganTimer.current);
+    };
+  }, []);
 
   // Query sudah terurut terbaru di atas (created_at desc)
   const filtered = useMemo(() => {
@@ -116,16 +100,17 @@ export default function BerkasListPage() {
 
   // Berkas baru selalu di urutan teratas (created_at server belum terisi saat baru dibuat)
   const tampil = useMemo(() => {
-    const pinId = baru?.id || sorot?.id;
-    const i = pinId ? filtered.findIndex((p) => p.id === pinId) : -1;
+    const i = baru ? filtered.findIndex((p) => p.id === baru.id) : -1;
     return i > 0 ? [filtered[i], ...filtered.slice(0, i), ...filtered.slice(i + 1)] : filtered;
-  }, [filtered, baru, sorot]);
+  }, [filtered, baru]);
 
-  // Begitu berkas baru muncul di daftar: ruang dibuka, baris terbentuk kiri → kanan (siber), lalu disorot
+  // Begitu berkas baru muncul di daftar: ruang dibuka, baris terbentuk kiri → kanan (siber),
+  // lalu map berkasnya terbang keluar & terbuka, dan halaman pindah ke Detail
   useEffect(() => {
-    if (!baru || masukRef.current === baru.id || !packs.some((p) => p.id === baru.id)) return;
+    if (!baru || masukRef.current === baru.id) return;
+    const pack = packs.find((p) => p.id === baru.id);
     const wadah = wadahRefs.current[baru.id];
-    if (!wadah) return;
+    if (!pack || !wadah) return;
     masukRef.current = baru.id;
     const { id } = baru;
     animasiMasuk({
@@ -136,17 +121,21 @@ export default function BerkasListPage() {
           n.delete(id);
           return n;
         }),
-    }).then(() => {
-      if (!aktifRef.current) return;
-      setBaru(null);
-      setSorot({ id, pudar: false });
-      showToast('Berkas baru dibuat. Lanjutkan pengisian lewat "Lihat Detail".');
-      sorotTimer.current.push(
-        setTimeout(() => setSorot((s) => (s?.id === id ? { ...s, pudar: true } : s)), 2200),
-        setTimeout(() => setSorot((s) => (s?.id === id ? null : s)), 6000),
-      );
-    });
-  }, [baru, packs, showToast]);
+    })
+      .then(() => {
+        if (!aktifRef.current) return;
+        showToast('Berkas baru dibuat.');
+        return bukaBerkas({
+          asal: wadah,
+          packId: id,
+          judul: uraianOf(pack),
+          jenis: isPerjadin(pack) ? 'Perjalanan Dinas' : 'Non-Perjalanan Dinas',
+        });
+      })
+      .then(() => {
+        if (aktifRef.current) navigate(`/e-persuratan/lpj/${id}`);
+      });
+  }, [baru, packs, showToast, navigate]);
 
   const tampilkanBaris = (id) =>
     setKeluarIds((s) => {
@@ -160,37 +149,40 @@ export default function BerkasListPage() {
     setKeluarIds((s) => new Set(s).add(id));
   }
 
+  // Tanpa baris di tabel: map berkas terbuka di tengah layar, lalu pindah ke Detail
+  function bukaLangsung(id) {
+    tampilkanBaris(id);
+    showToast('Berkas baru dibuat.');
+    bukaBerkas({ packId: id, jenis: 'Berkas LPJ' }).then(() => {
+      if (aktifRef.current) navigate(`/e-persuratan/lpj/${id}`);
+    });
+  }
+
   function berkasDibuat(id) {
     setShowCreate(false);
     if (error) {
-      // Daftar tidak termuat: tidak ada tabel untuk dianimasikan, langsung buka berkasnya
-      tampilkanBaris(id);
-      showToast('Berkas baru dibuat.');
-      navigate(`/e-persuratan/lpj/${id}`);
+      // Daftar tidak termuat: tidak ada tabel untuk dianimasikan
+      bukaLangsung(id);
       return;
     }
     // Tampilkan semua agar berkas baru terlihat masuk tabel
     setQ('');
     setType('all');
     setStatus('all');
-    setExpanded(null);
     setBaru({ id });
     // Cadangan: bila berkas tidak kunjung muncul di daftar, jangan biarkan barisnya tertahan
-    sorotTimer.current.push(
-      setTimeout(() => {
-        if (!aktifRef.current || masukRef.current === id) return;
-        masukRef.current = id;
-        tampilkanBaris(id);
-        setBaru(null);
-        showToast('Berkas baru dibuat.');
-      }, 4000),
-    );
+    clearTimeout(cadanganTimer.current);
+    cadanganTimer.current = setTimeout(() => {
+      if (!aktifRef.current || masukRef.current === id) return;
+      masukRef.current = id;
+      setBaru(null);
+      bukaLangsung(id);
+    }, 4000);
   }
 
   /** Konfirmasi → baris memudar & menyusut → baru data dihapus; bila gagal baris kembali. */
   async function hapusBerkas(pack) {
     setHapusPack(null);
-    if (expanded === pack.id) setExpanded(null);
     // Kebalikan animasi masuk: glitch merah → luruh kiri → kanan jadi debu merah → celah menutup
     const anim = animasiHapus({
       wadah: wadahRefs.current[pack.id],
@@ -213,17 +205,6 @@ export default function BerkasListPage() {
         'error',
       );
     }
-  }
-
-  function copyUraian(text) {
-    if (!navigator.clipboard?.writeText) {
-      showToast('Browser tidak mendukung salin otomatis.', 'error');
-      return;
-    }
-    navigator.clipboard.writeText(text).then(
-      () => showToast('Uraian disalin.'),
-      () => showToast('Gagal menyalin uraian.', 'error'),
-    );
   }
 
   return (
@@ -345,7 +326,7 @@ export default function BerkasListPage() {
           <div className={`overflow-x-auto overflow-y-hidden border rounded-xl ${T.border}`}>
             <div className="min-w-[840px]">
               <div className={`${GRID} px-4 border-b ${T.border} ${T.surface2}`}>
-                {['', 'ID', 'Pelaksana', 'Uraian', 'Nominal', 'Tahap', ''].map((h, i) => (
+                {['ID', 'Pelaksana', 'Uraian', 'Nominal', 'Tahap', ''].map((h, i) => (
                   <div
                     key={i}
                     className={`px-2 py-[11px] text-[11.5px] font-semibold uppercase tracking-[.03em] ${T.ink2}`}
@@ -373,12 +354,8 @@ export default function BerkasListPage() {
                   <BerkasRow
                     pack={pack}
                     urutan={i}
-                    isOpen={expanded === pack.id}
-                    onToggle={() => setExpanded(expanded === pack.id ? null : pack.id)}
                     onDetail={() => navigate(`/e-persuratan/lpj/${pack.id}`)}
-                    onCopy={copyUraian}
                     onHapus={canDeletePack(pack, user) ? () => setHapusPack(pack) : null}
-                    sorot={sorot?.id === pack.id ? sorot : null}
                   />
                 </Lipat>
               ))}
@@ -410,52 +387,33 @@ export default function BerkasListPage() {
   );
 }
 
-function BerkasRow({ pack, urutan = 0, isOpen, onToggle, onDetail, onCopy, onHapus, sorot }) {
-  // Ringkasan dipasang saat pertama dibuka, lalu dibiarkan agar bisa dilipat dengan halus
-  const [pernahBuka, setPernahBuka] = useState(isOpen);
-  if (isOpen && !pernahBuka) setPernahBuka(true);
+function BerkasRow({ pack, urutan = 0, onDetail, onHapus }) {
   const pelaksana = pelaksanaOf(pack);
   const total = lpjRowTotal(pack);
   const uraian = uraianOf(pack);
 
   return (
-    <div
-      className={`relative border-b ${T.border} border-l-[3px] ${ANIM.muncul} ${jedaKe(urutan)} ${
-        isOpen ? 'border-l-[#0f2040] dark:border-l-[#7DB6F3]' : 'border-l-transparent'
-      }`}
-    >
+    // relative: animasi masuk/hapus memasang lapisan absolut di elemen ini
+    <div className={`relative border-b ${T.border} ${ANIM.muncul} ${jedaKe(urutan)}`}>
       <div
-        role="button"
+        role="link"
         tabIndex={0}
-        aria-expanded={isOpen}
-        onClick={onToggle}
+        aria-label={`Buka detail ${lpjIdOf(pack) || uraian || 'berkas'}`}
+        onClick={onDetail}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault();
-            onToggle();
+            onDetail();
           }
         }}
-        className={`${GRID} pl-[13px] pr-4 items-center cursor-pointer ${isOpen ? T.surface2 : `${T.surface} ${T.hoverSurface2}`}`}
+        className={`${GRID} px-4 items-center cursor-pointer ${T.surface} ${T.hoverSurface2} focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-[#2A78D6]`}
       >
-        <div className={`py-3.5 flex justify-center ${isOpen ? T.ink : T.inkMuted}`}>
-          <FaChevronRight
-            size={12}
-            className={`transition-transform duration-200 ${isOpen ? 'rotate-90' : ''}`}
-          />
-        </div>
         <div className="px-2 py-3.5 min-w-0">
           <div
             className={`${FONT.mono} font-bold text-[13px] break-words ${lpjIdOf(pack) ? T.ink : T.inkMuted}`}
           >
             {lpjIdLabel(pack)}
           </div>
-          {sorot && (
-            <span
-              className={`inline-flex items-center gap-1 mt-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold ${STATUS.goodBg} ${STATUS.goodInk} motion-safe:transition-[scale,rotate] motion-safe:duration-500 motion-safe:ease-[cubic-bezier(.34,1.56,.64,1)] motion-safe:starting:scale-0 motion-safe:starting:-rotate-45`}
-            >
-              <FaStar size={9} /> Baru
-            </span>
-          )}
           <div className={`text-[11px] mt-0.5 ${T.inkMuted}`}>{jenisLabel(pack)}</div>
         </div>
         <div className="px-2 py-3.5 min-w-0">
@@ -481,17 +439,7 @@ function BerkasRow({ pack, urutan = 0, isOpen, onToggle, onDetail, onCopy, onHap
         <div className="px-2 py-3.5">
           <TahapPill pack={pack} />
         </div>
-        <div className="px-2 py-3.5 flex justify-end items-center gap-1.5">
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDetail();
-            }}
-            className={`inline-flex items-center gap-1.5 px-3.5 py-[7px] text-xs font-semibold rounded-[7px] text-white whitespace-nowrap ${ANIM.pilih} ${NAVY.bg} ${NAVY.hoverBg}`}
-          >
-            <FaEye size={13} /> Lihat Detail
-          </button>
+        <div className="px-2 py-3.5 flex justify-end items-center">
           {onHapus && (
             <button
               type="button"
@@ -501,134 +449,12 @@ function BerkasRow({ pack, urutan = 0, isOpen, onToggle, onDetail, onCopy, onHap
                 e.stopPropagation();
                 onHapus();
               }}
+              onKeyDown={(e) => e.stopPropagation()}
               className={`w-[30px] h-[30px] shrink-0 grid place-items-center rounded-[7px] border ${ANIM.pilih} ${STATUS.critBorder} ${STATUS.critBg} ${STATUS.critInk} hover:brightness-95`}
             >
               <FaRegTrashAlt size={12} />
             </button>
           )}
-        </div>
-      </div>
-
-      {sorot && (
-        <span
-          aria-hidden="true"
-          className={`pointer-events-none absolute inset-0 bg-[rgba(42,120,214,.12)] dark:bg-[rgba(125,182,243,.14)] motion-safe:transition-opacity motion-safe:duration-1000 motion-safe:starting:opacity-0 ${sorot.pudar ? 'opacity-0' : 'opacity-100'}`}
-        />
-      )}
-      <Lipat buka={isOpen}>
-        {pernahBuka && (
-          <BerkasRingkasan pack={pack} uraian={uraian} total={total} onCopy={onCopy} />
-        )}
-      </Lipat>
-    </div>
-  );
-}
-
-function BerkasRingkasan({ pack, uraian, total, onCopy }) {
-  if (!isSkemaBaru(pack)) {
-    return (
-      <div className={`border-t-2 ${T.border} ${T.surface2} px-5 py-5 pl-14 text-[13px] ${T.ink2}`}>
-        Berkas ini dibuat dengan format lama dan tidak didukung lagi oleh alur LPJ yang baru.
-      </div>
-    );
-  }
-  const pelaksana = pelaksanaOf(pack);
-  const grouped = groupTransaksiByItem(transaksiOf(pack));
-  const tgl = tanggalRingkas(pack);
-
-  return (
-    <div className={`border-t-2 ${T.border} ${T.surface2} p-5 pl-14`}>
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex flex-col gap-2.5">
-          <div>
-            <div className={`${LAYOUT.label} mb-1`}>Kode MAK</div>
-            <div
-              className={`${FONT.mono} text-[12.5px] font-semibold px-2.5 py-1.5 rounded-md border ${T.surface} ${T.border} ${T.ink}`}
-            >
-              {makOf(pack)?.kode || '-'}
-            </div>
-          </div>
-          <div>
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <div className={LAYOUT.label}>Uraian Kegiatan</div>
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onCopy(uraian);
-                }}
-                className={`inline-flex items-center gap-1 px-[9px] py-[3px] text-[10.5px] font-semibold rounded-md border shrink-0 ${T.surface} ${T.border} ${T.ink2}`}
-              >
-                <FaRegCopy size={10} /> Salin
-              </button>
-            </div>
-            <div className={`text-[13px] leading-normal ${T.ink}`}>{uraian}</div>
-          </div>
-          <div>
-            <div className={`${LAYOUT.label} mb-1`}>Tanggal LPJ</div>
-            <div className={`text-[13px] font-medium ${T.ink}`}>
-              {formatTanggal(tgl.tanggalLPJ)}
-            </div>
-          </div>
-          <div>
-            <div className={`${LAYOUT.label} mb-1.5`}>Daftar Pelaksana</div>
-            <div className="flex flex-wrap gap-1.5">
-              {pelaksana.length === 0 && <span className={`text-[13px] ${T.inkMuted}`}>—</span>}
-              {pelaksana.map((p, i) => (
-                <span
-                  key={p.id || p.nip}
-                  className={`text-xs font-medium px-3 py-1 rounded-full text-white ${NAVY.bg} ${ANIM.meletup} ${jedaKe(i + 1)}`}
-                >
-                  {p.nama}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-3">
-          <div>
-            <div className={`${LAYOUT.label} mb-2`}>Detail Transaksi</div>
-            <div className={`rounded-lg border overflow-hidden ${T.surface} ${T.border}`}>
-              {grouped.length === 0 && (
-                <div className={`px-3 py-[9px] text-[12.5px] ${T.inkMuted}`}>
-                  Belum ada transaksi.
-                </div>
-              )}
-              {grouped.map((t, i) => (
-                <div
-                  key={t.itemKode + t.label + i}
-                  className={`flex items-center justify-between gap-2 px-3 py-[9px] ${
-                    i < grouped.length - 1 ? `border-b ${T.border}` : ''
-                  }`}
-                >
-                  <div className="min-w-0">
-                    <span className={`${FONT.mono} text-[11px] font-semibold ${T.ink2}`}>
-                      {t.itemKode}
-                    </span>
-                    <span className={`text-[12.5px] ml-2 ${T.ink}`}>{t.label}</span>
-                  </div>
-                  <div className={`text-[13px] font-bold whitespace-nowrap ${T.ink}`}>
-                    Rp {t.total.toLocaleString('id-ID')}
-                  </div>
-                </div>
-              ))}
-              <div
-                className={`flex items-center justify-between px-3 py-2.5 border-t-2 border-[#163057] ${NAVY.bg}`}
-              >
-                <div className="text-xs font-bold uppercase tracking-[.04em] text-white/70">
-                  Total
-                </div>
-                <div className={`${FONT.head} text-sm font-extrabold text-white`}>
-                  Rp {total.toLocaleString('id-ID')}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div>
-            <div className={`${LAYOUT.label} mb-2`}>Progress Dokumen</div>
-            <ProgressFaseCards pack={pack} />
-          </div>
         </div>
       </div>
     </div>

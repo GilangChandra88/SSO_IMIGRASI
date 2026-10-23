@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaCheck, FaRegSave } from 'react-icons/fa';
+import { FaCheck, FaChevronLeft } from 'react-icons/fa';
 import { ALAT_ANGKUT, SEKSI_LIST } from '../../data/masterLpj';
 import MakDropdowns from '../../components/MakDropdowns';
 import PegawaiCards from '../../components/PegawaiCards';
@@ -220,14 +220,16 @@ export default function StepSPD({ ctx }) {
           byId={mak.byId}
           loading={mak.loading}
           mak={spd.mak}
+          bertahap
           onChange={(m) => setSpd({ mak: { ...spd.mak, ...m } })}
         />
         {errors.mak && <p className={FORM.err}>{errors.mak}</p>}
       </div>
 
       <div className="flex flex-wrap justify-end items-center gap-2 pb-6">
-        <button type="button" className={BTN.warn} onClick={() => persist(ctx.pfRef.current)}>
-          <FaRegSave size={13} /> Simpan Draft
+        {/* Isian sudah tersimpan otomatis; tombol ini menyimpan sisa perubahan lalu kembali */}
+        <button type="button" className={BTN.ghost} onClick={ctx.backToDetail}>
+          <FaChevronLeft size={12} /> Kembali ke Detail LPJ
         </button>
         <button type="button" className={BTN.primaryDark} onClick={handleSelesai}>
           <FaCheck size={12} /> Selesai

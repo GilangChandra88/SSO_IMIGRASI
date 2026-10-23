@@ -142,7 +142,7 @@ export async function createLPJPack({ id, jenis, uraian, uid, nama, pegawaiLogin
   const bagian = perjadin
     ? {
         sp: emptySp(pegawaiLogin),
-        spd: emptySpd(),
+        spd: { ...emptySpd(), maksud: uraian }, // "Maksud" SPD diawali uraian kegiatan
         lpj: emptyLpj(),
         lap: emptyLap(),
         selesai: emptySelesai(),

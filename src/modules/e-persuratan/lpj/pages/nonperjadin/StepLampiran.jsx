@@ -115,7 +115,7 @@ export default function StepLampiran({ ctx }) {
         if (ok) {
           showToast(`LPJ ${lpjIdOf(pack)} berhasil diselesaikan.`);
           rayakan({ judul: 'Berkas Selesai!', sub: lpjIdOf(pack), nada: 'final' });
-          ctx.navigate('/e-persuratan/lpj');
+          ctx.navigate(ctx.detailUrl); // berkas final: tampilkan Detail-nya
         }
       },
       onNo: async () => {

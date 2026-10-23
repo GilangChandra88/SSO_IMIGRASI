@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   FaCheck,
-  FaChevronRight,
+  FaChevronLeft,
   FaDownload,
   FaInfoCircle,
   FaRegClock,
@@ -21,7 +21,7 @@ const inisial = (nama) =>
 
 /** Fase 2 lanjutan — cetak/unduh SPD untuk tiap pelaksana. */
 export default function StepCetakSPD({ ctx }) {
-  const { pf, persist, goStep, dok } = ctx;
+  const { pf, persist, backToDetail, dok } = ctx;
   const kepada = pf.sp.kepada;
   const dicetak = pf.spd.dicetak || {};
   const printedCount = kepada.filter((p) => dicetak[p.id]).length;
@@ -34,8 +34,9 @@ export default function StepCetakSPD({ ctx }) {
     label: `SPD — ${p.nama}`,
   });
 
+  // Popup pratinjau PDF (sama dengan "Lihat"); unduh/cetak lewat tombol penampil PDF di popup
   async function cetak(p) {
-    dok.cetak(docSpd(p));
+    dok.lihat(docSpd(p));
     if (!dicetak[p.id]) {
       await persist(
         (prev) => ({
@@ -139,16 +140,14 @@ export default function StepCetakSPD({ ctx }) {
         )}
       </div>
 
+      {/* Selesai cetak: kembali ke Detail LPJ; Fase 3 (SPBy & LPJ) dimulai dari sana */}
       <div className="flex justify-end items-center pb-6">
         <button
           type="button"
-          onClick={async () => {
-            await persist(ctx.pfRef.current, { quiet: true });
-            goStep('lpj');
-          }}
+          onClick={backToDetail}
           className={`inline-flex items-center gap-2 px-6 py-2.5 rounded-lg text-sm font-semibold text-white shadow-[0_2px_8px_rgba(15,32,64,.3)] ${NAVY.bg} ${NAVY.hoverBg}`}
         >
-          Lanjut ke Buat SPBy &amp; LPJ <FaChevronRight size={12} />
+          <FaChevronLeft size={12} /> Kembali ke Detail LPJ
         </button>
       </div>
     </>

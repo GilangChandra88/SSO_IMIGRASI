@@ -87,9 +87,8 @@ export function pfHasSpData(sp) {
 
 export function pfHasSpdData(spd) {
   if (!spd) return false;
+  // nomorSPD (dari nomor SP) dan maksud (dari uraian kegiatan) terisi otomatis, bukan isian pengguna
   return !!(
-    spd.nomorSPD ||
-    spd.maksud ||
     spd.tujuan ||
     spd.alatAngkut ||
     spd.berangkat ||
@@ -230,15 +229,26 @@ export function lpjDetailStages(pack) {
     {
       num: 1,
       label: 'Surat Perintah',
-      sub: 'Dasar Penugasan, TTE & Nomor Surat',
+      sub: 'Dasar Penugasan & Penandatangan',
       items: [{ key: 'sp', label: 'Surat Perintah', isi: 'sp', noEdit: true, code: 'SP' }],
       groups: [],
     },
     {
       num: 2,
       label: 'SPD (Surat Perjalanan Dinas)',
-      sub: 'Upload Scan & Nomor Surat, lalu Cetak per Pelaksana',
-      items: [],
+      sub: 'Upload SP ber-TTE & Nomor Surat, lalu Isi & Cetak SPD per Pelaksana',
+      // Upload SP harus selesai dulu sebelum form SPD bisa diisi (lihat lpjGroupStatus)
+      items: [
+        {
+          key: 'tte',
+          docKey: 'scan_sp',
+          label: 'Upload Scan & Nomor Surat Perintah (TTE)',
+          isi: 'tte',
+          noEdit: true,
+          berkas: true,
+          code: 'TTE',
+        },
+      ],
       groups: [
         {
           key: 'spd',
@@ -297,19 +307,28 @@ const LPJ_CODES = {
 const NP_CODES = { spby: 'SPBY', nota_dinas: 'ND', kwitansi: 'KWT', lembar_verifikasi: 'LV' };
 
 // ─── Status dokumen & fase ───────────────────────────────────────────────────
-// selesai | menunggu | proses | belum  (+ terkunci untuk fase)
+// selesai | menunggu | proses | belum | terkunci (dokumen menunggu dokumen lain di fase yang sama)
 
 export function lpjSingleStatus(pack, stage, doc) {
   const selesai = pack.selesai || {};
-  const done = doc.key === 'sp' ? !!selesai.sp : doc.key === 'laporan' ? !!selesai.laporan : false;
+  // SP selesai begitu draftnya final; upload scan & nomor TTE (selesai.sp) jadi dokumen Fase 2
+  const done =
+    doc.key === 'sp'
+      ? !!(pack.sp?.locked || selesai.sp)
+      : doc.key === 'tte'
+        ? !!selesai.sp
+        : doc.key === 'laporan'
+          ? !!selesai.laporan
+          : false;
   if (done) return 'selesai';
-  if (doc.key === 'sp' && pack.sp?.locked) return 'menunggu';
   const started =
     doc.key === 'sp'
       ? pfHasSpData(pack.sp)
-      : doc.key === 'laporan'
-        ? pfHasLapData(pack.lap)
-        : false;
+      : doc.key === 'tte'
+        ? !!(pack.sp?.scan || pack.sp?.nomorTTE?.trim())
+        : doc.key === 'laporan'
+          ? pfHasLapData(pack.lap)
+          : false;
   return started ? 'proses' : 'belum';
 }
 
@@ -324,6 +343,8 @@ export function lpjGroupSubDone(pack, stage, group, item) {
 export function lpjGroupStatus(pack, stage, group) {
   const doneCount = group.subItems.filter((it) => lpjGroupSubDone(pack, stage, group, it)).length;
   if (group.subItems.length > 0 && doneCount === group.subItems.length) return 'selesai';
+  // Form SPD baru terbuka setelah SP ber-TTE diunggah (nomor SPD mengikuti nomor SP)
+  if (group.key === 'spd' && !pack.selesai?.sp) return 'terkunci';
   if (group.key === 'spd' && pack.spd?.locked) return 'menunggu';
   if (doneCount > 0) return 'proses';
   const started =

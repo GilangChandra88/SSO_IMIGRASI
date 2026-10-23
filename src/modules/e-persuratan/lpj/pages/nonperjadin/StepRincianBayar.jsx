@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaCheck, FaPlus, FaRegSave } from 'react-icons/fa';
+import { FaCheck, FaChevronLeft, FaPlus } from 'react-icons/fa';
 import { NP_RINCIAN_DOCS, URAIAN_MAX } from '../../data/masterLpj';
 import { emptyTransaksi } from '../../utils/emptyModels';
 import { groupTransaksiByItem, parseNum } from '../../utils/lpjLogic';
@@ -205,8 +205,9 @@ export default function StepRincianBayar({ ctx }) {
         </div>
 
         <div className="flex flex-wrap justify-end items-center gap-2 pb-8">
-          <button type="button" className={BTN.warn} onClick={() => persist(ctx.pfRef.current)}>
-            <FaRegSave size={13} /> Simpan Draft
+          {/* Menyimpan isian lalu kembali (sama dengan tautan "Kembali" di atas form) */}
+          <button type="button" className={BTN.ghost} onClick={ctx.backToDetail}>
+            <FaChevronLeft size={12} /> Kembali ke Detail LPJ
           </button>
           <button type="button" className={BTN.primaryDark} onClick={handleSelesai}>
             <FaCheck size={12} /> Selesai
