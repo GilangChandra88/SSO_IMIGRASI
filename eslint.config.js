@@ -7,7 +7,8 @@ import prettier from 'eslint-config-prettier';
 
 export default [
   // "functions" adalah paket Node terpisah (Cloud Functions) dan tidak ikut di-lint di sini.
-  { ignores: ['dist', 'node_modules', 'functions'] },
+  // public/ocr = berkas tesseract.js pihak ketiga (minified) yang disajikan apa adanya
+  { ignores: ['dist', 'node_modules', 'functions', 'public/ocr'] },
   js.configs.recommended,
   {
     files: ['**/*.{js,jsx}'],

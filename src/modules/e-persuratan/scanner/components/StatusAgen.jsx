@@ -76,10 +76,7 @@ export default function StatusAgen({
           <FaCheckCircle size={16} className={`shrink-0 ${STATUS.goodInk}`} />
           <div className="flex-1 min-w-0">
             <p className={`text-[13px] font-bold ${STATUS.goodInk}`}>Agen Scanner terhubung</p>
-            <p className={`text-[11.5px] ${T.ink2}`}>
-              Versi {info?.versi} · OCR{' '}
-              {info?.ocr ? `aktif (${info.bahasaOcr.join(', ')})` : 'tidak tersedia'}
-            </p>
+            <p className={`text-[11.5px] ${T.ink2}`}>Versi {info?.versi} · scanner siap dipakai</p>
           </div>
         </div>
         {perluPembaruan && (
@@ -169,7 +166,8 @@ export default function StatusAgen({
     >
       <p className={`${FONT.head} text-[14px] font-bold ${T.ink}`}>Pasang Agen Scanner</p>
       <p className={`text-[12px] mt-0.5 mb-3.5 leading-[1.5] ${T.inkMuted}`}>
-        Sekali saja per PC. Agen menghubungkan halaman ini dengan scanner, pemecah PDF, dan OCR.
+        Sekali saja per PC, hanya untuk memindai dari scanner. Impor gambar/PDF dan OCR tetap bisa
+        dipakai tanpa agen.
       </p>
       <ol className="space-y-3">
         <Langkah nomor={1} aktif={!menunggu}>

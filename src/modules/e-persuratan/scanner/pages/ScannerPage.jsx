@@ -40,7 +40,7 @@ export default function ScannerPage() {
   // Halaman baru masuk ke data; kanvas yang mengatur kapan ia tampil & menjadi aktif (antrean)
   const tambah = useCallback((hl) => tambahHalaman(hl), [tambahHalaman]);
 
-  const imporBerkas = useImpor({ agenSiap, onHalaman: tambah });
+  const imporBerkas = useImpor({ onHalaman: tambah });
   const seretBerkas = useSeretBerkas(imporBerkas.impor);
 
   // Halaman aktif dihapus → pindah ke halaman di posisi yang sama (atau terakhir)
@@ -102,7 +102,6 @@ export default function ScannerPage() {
             kerja={kerja}
             aktifId={aktifId}
             onAktif={setAktifId}
-            agenSiap={agenSiap}
             imporBerkas={imporBerkas}
             pindaian={pindaian}
           />
@@ -125,8 +124,7 @@ export default function ScannerPage() {
               <FaFileImport size={26} className="text-[#C9973B]" />
               <p className={`${FONT.head} text-[17px] font-bold`}>Lepaskan untuk menambahkan</p>
               <p className="text-[12.5px] text-[#A7B6CB]">
-                Gambar langsung masuk; PDF dipecah per halaman
-                {agenSiap ? '' : ' (butuh Agen Scanner)'}.
+                Gambar langsung masuk; PDF dipecah per halaman.
               </p>
             </div>
           </div>,
