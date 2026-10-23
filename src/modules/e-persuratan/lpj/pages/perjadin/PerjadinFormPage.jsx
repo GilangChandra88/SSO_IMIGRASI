@@ -6,8 +6,9 @@
 
 import React, { useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { FaRegClock } from 'react-icons/fa';
+import { FaCircleNotch, FaExclamationTriangle, FaRegClock } from 'react-icons/fa';
 import { saveLPJ } from '../../hooks/useLPJ';
+import { useSimpanOtomatis } from '../../hooks/useSimpanOtomatis';
 import { usePegawaiList } from '../../hooks/usePegawaiList';
 import { useMakTree } from '../../hooks/useMakTree';
 import { useDokumenLpj } from '../../hooks/useDokumenLpj';
@@ -18,7 +19,7 @@ import LinkBack from '../../ui/LinkBack';
 import { useToast } from '@/utils/toastStore';
 import { useMekarDariTombol } from '@/components/animasi';
 import { ANIM } from '@/utils/animasi';
-import { LAYOUT, T } from '@/utils/uiTokens';
+import { BTN, LAYOUT, STATUS, T } from '@/utils/uiTokens';
 import StepSuratPerintah from './StepSuratPerintah';
 import StepTTE from './StepTTE';
 import StepSPD from './StepSPD';
@@ -88,6 +89,13 @@ export default function PerjadinFormPage({ pack, isi, user }) {
       return next;
     });
 
+  // Setiap perubahan isian (lewat ctx.setPf) disimpan otomatis setelah pengguna berhenti mengetik
+  const otomatis = useSimpanOtomatis(() => persist(pfRef.current, { quiet: true, auto: true }));
+  const ubahPf = (fn) => {
+    setPf(fn);
+    otomatis.tandai();
+  };
+
   const [errors, setErrors] = useState({});
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
@@ -97,13 +105,21 @@ export default function PerjadinFormPage({ pack, isi, user }) {
   const packView = { ...pack, ...pf };
   const dok = useDokumenLpj({ pack: packView, pegawai, showToast });
 
-  const step = bolehMasuk(pf, isi) ? isi : langkahAktif(pf);
+  // Langkah yang ditahan selama fase diselesaikan lalu kembali ke Detail: tanpa ini, begitu fase
+  // terkunci (sebelum simpan selesai) form melompat sebentar ke langkah berikutnya.
+  const [langkahDitahan, setLangkahDitahan] = useState(null);
+  const step = langkahDitahan || (bolehMasuk(pf, isi) ? isi : langkahAktif(pf));
 
-  /** Simpan bagian berkas ke Firestore. Terima objek pf baru atau fungsi (pf lama → pf baru). */
+  /**
+   * Simpan bagian berkas ke Firestore. Terima objek pf baru atau fungsi (pf lama → pf baru).
+   * `tahanLangkah`: tetap tampilkan langkah ini (pemanggil akan pindah ke Detail setelahnya).
+   */
   async function persist(nextOrFn, opts = {}) {
     const prev = pfRef.current;
     const next = typeof nextOrFn === 'function' ? nextOrFn(prev) : nextOrFn;
+    if (opts.tahanLangkah) setLangkahDitahan(step);
     setPf(next);
+    if (!opts.auto) otomatis.bersih(); // simpanan ini sudah memuat isian terbaru
     try {
       const nomor = await saveLPJ(
         pack,
@@ -126,7 +142,9 @@ export default function PerjadinFormPage({ pack, isi, user }) {
       console.error('saveLPJ error:', err);
       // SPBy selesai + nomor LPJ: kembalikan isian agar fase tidak tampak terkunci tanpa nomor
       if (opts.beriNomor) setPf(prev);
-      showToast('Gagal menyimpan. Periksa koneksi lalu coba lagi.', 'error');
+      if (opts.tahanLangkah) setLangkahDitahan(null);
+      // Simpan otomatis yang gagal cukup ditandai lewat peringatan di atas form
+      if (!opts.auto) showToast('Gagal menyimpan. Periksa koneksi lalu coba lagi.', 'error');
       return false;
     }
   }
@@ -164,7 +182,7 @@ export default function PerjadinFormPage({ pack, isi, user }) {
     pack,
     packView,
     pf,
-    setPf,
+    setPf: ubahPf,
     pfRef,
     errors,
     setErrors,
@@ -187,6 +205,7 @@ export default function PerjadinFormPage({ pack, isi, user }) {
     <div className={`min-h-full ${T.ground}`}>
       <div className={LAYOUT.page}>
         <section ref={kartuRef} className={`${LAYOUT.card} overflow-x-clip`}>
+          <PeringatanSimpan status={otomatis.status} onCoba={otomatis.simpanSekarang} />
           <div ref={topRef} className="scroll-mt-4">
             <LinkBack onClick={backToDetail}>Kembali ke Detail Dokumen</LinkBack>
           </div>
@@ -203,13 +222,19 @@ export default function PerjadinFormPage({ pack, isi, user }) {
               </span>
             </div>
           </div>
-          {lastSaved && (
+          {otomatis.status === 'menyimpan' ? (
             <div className={`-mt-2 pb-4 text-[11.5px] flex items-center gap-1.5 ${T.inkMuted}`}>
-              <FaRegClock size={11} /> Terakhir disimpan:{' '}
-              <span key={lastSaved.getTime()} className={`font-semibold ${ANIM.meletup}`}>
-                {formatJam(lastSaved)}
-              </span>
+              <FaCircleNotch size={11} className="animate-spin" /> Menyimpan otomatis…
             </div>
+          ) : (
+            lastSaved && (
+              <div className={`-mt-2 pb-4 text-[11.5px] flex items-center gap-1.5 ${T.inkMuted}`}>
+                <FaRegClock size={11} /> Tersimpan otomatis · terakhir disimpan:{' '}
+                <span key={lastSaved.getTime()} className={`font-semibold ${ANIM.meletup}`}>
+                  {formatJam(lastSaved)}
+                </span>
+              </div>
+            )
           )}
 
           <div key={step} className={arah === 'maju' ? ANIM.geserKiri : ANIM.geserKanan}>
@@ -238,6 +263,39 @@ export default function PerjadinFormPage({ pack, isi, user }) {
         />
       )}
       {dok.modal}
+    </div>
+  );
+}
+
+/** Peringatan di atas form saat isian tidak bisa disimpan otomatis (offline / server tak merespons). */
+function PeringatanSimpan({ status, onCoba }) {
+  if (status !== 'luring' && status !== 'gagal') return null;
+  return (
+    // Lapisan luar padat: warna peringatan semi-transparan, isi form tidak boleh tembus saat digulir
+    <div
+      role="alert"
+      className={`sticky top-2 z-20 mb-4 rounded-xl ${T.surface} ${T.shadowSm} ${ANIM.muncul}`}
+    >
+      <div
+        className={`flex flex-wrap items-center gap-3 px-4 py-3 rounded-xl border ${STATUS.warnBg} ${STATUS.warnBorder} ${STATUS.warnInk}`}
+      >
+        <FaExclamationTriangle size={16} className="shrink-0" />
+        <div className="flex-1 min-w-[200px] text-[12.5px] leading-normal">
+          <strong className="block text-[13px]">
+            {status === 'luring'
+              ? 'Koneksi internet terputus — perubahan tidak tersimpan otomatis'
+              : 'Perubahan belum tersimpan otomatis'}
+          </strong>
+          {status === 'luring'
+            ? 'Isian akan disimpan begitu koneksi kembali. Jangan tutup atau muat ulang halaman ini.'
+            : 'Server belum merespons, mungkin karena internet bermasalah. Jangan tutup halaman ini dulu.'}
+        </div>
+        {status === 'gagal' && (
+          <button type="button" className={BTN.sm} onClick={onCoba}>
+            Coba simpan lagi
+          </button>
+        )}
+      </div>
     </div>
   );
 }

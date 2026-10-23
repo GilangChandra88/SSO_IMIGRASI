@@ -7,6 +7,7 @@ import {
   makOptions,
   makTahunOf,
 } from '../utils/makTree';
+import { ANIM } from '@/utils/animasi';
 import { FONT, FORM, STATUS, T } from '@/utils/uiTokens';
 
 /**
@@ -57,7 +58,8 @@ export default function MakDropdowns({ nodes, byId, loading, mak, onChange, bert
         if (bertahap && disabled) return null;
         const opts = disabled ? [] : makOptions(nodes, i, parentId);
         return (
-          <div key={level} className="mb-2.5">
+          // bertahap: tingkat yang baru terbuka muncul halus di bawah tingkat sebelumnya
+          <div key={level} className={`mb-2.5 ${bertahap ? ANIM.muncul : ''}`}>
             <label
               htmlFor={`mak-${level}`}
               className={

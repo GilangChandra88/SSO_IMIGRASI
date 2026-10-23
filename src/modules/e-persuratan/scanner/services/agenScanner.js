@@ -1,9 +1,9 @@
 /**
  * Klien HTTP "Agen Scanner": program kecil di PC pengguna (NAPS2.Sdk, .NET) yang mendengarkan
- * di 127.0.0.1 dan menjadi jembatan web ↔ scanner (TWAIN/WIA/eSCL), pemecah PDF, dan OCR.
- * Browser tidak bisa mengakses scanner sendiri, jadi semua yang butuh perangkat lewat sini.
+ * di 127.0.0.1 dan menjadi jembatan web ↔ scanner (TWAIN/WIA/eSCL). Browser tidak bisa mengakses
+ * scanner sendiri. Pecah PDF & OCR kini dikerjakan di browser (services/pdfWeb.js, ocrWeb.js).
  *
- * Halaman hasil pindaian/PDF dikirim sebagai aliran NDJSON (satu objek JSON per baris) supaya
+ * Halaman hasil pindaian dikirim sebagai aliran NDJSON (satu objek JSON per baris) supaya
  * tiap halaman bisa tampil begitu selesai, tanpa menunggu seluruh tumpukan kertas.
  */
 
@@ -108,31 +108,6 @@ async function bacaAliranHalaman(res, onHalaman) {
 export async function pindai(pengaturan, { onHalaman, signal }) {
   const res = await minta('/pindai', { method: 'POST', ...json(pengaturan), signal });
   return bacaAliranHalaman(res, onHalaman);
-}
-
-/** Pecah PDF menjadi gambar per halaman (dirender agen pada `dpi`). */
-export async function pecahPdf(file, { dpi = 150, onHalaman, signal }) {
-  const res = await minta(`/pdf?dpi=${dpi}`, {
-    method: 'POST',
-    body: file,
-    headers: { 'Content-Type': 'application/pdf' },
-    signal,
-  });
-  return bacaAliranHalaman(res, onHalaman);
-}
-
-/**
- * OCR satu gambar (Blob). Mengembalikan { teks, kata: [{ teks, x, y, w, h }] }; koordinat kata
- * dalam piksel gambar yang dikirim. `mode`: 'blok' (potongan kecil) atau 'halaman'.
- */
-export async function bacaTeks(blob, { mode = 'blok', signal } = {}) {
-  const res = await minta(`/ocr?mode=${mode}`, {
-    method: 'POST',
-    body: blob,
-    headers: { 'Content-Type': blob.type || 'image/png' },
-    signal,
-  });
-  return res.json();
 }
 
 function base64KeBlob(data, type = 'image/jpeg') {

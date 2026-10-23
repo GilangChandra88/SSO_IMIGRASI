@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { showToast } from '@/utils/toastStore';
-import { pecahPdf } from '../services/agenScanner';
+import { pecahPdfWeb } from '../services/pdfWeb';
 import { siapkanGambar } from '../utils/gambar';
 
 // Resolusi pecahan PDF tetap (keputusan pengguna): cukup tajam untuk dokumen & OCR
@@ -10,10 +10,10 @@ const adalahPdf = (f) => f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
 
 /**
  * Impor berkas (tombol pilih maupun seret-lepas ke halaman): gambar dibaca langsung di browser;
- * PDF dipecah per halaman oleh Agen Scanner (Pdfium) karena browser tidak bisa merender PDF tanpa
- * pustaka tambahan. Berkas diproses berurutan sehingga urutan halaman mengikuti urutan berkas.
+ * PDF dipecah per halaman di browser dengan PDF.js (tanpa Agen Scanner). Berkas diproses
+ * berurutan sehingga urutan halaman mengikuti urutan berkas.
  */
-export function useImpor({ agenSiap, onHalaman }) {
+export function useImpor({ onHalaman }) {
   const ctrl = useRef(null);
   // { nama, n: total halaman sejauh ini dalam satu impor, jenis: 'pdf'|'gambar' } selama mengimpor
   const [proses, setProses] = useState(null);
@@ -35,13 +35,9 @@ export function useImpor({ agenSiap, onHalaman }) {
         for (const f of daftar) {
           if (c.signal.aborted) break;
           if (adalahPdf(f)) {
-            if (!agenSiap) {
-              showToast(`"${f.name}" dilewati: memecah PDF butuh Agen Scanner.`, 'error');
-              continue;
-            }
             setProses({ nama: f.name, n: total, jenis: 'pdf' });
             try {
-              await pecahPdf(f, {
+              await pecahPdfWeb(f, {
                 dpi: DPI_PDF,
                 signal: c.signal,
                 onHalaman: (hl) => {
@@ -86,7 +82,7 @@ export function useImpor({ agenSiap, onHalaman }) {
         ctrl.current = null;
       }
     },
-    [agenSiap, onHalaman],
+    [onHalaman],
   );
 
   const hentikan = useCallback(() => ctrl.current?.abort(), []);

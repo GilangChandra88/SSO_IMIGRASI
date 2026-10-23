@@ -3,17 +3,26 @@
  * Path: lpj/{packId}/{folder}/{waktu}-{nama}
  */
 
-import { ref, uploadBytes, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject, listAll } from 'firebase/storage';
 import { storage } from '@/config/firebase';
 
 /**
+ * @param {{ onProgress?: (persen: number) => void }} [opsi]  onProgress: 0–100 selama mengunggah
  * @returns {Promise<{path, url, name, size, type, uploadedAt, uploadedBy}>}
  */
-export async function uploadLpjFile(packId, folder, file, uid = '') {
+export async function uploadLpjFile(packId, folder, file, uid = '', { onProgress } = {}) {
   const safeName = file.name.replace(/[^\w.-]+/g, '_').slice(-80);
   const path = `lpj/${packId}/${folder}/${Date.now()}-${safeName}`;
   const fileRef = ref(storage, path);
-  await uploadBytes(fileRef, file, { contentType: file.type || 'application/octet-stream' });
+  const tugas = uploadBytesResumable(fileRef, file, {
+    contentType: file.type || 'application/octet-stream',
+  });
+  if (onProgress) {
+    tugas.on('state_changed', (s) =>
+      onProgress(s.totalBytes ? (s.bytesTransferred / s.totalBytes) * 100 : 0),
+    );
+  }
+  await tugas;
   const url = await getDownloadURL(fileRef);
   return {
     path,

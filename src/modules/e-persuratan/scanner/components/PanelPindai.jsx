@@ -170,8 +170,8 @@ export default function PanelPindai({ agenSiap, onHalaman, onProgres }) {
   if (!agenSiap) {
     return (
       <p className={`text-[12.5px] leading-[1.6] ${T.inkMuted}`}>
-        Pemindaian butuh <b>Agen Scanner</b> yang berjalan di PC ini. Impor gambar tetap bisa
-        dipakai tanpa agen.
+        Pemindaian butuh <b>Agen Scanner</b> yang berjalan di PC ini. Impor gambar/PDF dan OCR tetap
+        bisa dipakai tanpa agen.
       </p>
     );
   }

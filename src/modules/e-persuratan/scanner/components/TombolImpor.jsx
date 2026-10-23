@@ -1,13 +1,13 @@
 import React, { useRef } from 'react';
 import { FaFileImport, FaPlus } from 'react-icons/fa';
-import { ADMIN, STATUS, T } from '@/utils/uiTokens';
+import { ADMIN, T } from '@/utils/uiTokens';
 
 /**
  * Tombol impor gambar/PDF di panel tengah (PDF dipecah pada 200 dpi, lihat useImpor).
  * `varian`: 'besar' (kanvas kosong) atau 'kartu' (kartu "+ Tambah halaman" di ujung kanvas).
  * Tombol bertanda `data-asal-cadangan="impor"`: titik berangkat cadangan halaman yang terbang.
  */
-export default function TombolImpor({ impor, sibuk, agenSiap, varian = 'kartu' }) {
+export default function TombolImpor({ impor, sibuk, varian = 'kartu' }) {
   const input = useRef(null);
   const pilih = () => input.current?.click();
 
@@ -48,11 +48,6 @@ export default function TombolImpor({ impor, sibuk, agenSiap, varian = 'kartu' }
             <FaPlus size={11} /> Tambah halaman (gambar / PDF)
           </button>
         </div>
-      )}
-      {!agenSiap && (
-        <p className={`mt-2 text-center text-[11.5px] ${STATUS.warnInk}`}>
-          Agen Scanner belum terhubung: PDF belum bisa dipecah, gambar tetap bisa diimpor.
-        </p>
       )}
     </>
   );

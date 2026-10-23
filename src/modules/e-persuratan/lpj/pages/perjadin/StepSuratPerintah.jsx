@@ -20,7 +20,7 @@ function validateSp(sp) {
 
 /** Fase 1 — isian Surat Perintah. */
 export default function StepSuratPerintah({ ctx }) {
-  const { pf, setPf, errors, setErrors, persist, goStep, askConfirm, closeConfirm } = ctx;
+  const { pf, setPf, errors, setErrors, persist, askConfirm, closeConfirm } = ctx;
   const sp = pf.sp;
   const setSp = (patch) => setPf((prev) => ({ ...prev, sp: { ...prev.sp, ...patch } }));
 
@@ -36,12 +36,14 @@ export default function StepSuratPerintah({ ctx }) {
             ...prev,
             sp: { ...prev.sp, locked: true, tanggal: prev.sp.tanggal || hariIniISO() },
           }),
-          { quiet: true, teks: 'menandai Surat Perintah selesai' },
+          // tahanLangkah: tetap di form ini sampai pindah ke Detail
+          { quiet: true, teks: 'menandai Surat Perintah selesai', tahanLangkah: true },
         );
         closeConfirm();
         if (ok) {
           rayakan({ judul: 'Selesai!', sub: 'Draft Surat Perintah' });
-          goStep('tte');
+          // Upload SP ber-TTE dilanjutkan dari Fase 2 di Detail LPJ
+          ctx.navigate(ctx.detailUrl);
         }
       },
       onNo: async () => {

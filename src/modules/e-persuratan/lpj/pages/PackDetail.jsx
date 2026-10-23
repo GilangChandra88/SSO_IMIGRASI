@@ -1,8 +1,10 @@
 /**
  * Detail Dokumen (LpjDetailPage purwarupa) — pusat kendali satu berkas LPJ: kartu ringkasan
  * di atas, lalu satu kartu per Fase berisi dokumen/kelompok dokumen beserta status & aksinya.
- * Aksi "Buat Sekarang/Edit/Upload/Cetak SPD" membuka form (?isi=...), "Lihat/Print" membuka
- * dokumen (PDF asli bila templatenya ada).
+ * Tombol untuk melanjutkan progres (teks mengikuti dokumen & progres, lihat TEKS_AKSI) hanya
+ * ada di kepala blok fase dan membuka form (?isi=...); baris dokumen berisi satu tombol
+ * "Lihat / Print" yang membuka popup pratinjau dokumen (PDF asli bila templatenya ada; cetak dari
+ * popup).
  */
 
 import React, { useLayoutEffect, useRef } from 'react';
@@ -11,10 +13,11 @@ import {
   FaCheck,
   FaClock,
   FaLock,
-  FaPlus,
   FaPrint,
-  FaRegEdit,
+  FaArrowRight,
+  FaPlus,
   FaRegEye,
+  FaRegCopy,
   FaRegFileAlt,
   FaUpload,
 } from 'react-icons/fa';
@@ -25,7 +28,6 @@ import { useDokumenLpj } from '../hooks/useDokumenLpj';
 import {
   STAGE_STATUS_LABEL,
   canEditPack,
-  isPerjadin,
   isSkemaBaru,
   jenisLabel,
   lpjGroupStatus,
@@ -36,21 +38,21 @@ import {
   lpjSingleStatus,
   lpjTahapDisplay,
   overallProgress,
-  pelaksanaOf,
   stagesWithStatus,
-  tanggalRingkas,
   uraianOf,
 } from '../utils/lpjLogic';
-import { formatTanggal } from '../utils/formatTanggal';
 import LinkBack from '../ui/LinkBack';
+import TombolBuat from '../components/TombolBuat';
+import KilauFase from '../components/KilauFase';
+import RingkasanBerkas, { InfoBerkasKop } from '../components/RingkasanBerkas';
 import ProgressBar from '../ui/ProgressBar';
 import { useToast } from '@/utils/toastStore';
 import { BTN, FONT, LAYOUT, NAVY, STAGE_CLS, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, munculBerurutan } from '@/utils/animasi';
 import { AngkaBerjalan } from '@/components/animasi';
+import { lanjutBukaBerkas } from '../../animasiHalaman';
 
 const persen = (n) => `${Math.round(n)}%`;
-const rupiah = (n) => `Rp ${Math.round(n).toLocaleString('id-ID')}`;
 
 export default function PackDetail({ packId }) {
   const navigate = useNavigate();
@@ -59,14 +61,15 @@ export default function PackDetail({ packId }) {
   const { pack, loading, error } = useLPJPack(packId);
   const { pegawai } = usePegawaiList();
   const dok = useDokumenLpj({ pack, pegawai, showToast });
-  // Saat berkas pertama tampil, isi halaman muncul bertahap dari atas ke bawah (data-bertahap)
+  // Saat berkas pertama tampil, isi halaman muncul bertahap dari atas ke bawah (data-bertahap);
+  // bila baru dibuat dari Daftar LPJ, lembar berkas yang dibuka berubah menjadi kartu judul
   const isiRef = useRef(null);
   const sudahMuncul = useRef(false);
   useLayoutEffect(() => {
     if (!pack || sudahMuncul.current || !isiRef.current) return;
     sudahMuncul.current = true;
-    munculBerurutan(isiRef.current);
-  }, [pack]);
+    if (!lanjutBukaBerkas(packId, isiRef.current)) munculBerurutan(isiRef.current);
+  }, [pack, packId]);
 
   const backToList = () => navigate('/e-persuratan/lpj');
 
@@ -103,22 +106,22 @@ export default function PackDetail({ packId }) {
   const total = lpjRowTotal(pack);
   const stages = stagesWithStatus(pack);
   const overall = overallProgress(pack);
-  const pelaksana = pelaksanaOf(pack);
-  const tgl = tanggalRingkas(pack);
+
+  function salinUraian() {
+    if (!navigator.clipboard?.writeText) {
+      showToast('Browser tidak mendukung salin otomatis.', 'error');
+      return;
+    }
+    navigator.clipboard.writeText(pack.uraian || '').then(
+      () => showToast('Uraian disalin.'),
+      () => showToast('Gagal menyalin uraian.', 'error'),
+    );
+  }
 
   const goForm = (isi) => {
     if (!canEdit) return; // berkas final / tanpa hak edit tidak lagi bisa diubah
     navigate(`/e-persuratan/lpj/${pack.id}?isi=${isi}`);
   };
-
-  const summary = [
-    ['Pelaksana', pelaksana.map((p) => p.nama).join(', ')],
-    ['Seksi', pack.spd?.seksi],
-    ['Berangkat', tgl.berangkat && formatTanggal(tgl.berangkat)],
-    ['Kembali', tgl.kembali && formatTanggal(tgl.kembali)],
-    ['Tanggal LPJ', tgl.tanggalLPJ && formatTanggal(tgl.tanggalLPJ)],
-    ['Total Biaya', 'Rp ' + total.toLocaleString('id-ID')],
-  ];
 
   return (
     <Shell wadahRef={isiRef}>
@@ -147,17 +150,22 @@ export default function PackDetail({ packId }) {
                 {tahap.label}
               </span>
             </div>
-            <h1
-              className={`${FONT.head} text-lg sm:text-[21px] leading-[1.32] font-bold text-white break-words`}
-            >
-              {pack.uraian}
-            </h1>
-            <p className="text-[12.5px] text-white/65 mt-2">
-              {pelaksana.map((p) => p.nama).join(', ') || '—'} · TOTAL BIAYA{' '}
-              <strong className="text-white">
-                <AngkaBerjalan nilai={total} format={rupiah} />
-              </strong>
-            </p>
+            {/* Pelaksana & total biaya ada di Ringkasan di bawah, tidak diulang di sini */}
+            <div className="flex items-start gap-2.5">
+              <h1
+                className={`${FONT.head} min-w-0 text-lg sm:text-[21px] leading-[1.32] font-bold text-white break-words`}
+              >
+                {pack.uraian}
+              </h1>
+              <button
+                type="button"
+                onClick={salinUraian}
+                title="Salin uraian kegiatan"
+                className={`mt-1 inline-flex items-center gap-1 px-2 py-[3px] text-[10.5px] font-semibold rounded-md border shrink-0 bg-white/10 border-white/20 text-white/80 hover:bg-white/20 hover:text-white ${ANIM.pilih}`}
+              >
+                <FaRegCopy size={10} /> Salin
+              </button>
+            </div>
           </div>
           <div className="text-right shrink-0">
             <div className={`${FONT.head} text-[26px] font-extrabold text-white leading-none`}>
@@ -168,6 +176,7 @@ export default function PackDetail({ packId }) {
             </div>
           </div>
         </div>
+        <InfoBerkasKop pack={pack} />
         <ProgressBar
           value={overall.pct}
           className={`mt-4 h-1.5 rounded-[3px] bg-white/15 [&::-webkit-progress-bar]:bg-white/15 [&::-webkit-progress-value]:rounded-[3px] [&::-moz-progress-bar]:rounded-[3px] ${
@@ -178,118 +187,114 @@ export default function PackDetail({ packId }) {
         />
       </div>
 
-      {/* Ringkasan (Perjadin) */}
-      {isPerjadin(pack) && (
-        <div
-          data-bertahap
-          className={`rounded-[10px] border px-5 py-3.5 mb-6 flex flex-wrap gap-x-8 gap-y-3 ${T.surface2} ${T.border}`}
-        >
-          {summary.map(([label, val]) => (
-            <div key={label} className="min-w-0">
-              <div
-                className={`text-[10.5px] font-bold uppercase tracking-[.05em] mb-0.5 ${T.inkMuted}`}
-              >
-                {label}
-              </div>
-              <div className={`text-[13px] font-medium break-words ${T.ink}`}>{val || '—'}</div>
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Detail transaksi (informasi berkas ada di kartu judul) */}
+      <RingkasanBerkas pack={pack} total={total} />
 
       {/* Kartu per fase */}
       <div>
-        {stages.map(({ stage, display, locked, tally, pct }, si) => (
-          <div
-            key={stage.num}
-            data-bertahap
-            className={`${T.surface} border rounded-[14px] mb-4 overflow-hidden ${
-              locked ? `${T.border} opacity-80` : STAGE_CLS[display].border
-            }`}
-          >
-            <div className="flex flex-wrap items-center gap-3 px-4 sm:px-5 py-4">
-              <div
-                key={display}
-                className={`w-9 h-9 shrink-0 rounded-[10px] flex items-center justify-center ${ANIM.meletup} ${
-                  display === 'selesai' || display === 'proses'
-                    ? `${NAVY.bg} text-white`
-                    : `${T.surface2} ${T.inkMuted}`
-                }`}
-              >
-                {display === 'selesai' ? (
-                  <FaCheck size={15} />
-                ) : locked ? (
-                  <FaLock size={14} />
-                ) : (
-                  <span className="text-sm font-extrabold">{stage.num}</span>
+        {stages.map(({ stage, display, locked, tally, pct }, si) => {
+          const aksi = !locked && canEdit ? aksiFase(pack, stage) : null;
+          // Fase yang sedang berjalan disapu kilau, serempak dengan tombol fase
+          const aktif = !locked && display !== 'selesai';
+          return (
+            <div
+              key={stage.num}
+              data-bertahap
+              className={`relative ${T.surface} border rounded-[14px] mb-4 overflow-hidden ${
+                locked ? `${T.border} opacity-80` : STAGE_CLS[display].border
+              }`}
+            >
+              {/* Kilau hanya di kepala blok fase (judul + tombol), bukan seluruh kartu */}
+              <div className="relative overflow-hidden flex flex-wrap items-center gap-3 px-4 sm:px-5 py-4">
+                {aktif && <KilauFase />}
+                <div
+                  key={`ikon-${display}`}
+                  className={`w-9 h-9 shrink-0 rounded-[10px] flex items-center justify-center ${ANIM.meletup} ${
+                    display === 'selesai' || display === 'proses'
+                      ? `${NAVY.bg} text-white`
+                      : `${T.surface2} ${T.inkMuted}`
+                  }`}
+                >
+                  {display === 'selesai' ? (
+                    <FaCheck size={15} />
+                  ) : locked ? (
+                    <FaLock size={14} />
+                  ) : (
+                    <span className="text-sm font-extrabold">{stage.num}</span>
+                  )}
+                </div>
+                <div className="flex-1 min-w-[180px]">
+                  <h2 className={`${FONT.head} font-bold text-[14.5px] ${T.ink}`}>
+                    Fase {stage.num} — {stage.label}
+                  </h2>
+                  <p className={`text-xs mt-0.5 ${T.inkMuted}`}>
+                    {tally.done}/{tally.total} selesai · {stage.sub}
+                    {locked ? ' · menunggu tahap sebelumnya' : ''}
+                  </p>
+                </div>
+                {/* Label hanya Terkunci/Selesai; fase yang belum dimulai cukup "Buat Sekarang" */}
+                {(display === 'terkunci' || display === 'selesai') && (
+                  <span
+                    key={`label-${display}`}
+                    className={`text-[11px] font-bold px-2.5 py-[3px] rounded-[20px] border whitespace-nowrap shrink-0 ${ANIM.meletup} ${STAGE_CLS[display].badge}`}
+                  >
+                    {STAGE_STATUS_LABEL[display]}
+                  </span>
+                )}
+                {aksi && (
+                  <TombolBuat
+                    key={aksi.isi + aksi.label}
+                    label={aksi.label}
+                    ikon={aksi.ikon}
+                    onClick={() => goForm(aksi.isi)}
+                  />
                 )}
               </div>
-              <div className="flex-1 min-w-[180px]">
-                <h2 className={`${FONT.head} font-bold text-[14.5px] ${T.ink}`}>
-                  Fase {stage.num} — {stage.label}
-                </h2>
-                <p className={`text-xs mt-0.5 ${T.inkMuted}`}>
-                  {tally.done}/{tally.total} selesai · {stage.sub}
-                  {locked ? ' · menunggu tahap sebelumnya' : ''}
-                </p>
-              </div>
-              <span
-                key={display}
-                className={`text-[11px] font-bold px-2.5 py-[3px] rounded-[20px] border whitespace-nowrap shrink-0 ${ANIM.meletup} ${STAGE_CLS[display].badge}`}
-              >
-                {STAGE_STATUS_LABEL[display]}
-              </span>
-            </div>
-            <ProgressBar
-              value={pct}
-              className={`h-1 ${T.surface2} [&::-webkit-progress-bar]:bg-[#F3F5F8] dark:[&::-webkit-progress-bar]:bg-[#16243A] ${
-                locked
-                  ? '[&::-webkit-progress-value]:bg-[#E0E5EC] [&::-moz-progress-bar]:bg-[#E0E5EC] dark:[&::-webkit-progress-value]:bg-[#233450] dark:[&::-moz-progress-bar]:bg-[#233450]'
-                  : '[&::-webkit-progress-value]:bg-[#0f2040] [&::-moz-progress-bar]:bg-[#0f2040] dark:[&::-webkit-progress-value]:bg-[#7DB6F3] dark:[&::-moz-progress-bar]:bg-[#7DB6F3]'
-              }`}
-            />
+              <ProgressBar
+                value={pct}
+                className={`h-1 ${T.surface2} [&::-webkit-progress-bar]:bg-[#F3F5F8] dark:[&::-webkit-progress-bar]:bg-[#16243A] ${
+                  locked
+                    ? '[&::-webkit-progress-value]:bg-[#E0E5EC] [&::-moz-progress-bar]:bg-[#E0E5EC] dark:[&::-webkit-progress-value]:bg-[#233450] dark:[&::-moz-progress-bar]:bg-[#233450]'
+                    : '[&::-webkit-progress-value]:bg-[#0f2040] [&::-moz-progress-bar]:bg-[#0f2040] dark:[&::-webkit-progress-value]:bg-[#7DB6F3] dark:[&::-moz-progress-bar]:bg-[#7DB6F3]'
+                }`}
+              />
 
-            {locked ? (
-              <div
-                data-bertahap
-                className={`flex items-center gap-2 px-4 sm:px-5 py-4 text-[12.5px] border-t ${T.border} ${T.inkMuted}`}
-              >
-                <FaLock size={13} className="shrink-0" />
-                <span>
-                  Selesaikan fase "{stages[si - 1].stage.label}" terlebih dahulu untuk membuka fase
-                  ini.
-                </span>
-              </div>
-            ) : (
-              <>
-                {(stage.items || []).map((doc) => (
-                  <SingleCard
-                    key={doc.key}
-                    doc={doc}
-                    status={lpjSingleStatus(pack, stage, doc)}
-                    canEdit={canEdit}
-                    onForm={goForm}
-                    onLihat={dok.lihat}
-                    onPrint={dok.cetak}
-                  />
-                ))}
-                {(stage.groups || []).map((group) => (
-                  <GroupCard
-                    key={group.key}
-                    pack={pack}
-                    stage={stage}
-                    group={group}
-                    status={lpjGroupStatus(pack, stage, group)}
-                    canEdit={canEdit}
-                    onForm={goForm}
-                    onLihat={dok.lihat}
-                    onPrint={dok.cetak}
-                  />
-                ))}
-              </>
-            )}
-          </div>
-        ))}
+              {locked ? (
+                <div
+                  data-bertahap
+                  className={`flex items-center gap-2 px-4 sm:px-5 py-4 text-[12.5px] border-t ${T.border} ${T.inkMuted}`}
+                >
+                  <FaLock size={13} className="shrink-0" />
+                  <span>
+                    Selesaikan fase "{stages[si - 1].stage.label}" terlebih dahulu untuk membuka
+                    fase ini.
+                  </span>
+                </div>
+              ) : (
+                <>
+                  {(stage.items || []).map((doc) => (
+                    <SingleCard
+                      key={doc.key}
+                      doc={doc}
+                      status={lpjSingleStatus(pack, stage, doc)}
+                      onLihat={dok.lihat}
+                    />
+                  ))}
+                  {(stage.groups || []).map((group) => (
+                    <GroupCard
+                      key={group.key}
+                      pack={pack}
+                      stage={stage}
+                      group={group}
+                      status={lpjGroupStatus(pack, stage, group)}
+                      onLihat={dok.lihat}
+                    />
+                  ))}
+                </>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <StatusPembayaran pembayaran={pack.pembayaran} />
@@ -320,7 +325,9 @@ function DocIcon({ status }) {
       proses: `${NAVY.bg} text-white`,
       menunggu: `${STATUS.warnSolid} text-white`,
     }[status] || `${T.surface2} ${T.inkMuted}`;
-  const Icon = { selesai: FaCheck, proses: FaClock, menunggu: FaLock }[status] || FaRegFileAlt;
+  const Icon =
+    { selesai: FaCheck, proses: FaClock, menunggu: FaLock, terkunci: FaLock }[status] ||
+    FaRegFileAlt;
   return (
     <div
       className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center ${ANIM.meletup} ${cls}`}
@@ -340,56 +347,68 @@ function CodeBadge({ code }) {
   );
 }
 
-function SingleCard({ doc, status, canEdit, onForm, onLihat, onPrint }) {
+/**
+ * Satu-satunya tombol untuk melanjutkan progres ada di kepala blok fase: dokumen pertama fase ini
+ * yang belum selesai menentukan aksinya (mulai / lanjutkan / cetak SPD). Baris dokumen hanya
+ * berisi Lihat/Print.
+ * @returns {{ isi: string, label: string, ikon: Function }|null}
+ */
+function aksiFase(pack, stage) {
+  const docs = [
+    ...(stage.items || []).map((d) => ({ d, status: lpjSingleStatus(pack, stage, d) })),
+    ...(stage.groups || []).map((d) => ({ d, status: lpjGroupStatus(pack, stage, d) })),
+  ];
+  const aktif = docs.find(({ status }) => ['belum', 'proses', 'menunggu'].includes(status));
+  if (!aktif) return null;
+  const { d, status } = aktif;
+  if (status === 'menunggu') return { isi: 'cetak-spd', label: 'Cetak SPD', ikon: FaPrint };
+  const teks = TEKS_AKSI[d.key] || { mulai: 'Mulai Isi', lanjut: 'Lanjutkan', ikon: FaPlus };
+  return status === 'proses'
+    ? { isi: d.isi, label: teks.lanjut, ikon: FaArrowRight }
+    : { isi: d.isi, label: teks.mulai, ikon: teks.ikon };
+}
+
+// Teks tombol fase per dokumen: mulai (belum diisi) / lanjut (sudah mulai diisi)
+const TEKS_AKSI = {
+  sp: { mulai: 'Buat Surat Perintah', lanjut: 'Lanjutkan Surat Perintah', ikon: FaPlus },
+  tte: { mulai: 'Upload SP ber-TTE', lanjut: 'Lanjutkan Upload SP', ikon: FaUpload },
+  spd: { mulai: 'Isi SPD', lanjut: 'Lanjutkan SPD', ikon: FaPlus },
+  lpjpack: { mulai: 'Buat SPBy & LPJ', lanjut: 'Lanjutkan SPBy & LPJ', ikon: FaPlus },
+  laporan: { mulai: 'Buat Laporan Kegiatan', lanjut: 'Lanjutkan Laporan', ikon: FaPlus },
+  nprincian: { mulai: 'Buat SPBy & Rincian', lanjut: 'Lanjutkan SPBy & Rincian', ikon: FaPlus },
+  nplampiran: { mulai: 'Upload Lampiran', lanjut: 'Lanjutkan Lampiran', ikon: FaUpload },
+};
+
+/** Tombol "Lihat" / "Lihat / Print" dengan ukuran & lebar sama di semua baris dokumen. */
+function TombolLihat({ onClick, children }) {
+  return (
+    <button
+      type="button"
+      className={`${BTN.sm} w-[122px] shrink-0 justify-center`}
+      onClick={onClick}
+    >
+      <FaRegEye size={12} /> {children}
+    </button>
+  );
+}
+
+function BelumDibuat({ teks = 'Belum dibuat' }) {
+  return <span className={`text-[11.5px] shrink-0 ${T.inkMuted}`}>{teks}</span>;
+}
+
+function SingleCard({ doc, status, onLihat }) {
   let actions = null;
-  if (status === 'selesai') {
+  if (status === 'selesai' || status === 'proses') {
+    // Satu tombol: popup pratinjau PDF, yang juga bisa langsung mencetak. Draf dan berkas
+    // unggahan (scan SP, bukan template PDF) cukup berlabel "Lihat".
+    const bisaPrint = status === 'selesai' && !doc.berkas;
     actions = (
-      <div className="flex flex-wrap gap-2 shrink-0">
-        <button type="button" className={BTN.sm} onClick={() => onLihat(doc)}>
-          <FaRegEye size={12} /> Lihat
-        </button>
-        <button type="button" className={BTN.sm} onClick={() => onPrint(doc)}>
-          <FaPrint size={12} /> Print
-        </button>
-        {!doc.noEdit && canEdit && (
-          <button type="button" className={BTN.sm} data-mekar onClick={() => onForm(doc.isi)}>
-            <FaRegEdit size={12} /> Edit
-          </button>
-        )}
-      </div>
+      <TombolLihat onClick={() => onLihat(doc)}>
+        {bisaPrint ? 'Lihat / Print' : 'Lihat'}
+      </TombolLihat>
     );
-  } else if (status === 'menunggu') {
-    actions = (
-      <div className="flex flex-wrap gap-2 shrink-0">
-        <button type="button" className={BTN.sm} onClick={() => onLihat(doc)}>
-          <FaRegEye size={12} /> Lihat
-        </button>
-        {canEdit && (
-          <button type="button" className={BTN.warnSolid} data-mekar onClick={() => onForm('tte')}>
-            <FaUpload size={12} /> Upload
-          </button>
-        )}
-      </div>
-    );
-  } else if (status === 'proses') {
-    actions = (
-      <div className="flex flex-wrap gap-2 shrink-0">
-        <button type="button" className={BTN.sm} onClick={() => onLihat(doc)}>
-          <FaRegEye size={12} /> Lihat
-        </button>
-        {canEdit && (
-          <button type="button" className={BTN.sm} data-mekar onClick={() => onForm(doc.isi)}>
-            <FaRegEdit size={12} /> Edit
-          </button>
-        )}
-      </div>
-    );
-  } else if (canEdit) {
-    actions = (
-      <button type="button" className={BTN.action} data-mekar onClick={() => onForm(doc.isi)}>
-        <FaPlus size={11} /> Buat Sekarang
-      </button>
-    );
+  } else {
+    actions = <BelumDibuat />; // tombol untuk melanjutkan ada di blok fase
   }
 
   return (
@@ -407,11 +426,6 @@ function SingleCard({ doc, status, canEdit, onForm, onLihat, onPrint }) {
               Sudah final — tidak dapat diubah
             </div>
           )}
-          {status === 'menunggu' && (
-            <div className={`text-[11px] mt-px ${STATUS.warnInk}`}>
-              Sudah ditandai selesai — tidak dapat diedit lagi, menunggu upload nomor TTE
-            </div>
-          )}
         </div>
       </div>
       {actions}
@@ -419,44 +433,12 @@ function SingleCard({ doc, status, canEdit, onForm, onLihat, onPrint }) {
   );
 }
 
-function GroupCard({ pack, stage, group, status, canEdit, onForm, onLihat, onPrint }) {
+function GroupCard({ pack, stage, group, status, onLihat }) {
+  // Tombol untuk melanjutkan (mulai/lanjutkan/cetak SPD) ada di blok fase, bukan di sini
   let headerAction = null;
-  if (status === 'selesai') {
-    if (!group.noEdit && canEdit) {
-      headerAction = (
-        <button type="button" className={BTN.sm} data-mekar onClick={() => onForm(group.isi)}>
-          <FaRegEdit size={12} /> Edit
-        </button>
-      );
-    }
-  } else if (status === 'menunggu') {
-    if (canEdit) {
-      headerAction = (
-        <button
-          type="button"
-          className={BTN.warnSolid}
-          data-mekar
-          onClick={() => onForm('cetak-spd')}
-        >
-          <FaPrint size={12} /> Cetak SPD
-        </button>
-      );
-    }
-  } else if (status === 'proses') {
-    if (canEdit) {
-      headerAction = (
-        <button type="button" className={BTN.sm} data-mekar onClick={() => onForm(group.isi)}>
-          <FaRegEdit size={12} /> Edit
-        </button>
-      );
-    }
-  } else if (canEdit) {
-    headerAction = (
-      <button type="button" className={BTN.action} data-mekar onClick={() => onForm(group.isi)}>
-        <FaPlus size={11} /> Buat Sekarang
-      </button>
-    );
-  }
+  if (status === 'proses') headerAction = <BelumDibuat teks="Sedang diisi" />;
+  else if (status === 'terkunci') headerAction = <BelumDibuat teks="Upload SP terlebih dahulu" />;
+  else if (status === 'belum') headerAction = <BelumDibuat />;
 
   return (
     <div>
@@ -514,14 +496,8 @@ function GroupCard({ pack, stage, group, status, canEdit, onForm, onLihat, onPri
               <span className={`text-[12.5px] ${T.ink2} break-words`}>{item.label}</span>
             </div>
             {subDone ? (
-              <div className="flex gap-1.5 shrink-0">
-                <button type="button" className={BTN.xs} onClick={() => onLihat(item)}>
-                  <FaRegEye size={11} /> Lihat
-                </button>
-                <button type="button" className={BTN.xs} onClick={() => onPrint(item)}>
-                  <FaPrint size={11} /> Print
-                </button>
-              </div>
+              // Popup pratinjau PDF; mencetak langsung dari popup
+              <TombolLihat onClick={() => onLihat(item)}>Lihat / Print</TombolLihat>
             ) : (
               <span className={`text-[11px] shrink-0 ${T.inkMuted}`}>Belum tersedia</span>
             )}

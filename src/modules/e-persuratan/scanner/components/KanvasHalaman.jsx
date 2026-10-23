@@ -11,7 +11,7 @@ import { showToast } from '@/utils/toastStore';
 import { ADMIN, BTN, FONT, FORM, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, kurangiGerakan } from '@/utils/animasi';
 import { animasiHapusHalaman } from '../animasiScanner';
-import { bacaTeks } from '../services/agenScanner';
+import { bacaTeksWeb, ocrSudahSiap } from '../services/ocrWeb';
 import { potongArea } from '../utils/gambar';
 import { BANNER_GALAT } from '../utils/kelas';
 import { usePanggung } from '../hooks/usePanggung';
@@ -56,14 +56,7 @@ async function salin(teks, pesan = 'Teks disalin.') {
  * (panel Urutan, ←/→, halaman baru masuk) menggulir kanvas ke halaman itu.
  * OCR: tarik kotak di halaman mana pun, atau tombol kaca pembesar di bilah halaman.
  */
-export default function KanvasHalaman({
-  kerja,
-  aktifId,
-  onAktif,
-  agenSiap,
-  imporBerkas,
-  pindaian,
-}) {
+export default function KanvasHalaman({ kerja, aktifId, onAktif, imporBerkas, pindaian }) {
   const { halaman, putar, hapus } = kerja;
   const [zoom, setZoom] = useState(bacaZoom);
   const [ocr, setOcr] = useState(null); // { id, nomor, status, cakupan, teks, baris, pesan }
@@ -204,18 +197,15 @@ export default function KanvasHalaman({
   }, [halaman, ocr]);
 
   async function jalankanOcr(h, nomor, tampil, area) {
-    if (!agenSiap) {
-      showToast('OCR butuh Agen Scanner yang berjalan di PC ini.', 'error');
-      return;
-    }
     ctrlOcr.current?.abort();
     const c = new AbortController();
     ctrlOcr.current = c;
     const cakupan = area ? 'area' : 'halaman';
-    setOcr({ id: h.id, nomor, status: 'memuat', cakupan });
+    // OCR pertama: mesin & data bahasa (±10 MB) diunduh dulu, berikutnya langsung dari cache
+    setOcr({ id: h.id, nomor, status: 'memuat', cakupan, pertama: !ocrSudahSiap() });
     try {
       const blob = area ? await potongArea(tampil.blob, area) : tampil.blob;
-      const hasil = await bacaTeks(blob, { mode: area ? 'blok' : 'halaman', signal: c.signal });
+      const hasil = await bacaTeksWeb(blob, { mode: area ? 'blok' : 'halaman', signal: c.signal });
       const baris = area
         ? null
         : hasil.baris
@@ -284,7 +274,6 @@ export default function KanvasHalaman({
                   varian="besar"
                   impor={imporBerkas.impor}
                   sibuk={!!imporBerkas.proses}
-                  agenSiap={agenSiap}
                 />
               </div>
             </>
@@ -319,7 +308,7 @@ export default function KanvasHalaman({
                 kelasLebar={ZOOM[zoom].kelas}
                 baris={ocr?.id === h.id ? ocr.baris : null}
                 adaOcr={ocr?.id === h.id}
-                ocrSiap={agenSiap}
+                ocrSiap
                 memuatOcr={ocr?.id === h.id && ocr.status === 'memuat'}
                 onAktif={() => pilihDariKanvas(h.id)}
                 onPutar={(delta) => putar([h.id], delta)}
@@ -335,11 +324,7 @@ export default function KanvasHalaman({
 
           {/* Tambah halaman (seperti tombol "+ Tambah halaman" Canva) */}
           <div className={`mx-auto min-w-[min(100%,320px)] ${ZOOM[zoom].kelas}`}>
-            <TombolImpor
-              impor={imporBerkas.impor}
-              sibuk={!!imporBerkas.proses}
-              agenSiap={agenSiap}
-            />
+            <TombolImpor impor={imporBerkas.impor} sibuk={!!imporBerkas.proses} />
           </div>
         </div>
 
@@ -388,7 +373,8 @@ export default function KanvasHalaman({
           </div>
           {ocr.status === 'memuat' && (
             <p className={`flex items-center gap-2 text-[12.5px] ${STATUS.infoInk}`}>
-              <FaCircleNotch size={11} className="animate-spin" /> Membaca teks…
+              <FaCircleNotch size={11} className="animate-spin" />{' '}
+              {ocr.pertama ? 'Menyiapkan mesin OCR (sekali saja, ±10 MB)…' : 'Membaca teks…'}
             </p>
           )}
           {ocr.status === 'galat' && <p className={BANNER_GALAT}>{ocr.pesan}</p>}
@@ -416,7 +402,7 @@ export default function KanvasHalaman({
           halaman
           <span className="hidden @min-[1240px]/halaman:inline">
             {' '}
-            · {agenSiap ? 'tarik kotak di halaman untuk OCR' : 'OCR butuh Agen Scanner'}
+            · tarik kotak di halaman untuk OCR
           </span>
         </p>
         <button

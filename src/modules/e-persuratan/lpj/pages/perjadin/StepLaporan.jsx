@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FaCircleNotch, FaRegSave, FaRegTrashAlt, FaUpload } from 'react-icons/fa';
+import { FaChevronLeft, FaCircleNotch, FaRegSave, FaRegTrashAlt, FaUpload } from 'react-icons/fa';
 import { LAP_FOTO_MAX_BYTES, LAP_FOTO_MAX_COUNT, LAP_SECTIONS } from '../../data/masterLpj';
 import { formatTanggal } from '../../utils/formatTanggal';
 import { lpjIdOf } from '../../utils/lpjLogic';
@@ -140,13 +140,14 @@ export default function StepLaporan({ ctx }) {
             quiet: true,
             teks: `menyelesaikan berkas ${lpjIdOf(pack)}`,
             extra: { status: 'selesai' },
+            tahanLangkah: true, // tetap di form ini sampai pindah ke Detail LPJ
           },
         );
         closeConfirm();
         if (ok) {
           showToast('Berkas LPJ berhasil diselesaikan.');
           rayakan({ judul: 'Berkas Selesai!', sub: lpjIdOf(pack), nada: 'final' });
-          ctx.navigate('/e-persuratan/lpj');
+          ctx.navigate(ctx.detailUrl); // berkas final: tampilkan Detail-nya
         }
       },
       onNo: async () => {
@@ -329,8 +330,9 @@ export default function StepLaporan({ ctx }) {
       </div>
 
       <div className="flex flex-wrap justify-end items-center gap-2 pb-6">
-        <button type="button" className={BTN.warn} onClick={() => persist(ctx.pfRef.current)}>
-          <FaRegSave size={13} /> Simpan Draft
+        {/* Isian sudah tersimpan otomatis; tombol ini menyimpan sisa perubahan lalu kembali */}
+        <button type="button" className={BTN.ghost} onClick={ctx.backToDetail}>
+          <FaChevronLeft size={12} /> Kembali ke Detail LPJ
         </button>
         <button
           type="button"

@@ -5,18 +5,20 @@ import {
   FaExternalLinkAlt,
   FaRegEye,
   FaRegFileAlt,
-  FaRegSave,
-  FaUpload,
+  FaChevronLeft,
+  FaChevronRight,
 } from 'react-icons/fa';
 import { PEJABAT_KATEGORI, SCAN_MAX_BYTES } from '../../data/masterLpj';
 import { deleteLpjFile, pesanGagalUnggah, uploadLpjFile } from '../../services/lpjStorage';
 import Field from '../../ui/Field';
 import { BTN, FORM, NAVY, STATUS, T } from '@/utils/uiTokens';
-import { rayakan } from '@/utils/animasi';
+import { ANIM, rayakan } from '@/utils/animasi';
+import ProgressBar from '../../ui/ProgressBar';
 
 /**
- * Fase 1 lanjutan — TTE Srikandi: unggah scan Surat Perintah ber-TTE (opsional) dan
- * nomor surat resmi. Setelah itu Surat Perintah selesai dan nomor SPD mengikuti nomor SP.
+ * Fase 2 (awal) — TTE Srikandi: unggah scan Surat Perintah ber-TTE dan isi nomor surat resmi
+ * (keduanya wajib), lalu "Lanjut Buat SPD": SP selesai, form SPD terbuka dan nomor SPD mengikuti
+ * nomor SP.
  */
 export default function StepTTE({ ctx }) {
   const {
@@ -36,6 +38,7 @@ export default function StepTTE({ ctx }) {
   const nomor = sp.nomorTTE || '';
   const filled = nomor.trim().length > 0;
   const [uploading, setUploading] = useState(false);
+  const [persen, setPersen] = useState(0); // progres unggah scan (0–100)
 
   const pejabatLabel = sp.pejabat
     ? `${sp.pejabat.nama} (${PEJABAT_KATEGORI.find((k) => k.id === sp.pejabat.kategori)?.label || 'Pejabat'})`
@@ -53,9 +56,12 @@ export default function StepTTE({ ctx }) {
       return;
     }
     setErrors({ ...errors, scan: undefined });
+    setPersen(0);
     setUploading(true);
     try {
-      const meta = await uploadLpjFile(pack.id, 'scan-sp', file, user.uid);
+      const meta = await uploadLpjFile(pack.id, 'scan-sp', file, user.uid, {
+        onProgress: setPersen,
+      });
       const lama = ctx.pfRef.current.sp.scan;
       await persist((prev) => ({ ...prev, sp: { ...prev.sp, scan: meta } }), {
         quiet: true,
@@ -71,11 +77,14 @@ export default function StepTTE({ ctx }) {
     }
   }
 
+  /** "Lanjut Buat SPD": scan & nomor surat resmi wajib, lalu SP selesai dan form SPD terbuka. */
   async function handleSubmit() {
-    if (!filled) {
-      setErrors({ nomorTTE: 'Wajib diisi' });
-      return;
-    }
+    if (uploading) return;
+    const e = {};
+    if (!sp.scan) e.scan = 'Unggah scan Surat Perintah ber-TTE';
+    if (!filled) e.nomorTTE = 'Wajib diisi';
+    setErrors(e);
+    if (Object.keys(e).length) return;
     const nomorResmi = nomor.trim();
     const ok = await persist(
       (prev) => ({
@@ -149,7 +158,12 @@ export default function StepTTE({ ctx }) {
         <p className={`text-xs mb-4 ${T.ink2}`}>
           Pilih file hasil scan (gambar/PDF, maks. 5 MB) dan masukkan nomor surat resmi
         </p>
-        <Field label="File Scan Surat Perintah (ber-TTE)" htmlFor="scan-sp" err={errors.scan}>
+        <Field
+          label="File Scan Surat Perintah (ber-TTE)"
+          htmlFor="scan-sp"
+          required
+          err={errors.scan}
+        >
           <input
             id="scan-sp"
             type="file"
@@ -162,9 +176,21 @@ export default function StepTTE({ ctx }) {
             className={`${FORM.input} ${FORM.borderOk} !h-auto py-1.5 file:mr-3 file:px-3 file:py-1 file:rounded-md file:border-0 file:text-[12.5px] file:font-semibold file:bg-[#F3F5F8] dark:file:bg-[#16243A] file:text-[#55627A] dark:file:text-[#A7B6CB]`}
           />
           {uploading && (
-            <p className={`mt-1 text-[11.5px] flex items-center gap-1.5 ${T.inkMuted}`}>
-              <FaCircleNotch className="animate-spin" size={11} /> Mengunggah…
-            </p>
+            <div className={`mt-2 ${ANIM.muncul}`}>
+              <div
+                className={`flex items-center justify-between gap-2 mb-1 text-[11.5px] ${T.inkMuted}`}
+              >
+                <span className="flex items-center gap-1.5">
+                  <FaCircleNotch className="animate-spin" size={11} />
+                  {persen < 100 ? 'Mengunggah…' : 'Menyimpan…'}
+                </span>
+                <span className="font-semibold tabular-nums">{Math.round(persen)}%</span>
+              </div>
+              <ProgressBar
+                value={persen}
+                className="h-1.5 rounded-full bg-[#E0E5EC] dark:bg-[#233450] [&::-webkit-progress-bar]:bg-[#E0E5EC] dark:[&::-webkit-progress-bar]:bg-[#233450] [&::-webkit-progress-value]:rounded-full [&::-moz-progress-bar]:rounded-full [&::-webkit-progress-value]:bg-[#2A78D6] [&::-moz-progress-bar]:bg-[#2A78D6] dark:[&::-webkit-progress-value]:bg-[#7DB6F3] dark:[&::-moz-progress-bar]:bg-[#7DB6F3]"
+              />
+            </div>
           )}
           {sp.scan && !uploading && (
             <p className={`mt-1 text-[11.5px] flex items-center gap-1.5 ${STATUS.goodInk}`}>
@@ -193,23 +219,19 @@ export default function StepTTE({ ctx }) {
             className={`${FORM.input} ${errors.nomorTTE ? FORM.borderErr : FORM.borderOk}`}
           />
         </Field>
-        <button
-          type="button"
-          disabled={!filled || uploading}
-          onClick={handleSubmit}
-          className={`inline-flex items-center gap-2 px-5 py-2.5 rounded-lg text-[13.5px] font-semibold border transition-colors ${
-            filled
-              ? `bg-[#eff6ff] text-[#1d4ed8] ${STATUS.infoBorder} hover:bg-[#dbeafe] dark:bg-[rgba(57,135,229,.18)] dark:text-[#7DB6F3]`
-              : `cursor-not-allowed ${T.bgBorder} ${T.inkMuted} ${T.border}`
-          }`}
-        >
-          <FaUpload size={13} /> Upload Surat Ber-TTE
-        </button>
       </div>
 
-      <div className="flex justify-end pb-6">
-        <button type="button" className={BTN.warn} onClick={backToDetail}>
-          <FaRegSave size={13} /> Simpan Draft
+      <div className="flex flex-wrap justify-end items-center gap-2 pb-6">
+        <button type="button" className={BTN.ghost} onClick={backToDetail}>
+          <FaChevronLeft size={12} /> Kembali ke Detail LPJ
+        </button>
+        <button
+          type="button"
+          className={BTN.primaryDark}
+          disabled={uploading}
+          onClick={handleSubmit}
+        >
+          Lanjut Buat SPD <FaChevronRight size={12} />
         </button>
       </div>
     </>

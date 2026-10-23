@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaCheck, FaInfoCircle, FaPlus, FaRegSave } from 'react-icons/fa';
+import { FaCheck, FaChevronLeft, FaInfoCircle, FaPlus } from 'react-icons/fa';
 import { LPJ_DOCS } from '../../data/masterLpj';
 import { emptyTransaksi } from '../../utils/emptyModels';
 import { formatTanggal } from '../../utils/formatTanggal';
@@ -53,7 +53,12 @@ export default function StepLPJ({ ctx }) {
             selesai: { ...prev.selesai, lpjDocs },
           }),
           // SPBy selesai → nomor LPJ terbit (satu transaksi)
-          { quiet: true, teks: 'menandai LPJ & SPBy selesai', beriNomor: true },
+          {
+            quiet: true,
+            teks: 'menandai LPJ & SPBy selesai',
+            beriNomor: true,
+            tahanLangkah: true, // tetap di form ini sampai pindah ke Detail
+          },
         );
         if (ok) {
           try {
@@ -223,8 +228,9 @@ export default function StepLPJ({ ctx }) {
       </div>
 
       <div className="flex flex-wrap justify-end items-center gap-2 pb-6">
-        <button type="button" className={BTN.warn} onClick={() => persist(ctx.pfRef.current)}>
-          <FaRegSave size={13} /> Simpan Draft
+        {/* Isian sudah tersimpan otomatis; tombol ini menyimpan sisa perubahan lalu kembali */}
+        <button type="button" className={BTN.ghost} onClick={ctx.backToDetail}>
+          <FaChevronLeft size={12} /> Kembali ke Detail LPJ
         </button>
         <button type="button" className={BTN.primaryDark} onClick={handleSelesai}>
           <FaCheck size={12} /> Selesai

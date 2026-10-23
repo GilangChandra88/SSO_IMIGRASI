@@ -158,6 +158,10 @@ export function resolveDokumen(pack, item, pegawaiList) {
   if (FILE_DOCS.includes(docKey)) {
     return { kind: 'files', label: item.label, files: pack.np?.lampiran?.[docKey] || [] };
   }
+  // Scan Surat Perintah ber-TTE (opsional saat upload)
+  if (docKey === 'scan_sp') {
+    return { kind: 'files', label: item.label, files: pack.sp?.scan ? [pack.sp.scan] : [] };
+  }
 
   const suratId = TEMPLATE_BY_DOC[docKey];
   const surat = [...SURAT_REGISTRY, ...SURAT_KHUSUS_LPJ].find((s) => s.id === suratId);
