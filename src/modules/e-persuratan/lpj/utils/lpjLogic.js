@@ -143,6 +143,7 @@ export function lpjDetailStages(pack) {
             key: `${d.key}_${p.id}`,
             docKey: d.key,
             pegawai: p,
+            docLabel: d.label,
             label: `${d.label} — ${p.nama}`,
             code: 'SPTJM',
           }),
@@ -198,15 +199,16 @@ export function lpjDetailStages(pack) {
   }
 
   const lpjPackSubItems = [];
-  // Urutan tampilan sama dengan purwarupa: ND, KWT, NOM, SPTJM/pelaksana, SPBy, RSB/pelaksana, SPP/pelaksana
+  // Urutan tampilan sama dengan Pemeriksaan Dokumen di Berkas Verifikasi (kelompokDokumen):
+  // SPBy, Rincian SPBy/pelaksana, Nota Dinas, Kwitansi, SPTJM/pelaksana, SPP/pelaksana, Nominatif
   const ordered = [
-    'nota_dinas',
-    'kwitansi',
-    'nominatif',
-    'sptjm',
     'spby',
     'rincian_spby',
+    'nota_dinas',
+    'kwitansi',
+    'sptjm',
     'suratpernyataan',
+    'nominatif',
   ];
   ordered.forEach((docKey) => {
     const d = LPJ_DOCS.find((x) => x.key === docKey);
@@ -216,6 +218,7 @@ export function lpjDetailStages(pack) {
           key: `${d.key}_${p.id}`,
           docKey: d.key,
           pegawai: p,
+          docLabel: d.label,
           label: `${d.label} — ${p.nama}`,
           code: LPJ_CODES[d.key],
         }),
@@ -260,6 +263,7 @@ export function lpjDetailStages(pack) {
             key: `spd_${p.id}`,
             docKey: 'spd',
             pegawai: p,
+            docLabel: 'SPD',
             label: `SPD — ${p.nama}`,
             code: 'SPD',
           })),

@@ -148,6 +148,12 @@ export function dataDokumen(pack, pegawaiList) {
   };
 }
 
+/** true bila dokumen punya template PDF (bisa dicetak/digabung), bukan unggahan atau placeholder. */
+export function punyaTemplatePdf(item) {
+  const suratId = TEMPLATE_BY_DOC[item.docKey || item.key];
+  return !!suratId && [...SURAT_REGISTRY, ...SURAT_KHUSUS_LPJ].some((s) => s.id === suratId);
+}
+
 /**
  * Tentukan cara menampilkan satu dokumen.
  * @param item dokumen/sub-dokumen dari lpjDetailStages: { key, docKey?, pegawai?, label }

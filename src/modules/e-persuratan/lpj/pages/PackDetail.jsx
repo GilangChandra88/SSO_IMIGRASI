@@ -7,10 +7,12 @@
  * popup).
  */
 
-import React, { useEffect, useLayoutEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   FaCheck,
+  FaCircleNotch,
+  FaChevronDown,
   FaClock,
   FaLock,
   FaPrint,
@@ -28,6 +30,7 @@ import { useDokumenLpj } from '../hooks/useDokumenLpj';
 import {
   STAGE_STATUS_LABEL,
   canEditPack,
+  isPerjadin,
   isSkemaBaru,
   jenisLabel,
   lpjGroupStatus,
@@ -47,11 +50,13 @@ import KilauFase from '../components/KilauFase';
 import RingkasanBerkas, { InfoBerkasKop } from '../components/RingkasanBerkas';
 import ProgressBar from '../ui/ProgressBar';
 import { bukaBerkas } from '../services/lpjStorage';
+import { punyaTemplatePdf } from '../utils/dokumenLpj';
+import { siapkanBerkas } from '../utils/halamanBerkas';
 import { formatTanggal } from '../utils/formatTanggal';
 import { useToast } from '@/utils/toastStore';
 import { BTN, FONT, LAYOUT, NAVY, STAGE_CLS, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, munculBerurutan } from '@/utils/animasi';
-import { AngkaBerjalan } from '@/components/animasi';
+import { AngkaBerjalan, Lipat } from '@/components/animasi';
 import { lanjutBukaBerkas } from '../../animasiHalaman';
 import { gulirDanSorot, gulirKeAtas } from '../../gulirPintar';
 
@@ -64,6 +69,21 @@ export default function PackDetail({ packId }) {
   const { pack, loading, error } = useLPJPack(packId);
   const { pegawai } = usePegawaiList();
   const dok = useDokumenLpj({ pack, pegawai, showToast });
+  // Scan SP ber-TTE disiapkan (unduh + render) di latar belakang setelah halaman tampil, agar
+  // "Lihat" dan "Cetak Semua" Fase 2 tidak perlu menunggu lama
+  const scanSp = pack?.sp?.scan;
+  useEffect(() => {
+    if (!scanSp?.url) return;
+    const t = setTimeout(() => siapkanBerkas(scanSp), 1200);
+    return () => clearTimeout(t);
+  }, [scanSp]);
+  // Nomor fase yang dokumennya sedang disiapkan untuk "Cetak Semua" (null = tidak ada)
+  const [mencetakFase, setMencetakFase] = useState(null);
+  async function cetakFase(num, docs, label) {
+    setMencetakFase(num);
+    await dok.cetakSemua(docs, label);
+    setMencetakFase(null);
+  }
   // Saat berkas pertama tampil, isi halaman muncul bertahap dari atas ke bawah (data-bertahap);
   // bila baru dibuat dari Daftar LPJ, lembar berkas yang dibuka berubah menjadi kartu judul
   const isiRef = useRef(null);
@@ -213,6 +233,8 @@ export default function PackDetail({ packId }) {
       <div>
         {stages.map(({ stage, display, locked, tally, pct }, si) => {
           const aksi = !locked && canEdit ? aksiFase(pack, stage) : null;
+          // Dokumen fase yang sudah jadi & ber-template PDF → tombol "Cetak Semua"
+          const siap = locked ? [] : dokumenSiapCetak(pack, stage);
           // Fase yang sedang berjalan disapu kilau, serempak dengan tombol fase
           const aktif = !locked && display !== 'selesai';
           return (
@@ -260,6 +282,22 @@ export default function PackDetail({ packId }) {
                   >
                     {STAGE_STATUS_LABEL[display]}
                   </span>
+                )}
+                {siap.length > 0 && (
+                  <button
+                    type="button"
+                    title={`Cetak sekaligus ${siap.length} dokumen Fase ${stage.num} (satu PDF)`}
+                    disabled={mencetakFase !== null}
+                    onClick={() => cetakFase(stage.num, siap, `Fase ${stage.num} — ${stage.label}`)}
+                    className={`${BTN.sm} shrink-0 disabled:opacity-60`}
+                  >
+                    {mencetakFase === stage.num ? (
+                      <FaCircleNotch size={12} className="animate-spin" />
+                    ) : (
+                      <FaPrint size={12} />
+                    )}
+                    {mencetakFase === stage.num ? 'Menyiapkan…' : `Cetak Semua (${siap.length})`}
+                  </button>
                 )}
                 {aksi && (
                   <TombolBuat
@@ -382,6 +420,25 @@ function CodeBadge({ code }) {
 }
 
 /**
+ * Dokumen satu fase yang bisa dicetak sekaligus, urut sesuai tampilan: dokumen yang sudah jadi
+ * (sama dengan yang punya tombol Lihat / Print) dan punya template PDF, ditambah scan SP ber-TTE
+ * yang diunggah (Fase 2, dicetak paling depan). Foto lampiran & dokumen tanpa template dilewati.
+ * Fase 1 Perjadin (Surat Perintah saja) tidak memakai cetak sekaligus.
+ */
+function dokumenSiapCetak(pack, stage) {
+  if (isPerjadin(pack) && stage.num === 1) return [];
+  const tunggal = (stage.items || []).filter(
+    (d) =>
+      lpjSingleStatus(pack, stage, d) === 'selesai' &&
+      (d.berkas ? !!pack.sp?.scan : punyaTemplatePdf(d)),
+  );
+  const sub = (stage.groups || []).flatMap((g) =>
+    g.subItems.filter((it) => lpjGroupSubDone(pack, stage, g, it) && punyaTemplatePdf(it)),
+  );
+  return [...tunggal, ...sub];
+}
+
+/**
  * Satu-satunya tombol untuk melanjutkan progres ada di kepala blok fase: dokumen pertama fase ini
  * yang belum selesai menentukan aksinya (mulai / lanjutkan / cetak SPD). Baris dokumen hanya
  * berisi Lihat/Print.
@@ -468,6 +525,12 @@ function SingleCard({ doc, status, onLihat }) {
 }
 
 function GroupCard({ pack, stage, group, status, onLihat }) {
+  // Pack LPJ & SPBy (Fase 3): tanpa baris kepala pack, tiap dokumen tampil langsung
+  if (group.key === 'lpjpack') {
+    return (
+      <PackDokumen pack={pack} stage={stage} group={group} status={status} onLihat={onLihat} />
+    );
+  }
   // Tombol untuk melanjutkan (mulai/lanjutkan/cetak SPD) ada di blok fase, bukan di sini
   let headerAction = null;
   if (status === 'proses') headerAction = <BelumDibuat teks="Sedang diisi" />;
@@ -507,37 +570,191 @@ function GroupCard({ pack, stage, group, status, onLihat }) {
           Belum ada pelaksana. Isi Surat Perintah terlebih dahulu.
         </div>
       )}
-      {group.subItems.map((item) => {
-        const subDone = lpjGroupSubDone(pack, stage, group, item);
-        return (
-          <div
-            key={item.key}
-            data-bertahap
-            className={`flex items-center justify-between gap-2.5 py-[9px] pl-6 sm:pl-[52px] pr-4 sm:pr-5 border-t ${T.border}`}
-          >
-            <div className="flex items-center gap-2 min-w-0">
-              <span
-                key={subDone ? 'ya' : 'belum'}
-                className={`w-[18px] h-[18px] shrink-0 rounded-md flex items-center justify-center ${ANIM.meletup} ${
-                  subDone
-                    ? `${STATUS.doneSolid} text-white dark:text-[#0A121D]`
-                    : `${T.bgBorder} ${T.inkMuted}`
-                }`}
-              >
-                {subDone && <FaCheck size={9} />}
-              </span>
-              <CodeBadge code={item.code} />
-              <span className={`text-[12.5px] ${T.ink2} break-words`}>{item.label}</span>
-            </div>
-            {subDone ? (
-              // Popup pratinjau PDF; mencetak langsung dari popup
-              <TombolLihat onClick={() => onLihat(item)}>Lihat / Print</TombolLihat>
-            ) : (
-              <span className={`text-[11px] shrink-0 ${T.inkMuted}`}>Belum tersedia</span>
-            )}
-          </div>
+      {bagianSub(group.subItems).map((b) => {
+        const selesai = (item) => lpjGroupSubDone(pack, stage, group, item);
+        return b.kelompok ? (
+          <KelompokPelaksana key={b.docKey} bagian={b} selesai={selesai} onLihat={onLihat} />
+        ) : (
+          b.items.map((item) => (
+            <BarisSub key={item.key} item={item} done={selesai(item)} onLihat={onLihat} />
+          ))
         );
       })}
+    </div>
+  );
+}
+
+/** Baris dokumen tingkat atas (gaya SingleCard / kepala GroupCard): ikon status · kode · nama · aksi. */
+function BarisDokumen({ status, code, label, aksi }) {
+  return (
+    <div
+      data-bertahap
+      className={`flex flex-wrap items-center justify-between gap-3 px-4 sm:px-5 py-[13px] border-t ${T.border}`}
+    >
+      <div className="flex items-center gap-2.5 flex-1 min-w-0">
+        <DocIcon key={status} status={status} />
+        <CodeBadge code={code} />
+        <div className={`flex-1 min-w-0 text-[13px] font-semibold ${T.ink}`}>{label}</div>
+      </div>
+      {aksi}
+    </div>
+  );
+}
+
+/**
+ * Dokumen pack LPJ & SPBy ditampilkan satu per satu (urutan sama dengan Berkas Verifikasi):
+ * dokumen tunggal = satu baris berisi Lihat/Print; dokumen per pelaksana = baris kepala seperti
+ * "SPD (Surat Perjalanan Dinas)" lalu satu baris per pelaksana di bawahnya.
+ */
+function PackDokumen({ pack, stage, group, status, onLihat }) {
+  const selesai = (item) => lpjGroupSubDone(pack, stage, group, item);
+  const belum = <BelumDibuat teks={status === 'proses' ? 'Sedang diisi' : 'Belum dibuat'} />;
+  const ikon = (done) => (done ? 'selesai' : status === 'proses' ? 'proses' : 'belum');
+
+  const bagian = [];
+  group.subItems.forEach((item) => {
+    const akhir = bagian[bagian.length - 1];
+    if (item.pegawai && akhir?.docKey === item.docKey) akhir.items.push(item);
+    else bagian.push({ docKey: item.docKey, perOrang: !!item.pegawai, items: [item] });
+  });
+
+  return bagian.map(({ docKey, perOrang, items }) => {
+    if (!perOrang) {
+      const item = items[0];
+      const done = selesai(item);
+      return (
+        <BarisDokumen
+          key={docKey}
+          status={ikon(done)}
+          code={item.code}
+          label={item.label}
+          aksi={
+            done ? <TombolLihat onClick={() => onLihat(item)}>Lihat / Print</TombolLihat> : belum
+          }
+        />
+      );
+    }
+    const semua = items.every(selesai);
+    return (
+      <div key={docKey}>
+        <BarisDokumen
+          status={ikon(semua)}
+          code={items[0].code}
+          label={items[0].docLabel}
+          aksi={semua ? null : belum}
+        />
+        {items.map((item) => (
+          <BarisSub key={item.key} item={item} done={selesai(item)} onLihat={onLihat} />
+        ))}
+      </div>
+    );
+  });
+}
+
+/**
+ * Urutkan sub-dokumen menjadi bagian: dokumen per pelaksana yang sejenis (SPTJM, Rincian SPBy, …)
+ * digabung menjadi satu kelompok bila pelaksananya lebih dari satu — kecuali seluruh kelompok
+ * dokumen memang satu jenis (mis. SPD), karena kepala kelompoknya sudah menjadi judul.
+ */
+function bagianSub(items) {
+  const hasil = [];
+  items.forEach((item) => {
+    const akhir = hasil[hasil.length - 1];
+    if (item.pegawai && akhir?.docKey === item.docKey) akhir.items.push(item);
+    else hasil.push({ docKey: item.docKey, label: item.docLabel, code: item.code, items: [item] });
+  });
+  if (hasil.length > 1) hasil.forEach((b) => (b.kelompok = b.items.length > 1));
+  return hasil;
+}
+
+function KotakCentang({ done, kecil }) {
+  return (
+    <span
+      key={done ? 'ya' : 'belum'}
+      className={`${kecil ? 'w-4 h-4 rounded-[5px]' : 'w-[18px] h-[18px] rounded-md'} shrink-0 flex items-center justify-center ${ANIM.meletup} ${
+        done ? `${STATUS.doneSolid} text-white dark:text-[#0A121D]` : `${T.bgBorder} ${T.inkMuted}`
+      }`}
+    >
+      {done && <FaCheck size={kecil ? 8 : 9} />}
+    </span>
+  );
+}
+
+/** Satu baris sub-dokumen; `nama` mengganti label (di dalam kelompok cukup nama pelaksana). */
+function BarisSub({ item, done, onLihat, nama, dalam }) {
+  return (
+    <div
+      data-bertahap
+      className={`flex items-center justify-between gap-2.5 border-t ${T.border} ${
+        dalam ? 'py-2 pl-10 sm:pl-[78px] pr-4 sm:pr-5' : 'py-[9px] pl-6 sm:pl-[52px] pr-4 sm:pr-5'
+      }`}
+    >
+      <div className="flex items-center gap-2 min-w-0">
+        {/* Ikon dokumen (status cukup dari tombol Lihat / "Belum tersedia"); biru tua bila sudah jadi */}
+        <FaRegFileAlt
+          key={done ? 'ya' : 'belum'}
+          size={dalam ? 12 : 13}
+          aria-hidden="true"
+          className={`shrink-0 ${ANIM.meletup} ${done ? STATUS.doneInk : T.inkMuted}`}
+        />
+        {!dalam && <CodeBadge code={item.code} />}
+        <span className={`text-[12.5px] ${T.ink2} break-words`}>{nama || item.label}</span>
+      </div>
+      {done ? (
+        // Popup pratinjau PDF; mencetak langsung dari popup
+        <TombolLihat onClick={() => onLihat(item)}>Lihat / Print</TombolLihat>
+      ) : (
+        <span className={`text-[11px] shrink-0 ${T.inkMuted}`}>Belum tersedia</span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Kelompok satu jenis dokumen per pelaksana (mis. "SPTJM (2/3)"), bisa dibuka/ditutup seperti
+ * Pemeriksaan Dokumen di Berkas Verifikasi; terbuka bawaan bila pelaksananya ≤ 4.
+ */
+function KelompokPelaksana({ bagian, selesai, onLihat }) {
+  const [buka, setBuka] = useState(bagian.items.length <= 4);
+  const nDone = bagian.items.filter(selesai).length;
+  const semua = nDone === bagian.items.length;
+  return (
+    <div>
+      <button
+        type="button"
+        data-bertahap
+        aria-expanded={buka}
+        onClick={() => setBuka(!buka)}
+        className={`w-full flex items-center gap-2 py-[9px] pl-6 sm:pl-[52px] pr-4 sm:pr-5 border-t text-left ${T.border} ${T.hoverSurface2}`}
+      >
+        <KotakCentang done={semua} />
+        <CodeBadge code={bagian.code} />
+        <span className={`min-w-0 text-[12.5px] font-semibold break-words ${T.ink}`}>
+          {bagian.label}
+        </span>
+        <span className={`text-[11.5px] font-semibold shrink-0 ${T.inkMuted}`}>
+          ({nDone}/{bagian.items.length})
+        </span>
+        <span className={`ml-auto flex items-center gap-1.5 text-[11px] shrink-0 ${T.inkMuted}`}>
+          {bagian.items.length} pelaksana
+          <FaChevronDown
+            size={11}
+            className={`motion-safe:transition-transform motion-safe:duration-200 ${buka ? 'rotate-180' : ''}`}
+          />
+        </span>
+      </button>
+      <Lipat buka={buka}>
+        {bagian.items.map((item) => (
+          <BarisSub
+            key={item.key}
+            item={item}
+            done={selesai(item)}
+            onLihat={onLihat}
+            nama={item.pegawai?.nama}
+            dalam
+          />
+        ))}
+      </Lipat>
     </div>
   );
 }
