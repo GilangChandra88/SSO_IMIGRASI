@@ -7,7 +7,7 @@ const TONE = {
   neutral: `${T.surface2} ${T.ink2} ${T.border}`,
   warn: `${STATUS.warnBg} ${STATUS.warnInk} border-transparent`,
   info: `${STATUS.infoBg} ${STATUS.infoInk} border-transparent`,
-  good: `${STATUS.goodBg} ${STATUS.goodInk} border-transparent`,
+  good: `${STATUS.doneBg} ${STATUS.doneInk} border-transparent`,
 };
 
 /** Label status (.status-pill purwarupa). */

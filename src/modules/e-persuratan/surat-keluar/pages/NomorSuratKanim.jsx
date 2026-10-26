@@ -2,7 +2,7 @@
  * Penomoran Surat Kanim Buleleng (NomorSuratPage purwarupa admin) + tab Riwayat Surat,
  * Hierarki Kode, dan Pengaturan nomor urut.
  */
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { FaCog, FaFileAlt, FaListOl, FaPlus, FaSitemap } from 'react-icons/fa';
 import StrukturHierarki from '@/components/StrukturHierarki/StrukturHierarki';
@@ -10,6 +10,7 @@ import { indeksHierarki } from '@/components/StrukturHierarki/hierarkiUtils';
 import ToastViewport from '@/components/ToastViewport';
 import { ADMIN, GOLD, T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
+import { gulirDanSorot, gulirKeAtas } from '../../gulirPintar';
 import PengaturanNomor from '../components/nomor-surat/PengaturanNomor';
 import RegisterNomorSurat from '../components/nomor-surat/RegisterNomorSurat';
 import RiwayatSurat from '../components/nomor-surat/RiwayatSurat';
@@ -41,17 +42,22 @@ export default function NomorSuratKanim() {
   const register = useRegisterNomor();
   const riwayat = useRiwayatSurat();
   const indeksKode = useMemo(() => indeksHierarki(nodes), [nodes]);
+  const kartuRef = useRef(null);
+
+  // Kembali dari form Tambah: bila nomor baru terbit, gulir ke barisnya di Daftar Nomor lalu sorot
+  function tutupForm(nomor) {
+    setFormTambah(false);
+    if (!nomor) return gulirKeAtas(kartuRef.current);
+    const pilih = `[data-nomor="${CSS.escape(nomor)}"]`;
+    gulirDanSorot(() => kartuRef.current?.querySelector(pilih), { posisi: 'tengah' });
+  }
 
   return (
     <div className={`min-h-full ${T.ground}`}>
       <div className={ADMIN.page}>
-        <section className={ADMIN.card}>
+        <section ref={kartuRef} className={ADMIN.card}>
           {formTambah ? (
-            <TambahNomorSurat
-              indeks={indeksKode}
-              lastNumber={lastNumber}
-              onKembali={() => setFormTambah(false)}
-            />
+            <TambahNomorSurat indeks={indeksKode} lastNumber={lastNumber} onKembali={tutupForm} />
           ) : (
             <>
               <div className="flex flex-wrap gap-2.5 items-center justify-between mb-[18px]">
@@ -61,7 +67,10 @@ export default function NomorSuratKanim() {
                     type="button"
                     className={ADMIN.btnAdd}
                     data-mekar
-                    onClick={() => setFormTambah(true)}
+                    onClick={(e) => {
+                      gulirKeAtas(e.currentTarget); // form dibuka dari atas
+                      setFormTambah(true);
+                    }}
                   >
                     <FaPlus size={11} className={GOLD.text} />
                     Tambah Nomor Surat

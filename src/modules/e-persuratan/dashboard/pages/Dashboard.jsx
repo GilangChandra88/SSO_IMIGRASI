@@ -20,6 +20,7 @@ import { FONT, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, jedaKe } from '@/utils/animasi';
 import { AngkaBerjalan, useMunculBerurutan } from '@/components/animasi';
 import {
+  formatTanggalDate,
   formatTanggalPendek,
   isSkemaBaru,
   lpjIdLabel,
@@ -38,7 +39,7 @@ const FILTER_LABEL = { all: 'Filter', baru: 'Baru', draft: 'Draft', selesai: 'Se
 const STATUS_PILL = {
   baru: `${STATUS.warnBg} ${STATUS.warnInk}`,
   draft: `${STATUS.infoBg} ${STATUS.infoInk}`,
-  selesai: `${STATUS.goodBg} ${STATUS.goodInk}`,
+  selesai: `${STATUS.doneBg} ${STATUS.doneInk}`,
 };
 
 const CARD = `${T.surface} ${T.border} ${T.shadowSm} ${T.ink} border rounded-[20px] p-5`;
@@ -65,7 +66,7 @@ function waktuRelatif(iso) {
   kemarin.setDate(kemarin.getDate() - 1);
   if (d.toDateString() === new Date().toDateString()) return `${Math.floor(menit / 60)} jam lalu`;
   if (d.toDateString() === kemarin.toDateString()) return `Kemarin, ${jam}`;
-  return `${d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })}, ${jam}`;
+  return `${formatTanggalDate(d)}, ${jam}`;
 }
 
 function ikonAktivitas(teks) {
@@ -139,12 +140,9 @@ export default function Dashboard() {
     [milikSaya],
   );
 
-  const today = new Date().toLocaleDateString('id-ID', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  // Nama hari + tanggal hari/bulan/tahun, mis. "Jumat, 23/10/2026"
+  const sekarang = new Date();
+  const today = `${sekarang.toLocaleDateString('id-ID', { weekday: 'long' })}, ${formatTanggalDate(sekarang)}`;
   const namaDepan = userData?.nama
     ? userData.nama.split(' ')[0]
     : currentUser?.email?.split('@')[0] || 'Pengguna';
@@ -156,7 +154,7 @@ export default function Dashboard() {
     [
       ['baru', 'fill-[#eda100] dark:fill-[#c98500]'],
       ['draft', 'fill-[#2a78d6] dark:fill-[#3987e5]'],
-      ['selesai', 'fill-[#1baf7a] dark:fill-[#199e70]'],
+      ['selesai', 'fill-[#0f2040] dark:fill-[#7DB6F3]'],
     ].forEach(([key, cls]) => {
       const w = (statusCounts[key] / statusTotal) * 100;
       if (w > 0) segmen.push({ key, cls, x, w });
@@ -248,7 +246,7 @@ export default function Dashboard() {
             {[
               ['baru', 'Baru', 'bg-[#eda100] dark:bg-[#c98500]'],
               ['draft', 'Draft', 'bg-[#2a78d6] dark:bg-[#3987e5]'],
-              ['selesai', 'Selesai', 'bg-[#1baf7a] dark:bg-[#199e70]'],
+              ['selesai', 'Selesai', 'bg-[#0f2040] dark:bg-[#7DB6F3]'],
             ].map(([key, label, dot]) => (
               <li key={key} className={`flex items-center gap-[7px] text-[13px] ${T.ink2}`}>
                 <i className={`w-[9px] h-[9px] rounded-full shrink-0 ${dot}`} />
@@ -371,7 +369,9 @@ export default function Dashboard() {
                   type="button"
                   key={p.id}
                   data-bertahap
-                  onClick={() => navigate(`/e-persuratan/lpj/${p.id}`)}
+                  onClick={() =>
+                    navigate(`/e-persuratan/lpj/${p.id}`, { state: { sorot: 'aktif' } })
+                  }
                   className={`group relative block w-full text-left rounded-[14px] border p-4 pr-11 motion-safe:transition-[translate,border-color,box-shadow,scale] motion-safe:duration-200 motion-safe:ease-out motion-safe:hover:-translate-y-0.5 motion-safe:active:scale-[.99] ${T.surface} ${T.border} hover:border-[#CBD3DE] dark:hover:border-[#304864] hover:shadow-[0_6px_16px_-8px_rgba(16,26,44,.25)]`}
                 >
                   <div className="flex items-center justify-between gap-2.5">

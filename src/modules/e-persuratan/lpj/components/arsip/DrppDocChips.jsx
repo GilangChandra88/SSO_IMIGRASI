@@ -14,7 +14,7 @@ export default function DrppDocChips({ docs, className = 'mt-2' }) {
             key={key}
             className={`inline-flex items-center gap-1 text-[10.5px] font-bold px-[9px] py-[3px] rounded-full border ${
               ada
-                ? `${STATUS.goodBg} ${STATUS.goodInk} border-transparent`
+                ? `${STATUS.doneBg} ${STATUS.doneInk} border-transparent`
                 : `${T.surface2} ${T.inkMuted} ${T.border}`
             }`}
           >

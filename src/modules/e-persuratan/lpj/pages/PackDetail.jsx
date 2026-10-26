@@ -7,8 +7,8 @@
  * popup).
  */
 
-import React, { useLayoutEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   FaCheck,
   FaClock,
@@ -46,11 +46,14 @@ import TombolBuat from '../components/TombolBuat';
 import KilauFase from '../components/KilauFase';
 import RingkasanBerkas, { InfoBerkasKop } from '../components/RingkasanBerkas';
 import ProgressBar from '../ui/ProgressBar';
+import { bukaBerkas } from '../services/lpjStorage';
+import { formatTanggal } from '../utils/formatTanggal';
 import { useToast } from '@/utils/toastStore';
 import { BTN, FONT, LAYOUT, NAVY, STAGE_CLS, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, munculBerurutan } from '@/utils/animasi';
 import { AngkaBerjalan } from '@/components/animasi';
 import { lanjutBukaBerkas } from '../../animasiHalaman';
+import { gulirDanSorot, gulirKeAtas } from '../../gulirPintar';
 
 const persen = (n) => `${Math.round(n)}%`;
 
@@ -65,11 +68,27 @@ export default function PackDetail({ packId }) {
   // bila baru dibuat dari Daftar LPJ, lembar berkas yang dibuka berubah menjadi kartu judul
   const isiRef = useRef(null);
   const sudahMuncul = useRef(false);
+  // Gulir pintar: kembali dari form → ke kartu fase yang baru dikerjakan (hasil berkasnya);
+  // dibuka dari Dashboard/Daftar LPJ (`aktif`) → ke fase yang sedang berjalan. Tujuan gulir bisa
+  // datang sesudah Detail terpasang: saat fase terakhir selesai, berkas jadi final dan form
+  // langsung dialihkan ke Detail, lalu `keDetail()` menyusul membawa `state.sorot`.
+  const { state, key: kunciLokasi } = useLocation();
+  const sorotAwal = useRef(!!state?.sorot);
+  const sorotDitangani = useRef(null); // `location.key` yang tujuan gulirnya sudah dijalankan
   useLayoutEffect(() => {
     if (!pack || sudahMuncul.current || !isiRef.current) return;
     sudahMuncul.current = true;
+    // Tanpa tujuan gulir, Detail selalu dibuka dari atas (form sebelumnya bisa tergulir jauh)
+    if (!sorotAwal.current) gulirKeAtas(isiRef.current);
     if (!lanjutBukaBerkas(packId, isiRef.current)) munculBerurutan(isiRef.current);
   }, [pack, packId]);
+  useEffect(() => {
+    const kunci = state?.sorot;
+    if (!pack || !kunci || !isSkemaBaru(pack) || sorotDitangani.current === kunciLokasi) return;
+    sorotDitangani.current = kunciLokasi;
+    const num = faseTujuan(stagesWithStatus(pack), kunci);
+    if (num) gulirDanSorot(() => isiRef.current?.querySelector(`[data-fase="${num}"]`));
+  }, [pack, state, kunciLokasi]);
 
   const backToList = () => navigate('/e-persuratan/lpj');
 
@@ -144,7 +163,7 @@ export default function PackDetail({ packId }) {
               <span
                 key={tahap.label}
                 className={`text-[11.5px] font-semibold px-2.5 py-[3px] rounded-[20px] bg-white border border-white/40 ${ANIM.meletup} ${
-                  tahap.done ? 'text-[#15803d]' : 'text-[#1d4ed8]'
+                  tahap.done ? 'text-[#0f2040]' : 'text-[#1d4ed8]'
                 }`}
               >
                 {tahap.label}
@@ -181,7 +200,7 @@ export default function PackDetail({ packId }) {
           value={overall.pct}
           className={`mt-4 h-1.5 rounded-[3px] bg-white/15 [&::-webkit-progress-bar]:bg-white/15 [&::-webkit-progress-value]:rounded-[3px] [&::-moz-progress-bar]:rounded-[3px] ${
             overall.pct === 100
-              ? '[&::-webkit-progress-value]:bg-[#4ade80] [&::-moz-progress-bar]:bg-[#4ade80]'
+              ? '[&::-webkit-progress-value]:bg-[#C9973B] [&::-moz-progress-bar]:bg-[#C9973B]'
               : '[&::-webkit-progress-value]:bg-[#7dd3fc] [&::-moz-progress-bar]:bg-[#7dd3fc]'
           }`}
         />
@@ -200,6 +219,7 @@ export default function PackDetail({ packId }) {
             <div
               key={stage.num}
               data-bertahap
+              data-fase={stage.num}
               className={`relative ${T.surface} border rounded-[14px] mb-4 overflow-hidden ${
                 locked ? `${T.border} opacity-80` : STAGE_CLS[display].border
               }`}
@@ -304,6 +324,20 @@ export default function PackDetail({ packId }) {
   );
 }
 
+/**
+ * Nomor fase tujuan gulir: `aktif` = fase terbuka pertama yang belum selesai (null bila berkas
+ * sudah tuntas); selain itu langkah form (`?isi=`) yang baru ditinggalkan.
+ */
+function faseTujuan(stages, kunci) {
+  if (kunci === 'aktif') {
+    return stages.find((s) => !s.locked && s.display !== 'selesai')?.stage.num || null;
+  }
+  const isi = kunci === 'cetak-spd' ? 'spd' : kunci;
+  const punya = ({ stage }) =>
+    [...(stage.items || []), ...(stage.groups || [])].some((d) => d.isi === isi);
+  return stages.find(punya)?.stage.num || null;
+}
+
 // ─── Sub-komponen ─────────────────────────────────────────────────────────────
 
 function Shell({ wadahRef, children }) {
@@ -321,8 +355,8 @@ function Shell({ wadahRef, children }) {
 function DocIcon({ status }) {
   const cls =
     {
-      selesai: `${STATUS.goodSolid} text-white dark:text-[#0A121D]`,
-      proses: `${NAVY.bg} text-white`,
+      selesai: `${STATUS.doneSolid} text-white dark:text-[#0A121D]`,
+      proses: 'bg-[#2A78D6] text-white dark:bg-[#3987e5]',
       menunggu: `${STATUS.warnSolid} text-white`,
     }[status] || `${T.surface2} ${T.inkMuted}`;
   const Icon =
@@ -486,7 +520,7 @@ function GroupCard({ pack, stage, group, status, onLihat }) {
                 key={subDone ? 'ya' : 'belum'}
                 className={`w-[18px] h-[18px] shrink-0 rounded-md flex items-center justify-center ${ANIM.meletup} ${
                   subDone
-                    ? `${STATUS.goodSolid} text-white dark:text-[#0A121D]`
+                    ? `${STATUS.doneSolid} text-white dark:text-[#0A121D]`
                     : `${T.bgBorder} ${T.inkMuted}`
                 }`}
               >
@@ -521,18 +555,30 @@ function StatusPembayaran({ pembayaran }) {
       </p>
       {p.buktiTransfer ? (
         <div
-          className={`flex items-center gap-3 px-4 py-3.5 rounded-[10px] border ${STATUS.goodBg} ${STATUS.goodBorder}`}
+          className={`flex items-center gap-3 px-4 py-3.5 rounded-[10px] border ${STATUS.doneBg} ${STATUS.doneBorder}`}
         >
-          <div className="w-8 h-8 shrink-0 rounded-full bg-[#16a34a] text-white flex items-center justify-center">
+          <div
+            className={`w-8 h-8 shrink-0 rounded-full border flex items-center justify-center ${STATUS.doneOn}`}
+          >
             <FaCheck size={14} />
           </div>
           <div>
-            <div className={`text-[13px] font-semibold ${STATUS.goodInk}`}>
+            <div className={`text-[13px] font-semibold ${STATUS.doneInk}`}>
               Bukti transfer sudah diunggah
             </div>
-            <div className={`text-[11.5px] mt-0.5 ${T.ink2}`}>
-              {p.buktiTransfer}
-              {p.tanggalTransfer ? ' · ' + p.tanggalTransfer : ''}
+            <div className={`text-[11.5px] mt-0.5 break-all ${T.ink2}`}>
+              {p.berkas?.url ? (
+                <button
+                  type="button"
+                  className="underline underline-offset-2 hover:no-underline"
+                  onClick={() => bukaBerkas(p.berkas)}
+                >
+                  {p.buktiTransfer}
+                </button>
+              ) : (
+                p.buktiTransfer
+              )}
+              {p.tanggalTransfer ? ' · ' + formatTanggal(p.tanggalTransfer) : ''}
               {p.nomorRekening ? ' · ' + p.nomorRekening : ''}
             </div>
           </div>

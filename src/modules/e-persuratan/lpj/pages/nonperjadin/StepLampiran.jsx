@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import {
   FaCheck,
+  FaChevronLeft,
   FaCircleNotch,
   FaPrint,
   FaRegEye,
-  FaRegSave,
-  FaTimes,
+  FaRegTrashAlt,
   FaUpload,
 } from 'react-icons/fa';
 import { NP_LAMPIRAN_MAX_COUNT, NP_PACK_DOCS, SCAN_MAX_BYTES } from '../../data/masterLpj';
@@ -14,7 +14,7 @@ import { lpjIdOf, lpjRowTotal } from '../../utils/lpjLogic';
 import { deleteLpjFile, pesanGagalUnggah, uploadLpjFile } from '../../services/lpjStorage';
 import ProgressBar from '../../ui/ProgressBar';
 import { BTN, FONT, LAYOUT, NAVY, STATUS, T } from '@/utils/uiTokens';
-import { ANIM, hapusBaris, rayakan } from '@/utils/animasi';
+import { ANIM, hapusBaris } from '@/utils/animasi';
 
 /** Fase 2 Non-Perjadin — unggah Foto Bukti/Produk & Nota Pembayaran, lalu berkas selesai. */
 export default function StepLampiran({ ctx }) {
@@ -114,14 +114,13 @@ export default function StepLampiran({ ctx }) {
         closeConfirm();
         if (ok) {
           showToast(`LPJ ${lpjIdOf(pack)} berhasil diselesaikan.`);
-          rayakan({ judul: 'Berkas Selesai!', sub: lpjIdOf(pack), nada: 'final' });
-          ctx.navigate(ctx.detailUrl); // berkas final: tampilkan Detail-nya
+          ctx.keDetail(); // berkas final: tampilkan Detail-nya
         }
       },
       onNo: async () => {
         await persist(ctx.pfRef.current, { quiet: true });
         closeConfirm();
-        ctx.navigate(ctx.detailUrl);
+        ctx.keDetail();
       },
     });
   }
@@ -137,8 +136,10 @@ export default function StepLampiran({ ctx }) {
           </p>
         </div>
       </div>
+      {ctx.infoSimpan}
 
-      <div className="max-w-[860px] mx-auto">
+      {/* Memenuhi lebar kartu form (sama dengan form Perjadin) */}
+      <div>
         <div
           className={`${NAVY.gradient} rounded-xl px-[22px] py-[18px] mb-4 flex flex-wrap items-center justify-between gap-2.5`}
         >
@@ -159,16 +160,14 @@ export default function StepLampiran({ ctx }) {
         </div>
 
         <div className="flex items-center gap-2.5 mb-4">
-          <div
-            className={`text-[12.5px] font-semibold ${allDone ? 'text-[#16a34a] dark:text-[#4FD39B]' : T.ink2}`}
-          >
+          <div className={`text-[12.5px] font-semibold ${allDone ? STATUS.doneInk : T.ink2}`}>
             {pctUploaded}% ter-upload
           </div>
           <ProgressBar
             value={pctUploaded}
             className={`!w-[140px] h-1.5 rounded-[3px] ${T.bgBorder} [&::-webkit-progress-bar]:bg-[#E0E5EC] dark:[&::-webkit-progress-bar]:bg-[#233450] [&::-webkit-progress-value]:rounded-[3px] ${
               allDone
-                ? '[&::-webkit-progress-value]:bg-[#16a34a] [&::-moz-progress-bar]:bg-[#16a34a]'
+                ? '[&::-webkit-progress-value]:bg-[#2A78D6] [&::-moz-progress-bar]:bg-[#2A78D6] dark:[&::-webkit-progress-value]:bg-[#7DB6F3] dark:[&::-moz-progress-bar]:bg-[#7DB6F3]'
                 : '[&::-webkit-progress-value]:bg-[#0f2040] [&::-moz-progress-bar]:bg-[#0f2040] dark:[&::-webkit-progress-value]:bg-[#7DB6F3] dark:[&::-moz-progress-bar]:bg-[#7DB6F3]'
             }`}
           />
@@ -184,17 +183,17 @@ export default function StepLampiran({ ctx }) {
             return (
               <div
                 key={doc.key}
-                className={`rounded-xl border-[1.5px] overflow-hidden ${T.surface} ${uploaded ? STATUS.goodBorder : T.border}`}
+                className={`rounded-xl border-[1.5px] overflow-hidden ${T.surface} ${uploaded ? STATUS.doneBorder : T.border}`}
               >
                 <div
                   className={`flex flex-wrap items-center justify-between gap-2.5 px-[18px] py-3.5 ${
-                    uploaded ? 'bg-[#f0fdf4] dark:bg-[rgba(25,158,112,.12)]' : ''
+                    uploaded ? STATUS.doneBg : ''
                   }`}
                 >
                   <div className="flex items-center gap-3">
                     <div
                       className={`w-8 h-8 shrink-0 rounded-lg flex items-center justify-center text-white text-[13px] font-bold ${
-                        uploaded ? 'bg-[#16a34a]' : NAVY.bg
+                        uploaded ? STATUS.doneOn : NAVY.bg
                       }`}
                     >
                       {uploaded ? <FaCheck size={12} /> : i + 1}
@@ -212,7 +211,9 @@ export default function StepLampiran({ ctx }) {
                   <div className="flex flex-wrap items-center gap-2">
                     {uploaded ? (
                       <>
-                        <span className="text-[11.5px] font-semibold text-[#16a34a] dark:text-[#4FD39B] flex items-center gap-1">
+                        <span
+                          className={`text-[11.5px] font-semibold flex items-center gap-1 ${STATUS.doneInk}`}
+                        >
                           <FaCheck size={10} /> sudah di upload
                         </span>
                         <button type="button" className={BTN.sm} onClick={() => dok.lihat(item)}>
@@ -262,25 +263,31 @@ export default function StepLampiran({ ctx }) {
                   </div>
                 </div>
                 {uploaded && (
-                  <div className="flex flex-wrap gap-2 px-[18px] pb-3.5">
+                  // Pratinjau foto (gaya sama dengan foto Laporan Kegiatan); klik → ukuran penuh
+                  <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-2.5 px-[18px] pt-3.5 pb-3.5">
                     {files.map((f) => (
-                      <span
+                      <div
                         key={f.path}
-                        className={`inline-flex items-center gap-1.5 max-w-[220px] text-[11.5px] font-medium pl-2.5 pr-1.5 py-[5px] rounded-[20px] border ${ANIM.meletup} ${T.surface2} ${T.ink2} ${T.border}`}
+                        className={`relative rounded-[10px] border overflow-hidden ${ANIM.meletup} ${T.border} ${T.surface2}`}
                       >
-                        <a
-                          href={f.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="truncate"
+                        <a href={f.url} target="_blank" rel="noreferrer" title="Buka di tab baru">
+                          <img
+                            src={f.url}
+                            alt={f.name}
+                            loading="lazy"
+                            className="block w-full h-24 object-cover"
+                          />
+                        </a>
+                        <div
+                          className={`px-1.5 py-[5px] text-[10.5px] truncate ${T.ink2}`}
                           title={f.name}
                         >
                           {f.name}
-                        </a>
+                        </div>
                         <button
                           type="button"
                           title="Hapus foto"
-                          aria-label={`Hapus ${f.name}`}
+                          aria-label={`Hapus foto ${f.name}`}
                           onClick={(e) =>
                             hapusBaris(
                               e.currentTarget.parentElement,
@@ -288,11 +295,11 @@ export default function StepLampiran({ ctx }) {
                               { geser: false },
                             )
                           }
-                          className={`flex ${STATUS.critInk}`}
+                          className="absolute top-[5px] right-[5px] w-[26px] h-[26px] rounded-full bg-[rgba(15,20,30,.65)] text-white flex items-center justify-center"
                         >
-                          <FaTimes size={11} />
+                          <FaRegTrashAlt size={12} />
                         </button>
-                      </span>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -306,20 +313,21 @@ export default function StepLampiran({ ctx }) {
           })}
         </div>
 
-        {allDone && (
-          <div className="flex flex-wrap justify-end gap-2 mt-5 pb-6">
-            <button type="button" className={BTN.warn} onClick={() => persist(ctx.pfRef.current)}>
-              <FaRegSave size={13} /> Simpan Draft
-            </button>
+        <div className="flex flex-wrap justify-end gap-2 mt-5 pb-6">
+          {/* Lampiran langsung tersimpan saat diunggah; cukup kembali ke Detail */}
+          <button type="button" className={BTN.ghost} onClick={ctx.backToDetail}>
+            <FaChevronLeft size={12} /> Kembali ke Detail LPJ
+          </button>
+          {allDone && (
             <button
               type="button"
               onClick={handleSelesai}
-              className={`inline-flex items-center gap-2 px-[22px] py-2.5 rounded-lg text-[13.5px] font-bold text-white shadow-[0_2px_8px_rgba(15,32,64,.3)] ${NAVY.bg} ${NAVY.hoverBg}`}
+              className={`inline-flex items-center gap-2 px-[22px] py-2.5 rounded-lg text-[13.5px] font-bold text-white shadow-[0_2px_8px_rgba(15,32,64,.3)] ${NAVY.bg} ${NAVY.hoverBg} ${ANIM.muncul}`}
             >
               <FaCheck size={12} /> Selesai
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </>
   );

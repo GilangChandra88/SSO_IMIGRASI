@@ -12,7 +12,7 @@ import { PEJABAT_KATEGORI, SCAN_MAX_BYTES } from '../../data/masterLpj';
 import { deleteLpjFile, pesanGagalUnggah, uploadLpjFile } from '../../services/lpjStorage';
 import Field from '../../ui/Field';
 import { BTN, FORM, NAVY, STATUS, T } from '@/utils/uiTokens';
-import { ANIM, rayakan } from '@/utils/animasi';
+import { ANIM } from '@/utils/animasi';
 import ProgressBar from '../../ui/ProgressBar';
 
 /**
@@ -27,6 +27,7 @@ export default function StepTTE({ ctx }) {
     setPf,
     errors,
     setErrors,
+    tandaiGalat,
     persist,
     goStep,
     backToDetail,
@@ -83,8 +84,7 @@ export default function StepTTE({ ctx }) {
     const e = {};
     if (!sp.scan) e.scan = 'Unggah scan Surat Perintah ber-TTE';
     if (!filled) e.nomorTTE = 'Wajib diisi';
-    setErrors(e);
-    if (Object.keys(e).length) return;
+    if (tandaiGalat(e)) return;
     const nomorResmi = nomor.trim();
     const ok = await persist(
       (prev) => ({
@@ -97,7 +97,6 @@ export default function StepTTE({ ctx }) {
     );
     if (ok) {
       showToast('Surat Perintah ditandai selesai.');
-      rayakan({ judul: 'Selesai!', sub: 'Surat Perintah' });
       goStep('spd');
     }
   }
@@ -193,7 +192,7 @@ export default function StepTTE({ ctx }) {
             </div>
           )}
           {sp.scan && !uploading && (
-            <p className={`mt-1 text-[11.5px] flex items-center gap-1.5 ${STATUS.goodInk}`}>
+            <p className={`mt-1 text-[11.5px] flex items-center gap-1.5 ${STATUS.doneInk}`}>
               File terpilih: {sp.scan.name}
               <a
                 href={sp.scan.url}

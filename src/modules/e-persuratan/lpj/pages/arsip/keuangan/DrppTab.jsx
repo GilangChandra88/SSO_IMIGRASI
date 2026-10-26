@@ -83,7 +83,7 @@ export default function DrppTab({ drpps, packs, packsById, search, setSearch, on
                       key={k}
                       className={`inline-flex items-center gap-1 text-[10.5px] font-bold px-[9px] py-[3px] rounded-full border ${
                         docs[k]
-                          ? `${STATUS.goodBg} ${STATUS.goodInk} border-transparent`
+                          ? `${STATUS.doneBg} ${STATUS.doneInk} border-transparent`
                           : `${T.surface2} ${T.inkMuted} ${T.border}`
                       }`}
                     >

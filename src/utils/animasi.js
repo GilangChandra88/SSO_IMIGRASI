@@ -1,4 +1,4 @@
-import { FONT, T } from '@/utils/uiTokens';
+import { T } from '@/utils/uiTokens';
 
 /**
  * Pembantu animasi bersama seluruh aplikasi (lihat aturan animasi di CLAUDE.md §5).
@@ -803,128 +803,42 @@ export async function hapusBaris(el, ubah, { geser = true } = {}) {
   }
 }
 
-// ─── Momen penting: stempel perayaan ─────────────────────────────────────────
-
-const NADA = {
-  fase: {
-    kartu: 'border-[#0f2040] text-[#0f2040] dark:border-[#7DB6F3] dark:text-[#7DB6F3]',
-    cincin: 'border-[#2A78D6]',
-  },
-  nomor: {
-    kartu: 'border-[#C9973B] text-[#A97C24] dark:border-[#D9A94A] dark:text-[#D9A94A]',
-    cincin: 'border-[#C9973B]',
-  },
-  final: {
-    kartu: 'border-[#147C55] text-[#147C55] dark:border-[#4FD39B] dark:text-[#4FD39B]',
-    cincin: 'border-[#1baf7a]',
-  },
-  hapus: {
-    kartu: 'border-[#A62D2D] text-[#A62D2D] dark:border-[#F19191] dark:text-[#F19191]',
-    cincin: 'border-[#E05252]',
-  },
-};
-
-const buatEl = (tag, kelas) => {
-  const e = document.createElement(tag);
-  e.setAttribute('aria-hidden', 'true');
-  tambahKelas(e, kelas);
-  return e;
-};
+// ─── Penunjuk sekali: sapuan kilau ───────────────────────────────────────────
 
 /**
- * Stempel perayaan di tengah layar untuk momen penting (fase selesai, nomor LPJ terbit, berkas
- * final): stempel "dibanting" (membesar → menghantam → memantul), gelombang kejut & partikel warna
- * aplikasi menyembur, lalu memudar naik. `sub` (mis. nomor LPJ) terungkap oleh garis pemindai.
- * Dipasang di `body` sehingga tetap tampil walau halaman berpindah; tidak menghalangi klik.
- * Nada `hapus` (merah, debu merah) untuk penghapusan penting.
- * @param {{ judul: string, sub?: string, nada?: 'fase'|'nomor'|'final'|'hapus' }} opsi
+ * Sapuan kilau sekali di atas `el` — pita cahaya warna aplikasi seperti `KilauFase` — untuk
+ * menunjuk satu elemen, mis. isian wajib yang belum diisi setelah layar digulir ke sana. Lapisan
+ * `fixed` di `body` mengikuti kotak & sudut `el`, jadi bisa dipakai pada input. Tidak menghalangi klik.
  */
-export function rayakan({ judul, sub = '', nada = 'fase' }) {
-  if (typeof document === 'undefined' || kurangiGerakan()) return;
-  const n = NADA[nada] || NADA.fase;
-  const LAMA = 1900;
-  const HANTAM = LAMA * 0.28;
-
-  const lapis = buatEl('div', 'pointer-events-none fixed inset-0 z-[1095] grid place-items-center');
-  const cincin = buatEl('div', `absolute w-40 h-40 rounded-full border-4 ${n.cincin}`);
-  cincin.style.opacity = '0';
-  const kartu = buatEl(
-    'div',
-    `${FONT.head} relative px-8 py-4 rounded-2xl border-[3px] text-center ${T.surface} ${n.kartu} shadow-[0_18px_50px_-12px_rgba(16,26,44,.45)]`,
+export function kilauSekali(el) {
+  if (!el?.isConnected || !document.body.animate || kurangiGerakan()) return;
+  const r = el.getBoundingClientRect();
+  if (!r.width || !r.height) return;
+  const bingkai = document.createElement('div');
+  bingkai.setAttribute('aria-hidden', 'true');
+  tambahKelas(bingkai, 'pointer-events-none fixed z-[1090] overflow-hidden');
+  Object.assign(bingkai.style, {
+    left: `${r.left}px`,
+    top: `${r.top}px`,
+    width: `${r.width}px`,
+    height: `${r.height}px`,
+    borderRadius: getComputedStyle(el).borderRadius,
+  });
+  const pita = document.createElement('span');
+  tambahKelas(
+    pita,
+    'absolute inset-y-0 -left-1/3 w-1/3 bg-[linear-gradient(90deg,transparent,rgba(42,120,214,.22),rgba(125,182,243,.32),rgba(201,151,59,.28),transparent)] dark:bg-[linear-gradient(90deg,transparent,rgba(42,120,214,.26),rgba(125,182,243,.26),rgba(217,169,74,.26),transparent)]',
   );
-  const j = buatEl('div', 'text-[22px] sm:text-[26px] font-extrabold uppercase tracking-[.12em]');
-  j.textContent = judul;
-  kartu.appendChild(j);
-  let penutup = null;
-  if (sub) {
-    const s = buatEl(
-      'div',
-      `${FONT.mono} relative mt-1 text-[13.5px] font-semibold overflow-hidden`,
-    );
-    s.textContent = sub;
-    penutup = buatEl('div', `absolute inset-0 origin-right ${T.surface}`);
-    const garis = buatEl(
-      'div',
-      'absolute top-0 bottom-0 left-0 w-[2px] bg-[#7DB6F3] shadow-[0_0_10px_2px_rgba(125,182,243,.85)]',
-    );
-    penutup.appendChild(garis);
-    s.appendChild(penutup);
-    kartu.appendChild(s);
-  }
-  lapis.append(cincin, kartu);
-  document.body.appendChild(lapis);
-
-  const anim = kartu.animate(
-    [
-      { transform: 'rotate(-8deg) scale(2.4)', opacity: 0, easing: 'cubic-bezier(.55,0,1,.45)' },
-      { transform: 'rotate(-8deg) scale(.9)', opacity: 1, offset: 0.28, easing: 'ease-out' },
-      { transform: 'rotate(-5deg) scale(1.05)', offset: 0.36 },
-      { transform: 'rotate(-7deg) scale(1)', offset: 0.44 },
-      { transform: 'rotate(-7deg) scale(1)', opacity: 1, offset: 0.84, easing: 'ease-in' },
-      { transform: 'rotate(-7deg) translateY(-16px) scale(.96)', opacity: 0 },
-    ],
-    { duration: LAMA, fill: 'forwards' },
-  );
-  cincin.animate(
-    [
-      { transform: 'scale(.4)', opacity: 0.75 },
-      { transform: 'scale(2.8)', opacity: 0 },
-    ],
-    { duration: 650, delay: HANTAM, easing: 'cubic-bezier(.2,.8,.2,1)' },
-  );
-  if (penutup) {
-    const lebar = penutup.parentElement.getBoundingClientRect().width || 160;
-    penutup.animate([{ transform: 'scaleX(1)' }, { transform: 'scaleX(0)' }], {
-      duration: 520,
-      delay: HANTAM + 120,
-      easing: 'cubic-bezier(.65,0,.35,1)',
-      fill: 'both',
-    });
-    penutup.firstChild.animate(
-      [{ transform: 'translateX(0)' }, { transform: `translateX(${lebar}px)` }],
-      { duration: 520, delay: HANTAM + 120, easing: 'cubic-bezier(.65,0,.35,1)', fill: 'both' },
-    );
-  }
-  const jumlah = nada === 'final' ? 40 : 28;
-  for (let i = 0; i < jumlah; i++) {
-    const p = buatEl(
-      'span',
-      `absolute left-1/2 top-1/2 ${(nada === 'hapus' ? DEBU : PARTIKEL)[i % PARTIKEL.length]} ${i % 3 ? 'w-[5px] h-[5px] rounded-[1px]' : 'w-[7px] h-[7px] rounded-full'}`,
-    );
-    p.style.opacity = '0';
-    lapis.appendChild(p);
-    const sudut = (i / jumlah) * Math.PI * 2 + Math.random() * 0.5;
-    const jarak = 90 + Math.random() * 130;
-    p.animate(
+  bingkai.appendChild(pita);
+  document.body.appendChild(bingkai);
+  pita
+    .animate(
       [
-        { transform: 'translate(-50%,-50%) scale(.5)', opacity: 1 },
-        {
-          transform: `translate(calc(-50% + ${Math.cos(sudut) * jarak}px), calc(-50% + ${Math.sin(sudut) * jarak}px)) rotate(${(Math.random() - 0.5) * 360}deg) scale(1)`,
-          opacity: 0,
-        },
+        { transform: 'translateX(0) skewX(-20deg)' },
+        { transform: 'translateX(400%) skewX(-20deg)' },
       ],
-      { duration: 700 + Math.random() * 300, delay: HANTAM, easing: 'cubic-bezier(.1,.7,.3,1)' },
-    );
-  }
-  anim.finished.catch(() => {}).finally(() => lapis.remove());
+      { duration: 1100, easing: 'ease-out' },
+    )
+    .finished.catch(() => {})
+    .finally(() => bingkai.remove());
 }

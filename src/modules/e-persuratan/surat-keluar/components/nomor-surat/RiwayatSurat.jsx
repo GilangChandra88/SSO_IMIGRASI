@@ -3,6 +3,7 @@ import { FaEye, FaSearch } from 'react-icons/fa';
 import { ADMIN, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, jedaKe } from '@/utils/animasi';
 import PreviewSuratModal from './PreviewSuratModal';
+import { formatTanggalNomor } from './nomorSuratTampil';
 
 /** Riwayat surat yang dibuat lewat form surat (surat_perintah + surat_dokumen). */
 export default function RiwayatSurat({ rows, loading }) {
@@ -68,9 +69,7 @@ export default function RiwayatSurat({ rows, loading }) {
               filtered.map((s, i) => (
                 <tr key={s.id} className={`${ADMIN.tr} ${ANIM.muncul} ${jedaKe(i)}`}>
                   <td className={ADMIN.td}>
-                    <span className={ADMIN.mono}>
-                      {s.tanggal ? new Date(s.tanggal).toLocaleDateString('id-ID') : '-'}
-                    </span>
+                    <span className={ADMIN.mono}>{formatTanggalNomor(s.tanggal)}</span>
                   </td>
                   <td className={ADMIN.td}>
                     <span className={`${ADMIN.mono} font-semibold`}>{s.nomor}</span>

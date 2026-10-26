@@ -30,27 +30,13 @@ export const BULAN_NAMES = [
   'Desember',
 ];
 
-const BULAN_PENDEK = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'Mei',
-  'Jun',
-  'Jul',
-  'Agu',
-  'Sep',
-  'Okt',
-  'Nov',
-  'Des',
-];
-
-/** '2026-09-03' → '03 Sep 2026' */
+/** '2026-09-03' → '03/09/2026' (hari/bulan/tahun, format baku tampilan) */
 export function formatTanggalID(str) {
   if (!str) return '-';
   const d = new Date(str);
   if (Number.isNaN(d.getTime())) return '-';
-  return `${String(d.getDate()).padStart(2, '0')} ${BULAN_PENDEK[d.getMonth()]} ${d.getFullYear()}`;
+  const dua = (n) => String(n).padStart(2, '0');
+  return `${dua(d.getDate())}/${dua(d.getMonth() + 1)}/${d.getFullYear()}`;
 }
 
 /**

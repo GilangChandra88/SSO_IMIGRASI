@@ -276,7 +276,7 @@ function BarisBerkas({ selesai, nama, sub, children }) {
     >
       <div
         className={`w-[34px] h-[34px] shrink-0 rounded-[9px] grid place-items-center ${
-          selesai ? `${STATUS.goodBg} ${STATUS.goodInk}` : `${T.surface2} ${T.inkMuted}`
+          selesai ? `${STATUS.doneBg} ${STATUS.doneInk}` : `${T.surface2} ${T.inkMuted}`
         }`}
       >
         {selesai ? <FaCheck size={14} /> : <FaRegFileAlt size={14} />}

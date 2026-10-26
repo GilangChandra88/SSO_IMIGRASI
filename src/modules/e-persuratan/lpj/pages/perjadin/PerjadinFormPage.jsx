@@ -4,22 +4,22 @@
  * kunci tiap fase, sehingga aman saat halaman di-refresh.
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { FaCircleNotch, FaExclamationTriangle, FaRegClock } from 'react-icons/fa';
 import { saveLPJ } from '../../hooks/useLPJ';
 import { useSimpanOtomatis } from '../../hooks/useSimpanOtomatis';
 import { usePegawaiList } from '../../hooks/usePegawaiList';
 import { useMakTree } from '../../hooks/useMakTree';
 import { useDokumenLpj } from '../../hooks/useDokumenLpj';
-import { formatJam } from '../../utils/formatTanggal';
 import { lpjIdLabel } from '../../utils/lpjLogic';
+import { InfoSimpan, PeringatanSimpan } from '../../components/StatusSimpan';
 import ConfirmPopup from '../../ui/ConfirmPopup';
 import LinkBack from '../../ui/LinkBack';
 import { useToast } from '@/utils/toastStore';
 import { useMekarDariTombol } from '@/components/animasi';
 import { ANIM } from '@/utils/animasi';
-import { BTN, LAYOUT, STATUS, T } from '@/utils/uiTokens';
+import { gulirKeAtas, gulirKeGalat } from '../../../gulirPintar';
+import { LAYOUT, STATUS, T } from '@/utils/uiTokens';
 import StepSuratPerintah from './StepSuratPerintah';
 import StepTTE from './StepTTE';
 import StepSPD from './StepSPD';
@@ -70,6 +70,16 @@ function bolehMasuk(pf, step) {
 // Urutan langkah form: menentukan arah geser saat berpindah langkah (maju → dari kanan)
 const URUTAN_LANGKAH = ['sp', 'tte', 'spd', 'cetak-spd', 'lpj', 'laporan'];
 
+// Judul kepala form mengikuti langkah yang sedang ditampilkan (fase = nomor fase di Detail LPJ)
+const JUDUL_LANGKAH = {
+  sp: { judul: 'Surat Perintah', fase: 1 },
+  tte: { judul: 'Upload SP ber-TTE & Nomor Surat', fase: 2 },
+  spd: { judul: 'SPD (Surat Perjalanan Dinas)', fase: 2 },
+  'cetak-spd': { judul: 'Cetak SPD', fase: 2 },
+  lpj: { judul: 'LPJ & SPBy', fase: 3 },
+  laporan: { judul: 'Laporan Kegiatan', fase: 4 },
+};
+
 export default function PerjadinFormPage({ pack, isi, user }) {
   const navigate = useNavigate();
   const [, setSearchParams] = useSearchParams();
@@ -77,6 +87,8 @@ export default function PerjadinFormPage({ pack, isi, user }) {
   const { pegawai, loading: loadingPeg } = usePegawaiList();
   const mak = useMakTree();
   const topRef = useRef(null);
+  // Form selalu dibuka dari atas (Detail sebelumnya bisa tergulir jauh), sebelum kartu mekar
+  useLayoutEffect(() => gulirKeAtas(topRef.current), []);
   // Dibuka dari "Buat Sekarang/Edit/Upload": kartu form mekar dari tombol itu
   const kartuRef = useMekarDariTombol();
 
@@ -121,7 +133,7 @@ export default function PerjadinFormPage({ pack, isi, user }) {
     setPf(next);
     if (!opts.auto) otomatis.bersih(); // simpanan ini sudah memuat isian terbaru
     try {
-      const nomor = await saveLPJ(
+      await saveLPJ(
         pack,
         {
           sp: next.sp,
@@ -136,8 +148,7 @@ export default function PerjadinFormPage({ pack, isi, user }) {
       );
       setLastSaved(new Date());
       if (!opts.quiet) showToast('Draft tersimpan.');
-      // beriNomor: kembalikan nomor LPJ (string, tetap truthy) untuk stempel perayaan
-      return opts.beriNomor ? nomor || true : true;
+      return true;
     } catch (err) {
       console.error('saveLPJ error:', err);
       // SPBy selesai + nomor LPJ: kembalikan isian agar fase tidak tampak terkunci tanpa nomor
@@ -155,9 +166,20 @@ export default function PerjadinFormPage({ pack, isi, user }) {
     topRef.current?.scrollIntoView({ block: 'start' });
   }
 
+  /** Kembali ke Detail LPJ; Detail menggulir ke kartu fase langkah ini (hasil berkasnya). */
+  const keDetail = () => navigate(detailUrl, { state: { sorot: step } });
+
   async function backToDetail() {
     await persist(pfRef.current, { quiet: true });
-    navigate(detailUrl);
+    keDetail();
+  }
+
+  /** Tampilkan galat validasi; bila ada, gulir ke isian merah pertama. @returns true bila ada galat */
+  function tandaiGalat(e) {
+    setErrors(e);
+    const ada = Object.values(e).some(Boolean);
+    if (ada) gulirKeGalat(kartuRef.current);
+    return ada;
   }
 
   const askConfirm = (c) => setConfirm(c);
@@ -186,8 +208,10 @@ export default function PerjadinFormPage({ pack, isi, user }) {
     pfRef,
     errors,
     setErrors,
+    tandaiGalat,
     persist,
     goStep,
+    keDetail,
     backToDetail,
     askConfirm,
     closeConfirm,
@@ -212,30 +236,27 @@ export default function PerjadinFormPage({ pack, isi, user }) {
           <div className={LAYOUT.head}>
             <div className="flex flex-wrap items-center gap-3">
               <div>
-                <h1 className={LAYOUT.h1}>Buat LPJ Perjadin</h1>
+                <h1 key={step} className={`${LAYOUT.h1} ${ANIM.muncul}`}>
+                  {JUDUL_LANGKAH[step].judul}
+                </h1>
                 <p className={LAYOUT.sub}>
-                  Laporan Pertanggungjawaban Perjalanan Dinas · {lpjIdLabel(pack)}
+                  Fase {JUDUL_LANGKAH[step].fase} dari 4 · LPJ Perjalanan Dinas · {lpjIdLabel(pack)}
                 </p>
               </div>
-              <span className="px-2.5 py-[3px] rounded-[20px] text-[11px] font-bold tracking-[.04em] bg-[#fef9c3] text-[#92400e] border border-[#fde68a]">
-                DRAFT
-              </span>
+              {step === 'cetak-spd' ? (
+                <span
+                  className={`px-2.5 py-[3px] rounded-[20px] text-[11px] font-bold tracking-[.04em] border ${STATUS.doneBg} ${STATUS.doneInk} ${STATUS.doneBorder}`}
+                >
+                  SIAP CETAK
+                </span>
+              ) : (
+                <span className="px-2.5 py-[3px] rounded-[20px] text-[11px] font-bold tracking-[.04em] bg-[#fef9c3] text-[#92400e] border border-[#fde68a]">
+                  DRAFT
+                </span>
+              )}
             </div>
           </div>
-          {otomatis.status === 'menyimpan' ? (
-            <div className={`-mt-2 pb-4 text-[11.5px] flex items-center gap-1.5 ${T.inkMuted}`}>
-              <FaCircleNotch size={11} className="animate-spin" /> Menyimpan otomatis…
-            </div>
-          ) : (
-            lastSaved && (
-              <div className={`-mt-2 pb-4 text-[11.5px] flex items-center gap-1.5 ${T.inkMuted}`}>
-                <FaRegClock size={11} /> Tersimpan otomatis · terakhir disimpan:{' '}
-                <span key={lastSaved.getTime()} className={`font-semibold ${ANIM.meletup}`}>
-                  {formatJam(lastSaved)}
-                </span>
-              </div>
-            )
-          )}
+          <InfoSimpan status={otomatis.status} lastSaved={lastSaved} />
 
           <div key={step} className={arah === 'maju' ? ANIM.geserKiri : ANIM.geserKanan}>
             {step === 'sp' && <StepSuratPerintah ctx={ctx} />}
@@ -263,39 +284,6 @@ export default function PerjadinFormPage({ pack, isi, user }) {
         />
       )}
       {dok.modal}
-    </div>
-  );
-}
-
-/** Peringatan di atas form saat isian tidak bisa disimpan otomatis (offline / server tak merespons). */
-function PeringatanSimpan({ status, onCoba }) {
-  if (status !== 'luring' && status !== 'gagal') return null;
-  return (
-    // Lapisan luar padat: warna peringatan semi-transparan, isi form tidak boleh tembus saat digulir
-    <div
-      role="alert"
-      className={`sticky top-2 z-20 mb-4 rounded-xl ${T.surface} ${T.shadowSm} ${ANIM.muncul}`}
-    >
-      <div
-        className={`flex flex-wrap items-center gap-3 px-4 py-3 rounded-xl border ${STATUS.warnBg} ${STATUS.warnBorder} ${STATUS.warnInk}`}
-      >
-        <FaExclamationTriangle size={16} className="shrink-0" />
-        <div className="flex-1 min-w-[200px] text-[12.5px] leading-normal">
-          <strong className="block text-[13px]">
-            {status === 'luring'
-              ? 'Koneksi internet terputus — perubahan tidak tersimpan otomatis'
-              : 'Perubahan belum tersimpan otomatis'}
-          </strong>
-          {status === 'luring'
-            ? 'Isian akan disimpan begitu koneksi kembali. Jangan tutup atau muat ulang halaman ini.'
-            : 'Server belum merespons, mungkin karena internet bermasalah. Jangan tutup halaman ini dulu.'}
-        </div>
-        {status === 'gagal' && (
-          <button type="button" className={BTN.sm} onClick={onCoba}>
-            Coba simpan lagi
-          </button>
-        )}
-      </div>
     </div>
   );
 }

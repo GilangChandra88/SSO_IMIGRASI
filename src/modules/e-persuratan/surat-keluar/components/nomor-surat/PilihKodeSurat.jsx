@@ -25,6 +25,7 @@ export default function PilihKodeSurat({ indeks, value, onChange, error }) {
             <select
               id={`kode-${i}`}
               className={kosong ? ADMIN.inputErr : ADMIN.input}
+              aria-invalid={kosong || undefined}
               value={value[i] || ''}
               disabled={mati}
               onChange={(e) => onChange([...value.slice(0, i), e.target.value].filter(Boolean))}

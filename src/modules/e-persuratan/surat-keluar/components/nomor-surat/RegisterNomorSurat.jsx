@@ -93,7 +93,11 @@ export default function RegisterNomorSurat({ rows, loading }) {
               </tr>
             ) : (
               filtered.map((r, i) => (
-                <tr key={r.id} className={`${ADMIN.tr} ${ANIM.muncul} ${jedaKe(i)}`}>
+                <tr
+                  key={r.id}
+                  data-nomor={r.nomor}
+                  className={`${ADMIN.tr} ${ANIM.muncul} ${jedaKe(i)}`}
+                >
                   <td className={ADMIN.td}>{r.nomorUrut || '-'}</td>
                   <td className={ADMIN.td}>
                     <span className={ADMIN.mono}>{formatTanggalNomor(r.tanggal)}</span>

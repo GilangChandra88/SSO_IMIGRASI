@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaCheck, FaChevronLeft, FaInfoCircle, FaPlus } from 'react-icons/fa';
+import { FaCheck, FaChevronLeft, FaInfoCircle } from 'react-icons/fa';
 import { LPJ_DOCS } from '../../data/masterLpj';
 import { emptyTransaksi } from '../../utils/emptyModels';
 import { formatTanggal } from '../../utils/formatTanggal';
@@ -9,7 +9,6 @@ import { catatMakHistory } from '../../services/makHistory';
 import TransaksiTable from '../../components/TransaksiTable';
 import Field from '../../ui/Field';
 import { BTN, FONT, FORM, STATUS, T } from '@/utils/uiTokens';
-import { rayakan } from '@/utils/animasi';
 
 /** Fase 3 — LPJ & SPBy: detail transaksi → pack dokumen pertanggungjawaban. */
 export default function StepLPJ({ ctx }) {
@@ -18,7 +17,7 @@ export default function StepLPJ({ ctx }) {
     pf,
     setPf,
     errors,
-    setErrors,
+    tandaiGalat,
     persist,
     askConfirm,
     closeConfirm,
@@ -33,11 +32,7 @@ export default function StepLPJ({ ctx }) {
   const total = lpj.transaksi.reduce((s, t) => s + parseNum(t.jumlah), 0);
 
   function handleSelesai() {
-    if (!lpj.tanggalLPJ) {
-      setErrors({ tanggalLPJ: 'Wajib diisi' });
-      return;
-    }
-    setErrors({});
+    if (tandaiGalat(lpj.tanggalLPJ ? {} : { tanggalLPJ: 'Wajib diisi' })) return;
     askConfirm({
       label: 'LPJ & SPBy (Pack Dokumen)',
       onYes: async () => {
@@ -74,19 +69,14 @@ export default function StepLPJ({ ctx }) {
             showToast('LPJ tersimpan, tetapi pencatatan History MAK gagal.', 'error');
           }
           showToast('LPJ & SPBy ditandai selesai. Nomor LPJ sudah terbit.');
-          rayakan({
-            judul: 'Nomor LPJ Terbit',
-            sub: typeof ok === 'string' ? ok : 'LPJ & SPBy selesai',
-            nada: 'nomor',
-          });
         }
         closeConfirm();
-        if (ok) ctx.navigate(ctx.detailUrl);
+        if (ok) ctx.keDetail();
       },
       onNo: async () => {
         await persist(ctx.pfRef.current, { quiet: true });
         closeConfirm();
-        ctx.navigate(ctx.detailUrl);
+        ctx.keDetail();
       },
     });
   }
@@ -144,25 +134,9 @@ export default function StepLPJ({ ctx }) {
       </div>
 
       <div className={FORM.card}>
-        <div className="flex items-center justify-between gap-3 mb-4">
-          <div>
-            <h3 className={FORM.cardTitle}>Detail Transaksi</h3>
-            <p className={FORM.cardSub}>Pelaksana · Item · Jumlah</p>
-          </div>
-          <button
-            type="button"
-            className={BTN.action}
-            onClick={() =>
-              setLpj({
-                transaksi: [
-                  ...lpj.transaksi,
-                  { ...emptyTransaksi(), pelaksanaId: sp.kepada[0]?.id || '' },
-                ],
-              })
-            }
-          >
-            <FaPlus size={11} /> Tambah
-          </button>
+        <div className="mb-4">
+          <h3 className={FORM.cardTitle}>Detail Transaksi</h3>
+          <p className={FORM.cardSub}>Pelaksana · Item · Jumlah</p>
         </div>
         {spd.mak?.akunNodeId ? (
           <div
@@ -187,12 +161,20 @@ export default function StepLPJ({ ctx }) {
         <TransaksiTable
           rows={lpj.transaksi}
           onChange={(transaksi) => setLpj({ transaksi })}
+          onTambah={() =>
+            setLpj({
+              transaksi: [
+                ...lpj.transaksi,
+                { ...emptyTransaksi(), pelaksanaId: sp.kepada[0]?.id || '' },
+              ],
+            })
+          }
           pelaksana={sp.kepada}
           items={akunItems}
           akunKode={akun?.kode || ''}
         />
         {total > 0 && (
-          <div className={`flex justify-end border-t pt-3 mt-1 ${T.border}`}>
+          <div className={`flex justify-end border-t pt-3 mt-3.5 ${T.border}`}>
             <div className="text-right">
               <div className={`text-[11px] font-semibold ${T.inkMuted}`}>TOTAL BIAYA</div>
               <div className={`${FONT.head} text-xl font-extrabold ${T.ink}`}>

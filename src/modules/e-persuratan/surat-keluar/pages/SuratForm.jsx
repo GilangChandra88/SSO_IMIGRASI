@@ -36,6 +36,9 @@ import SuratPreviewModal from '@/components/SuratPreview/SuratPreviewModal';
 import SuratPreviewCanvas from '@/components/SuratPreview/SuratPreviewCanvas';
 import { ANIM } from '@/utils/animasi';
 import { useMekarDariTombol } from '@/components/animasi';
+import { gulirKeGalat } from '../../gulirPintar';
+
+const nilaiKosong = (x) => !x || (Array.isArray(x) && x.length === 0);
 
 export default function SuratForm() {
   // Dibuka dari "Isi Form": halaman form mekar dari tombol itu
@@ -72,6 +75,8 @@ export default function SuratForm() {
   const [showPreview, setShowPreview] = useState(!isSpbyHub);
   const [savedInstance, setSavedInstance] = useState(null);
   const [missingFieldInfo, setMissingFieldInfo] = useState(null);
+  // Setelah "Lanjutkan Isi Form": isian wajib yang kosong ditandai merah dan layar menuju ke sana
+  const [tandaiKosong, setTandaiKosong] = useState(false);
 
   // Init Surat & Load DB
   useEffect(() => {
@@ -498,7 +503,11 @@ export default function SuratForm() {
 
             <div className="flex items-center justify-end gap-3">
               <button
-                onClick={() => setMissingFieldInfo(null)}
+                onClick={() => {
+                  setMissingFieldInfo(null);
+                  setTandaiKosong(true);
+                  gulirKeGalat();
+                }}
                 className="px-5 py-2.5 text-sm font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-900 rounded-xl transition-colors"
               >
                 Lanjutkan Isi Form
@@ -977,12 +986,28 @@ export default function SuratForm() {
                 <div className="space-y-5">
                   {surat.variables?.map((v) => {
                     if (v.source === 'auto') return null;
+                    const kosong = tandaiKosong && v.required && nilaiKosong(formData[v.key]);
 
                     return (
-                      <div key={v.key}>
+                      <div
+                        key={v.key}
+                        data-galat={kosong ? '' : undefined}
+                        className={
+                          kosong
+                            ? 'rounded-lg ring-2 ring-rose-400 ring-offset-4 ring-offset-white dark:ring-rose-500 dark:ring-offset-slate-800'
+                            : undefined
+                        }
+                      >
                         <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
                           {v.label} {v.required && <span className="text-rose-500">*</span>}
                         </label>
+                        {kosong && (
+                          <p
+                            className={`-mt-1 mb-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 ${ANIM.muncul}`}
+                          >
+                            Wajib diisi
+                          </p>
+                        )}
 
                         {v.type === 'text' && (
                           <input
