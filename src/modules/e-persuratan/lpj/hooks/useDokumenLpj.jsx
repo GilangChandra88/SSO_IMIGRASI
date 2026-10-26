@@ -1,19 +1,23 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import SuratPreviewModal from '@/components/SuratPreview/SuratPreviewModal';
 import { resolveDokumen } from '../utils/dokumenLpj';
-import { cetakPdf } from '../utils/cetakPdf';
+import { cetakPdf, pdfGabungan } from '../utils/cetakPdf';
 import DocPreviewPopup from '../ui/DocPreviewPopup';
 import LampiranViewer from '../components/LampiranViewer';
+import PdfGabunganModal from '../components/PdfGabunganModal';
 
 /**
  * Tombol Lihat/Print dokumen LPJ.
  * - Dokumen dengan template PDF → pratinjau PDF / cetak di tab baru.
  * - Lampiran unggahan → penampil berkas.
  * - Belum ada template → pratinjau placeholder (seperti purwarupa).
+ * - `cetakSemua(items, label)` → dokumen ber-template PDF & berkas unggahan digabung jadi satu
+ *   PDF dan ditampilkan di popup (Cetak / Unduh).
  * Render `modal` di halaman pemanggil.
  */
 export function useDokumenLpj({ pack, pegawai, showToast }) {
   const [preview, setPreview] = useState(null);
+  const urutGabungan = useRef(0); // abaikan hasil penyusunan yang popupnya sudah ditutup
 
   const lihat = (item) => setPreview(resolveDokumen(pack, item, pegawai));
 
@@ -31,9 +35,56 @@ export function useDokumenLpj({ pack, pegawai, showToast }) {
     }
   };
 
-  const close = () => setPreview(null);
+  /**
+   * Cetak beberapa dokumen sekaligus (satu PDF di popup): template PDF + berkas unggahan (mis.
+   * scan SP ber-TTE). Dokumen tanpa template (placeholder) dilewati.
+   */
+  const cetakSemua = async (items, label = 'Cetak Semua') => {
+    const siap = items
+      .map((item) => resolveDokumen(pack, item, pegawai))
+      .filter((r) => r.kind === 'pdf' || (r.kind === 'files' && r.files.length > 0));
+    if (!siap.length) {
+      showToast?.('Belum ada dokumen yang bisa dicetak.', 'error');
+      return;
+    }
+    const ke = ++urutGabungan.current;
+    setPreview({ kind: 'gabungan', label, url: null });
+    try {
+      const { blob, gagal } = await pdfGabungan(siap);
+      if (urutGabungan.current !== ke) return; // popup sudah ditutup / diganti
+      setPreview({ kind: 'gabungan', label, url: URL.createObjectURL(blob) });
+      if (gagal) {
+        showToast?.(
+          'Sebagian berkas unggahan tidak bisa digabung ke cetakan; buka lewat tombol Lihat.',
+          'error',
+        );
+      }
+    } catch (err) {
+      console.error('pdfGabungan error:', err);
+      if (urutGabungan.current === ke) setPreview(null);
+      showToast?.('Gagal menyiapkan dokumen untuk dicetak.', 'error');
+    }
+  };
+
+  // Lepas URL PDF gabungan saat popup ditutup / diganti
+  const urlGabungan = preview?.kind === 'gabungan' ? preview.url : null;
+  useEffect(() => () => urlGabungan && URL.revokeObjectURL(urlGabungan), [urlGabungan]);
+
+  const close = () => {
+    urutGabungan.current++;
+    setPreview(null);
+  };
   let modal = null;
-  if (preview?.kind === 'pdf') {
+  if (preview?.kind === 'gabungan') {
+    modal = (
+      <PdfGabunganModal
+        label={preview.label}
+        url={preview.url}
+        namaBerkas={`${preview.label}.pdf`}
+        onClose={close}
+      />
+    );
+  } else if (preview?.kind === 'pdf') {
     modal = (
       <SuratPreviewModal
         surat={{ ...preview.surat, instanceData: preview.data, _packItem: preview.packItem }}
@@ -46,5 +97,5 @@ export function useDokumenLpj({ pack, pegawai, showToast }) {
     modal = <DocPreviewPopup label={preview.label} onClose={close} />;
   }
 
-  return { lihat, cetak, modal };
+  return { lihat, cetak, cetakSemua, modal };
 }

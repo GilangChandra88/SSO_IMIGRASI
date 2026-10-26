@@ -42,7 +42,9 @@ function BarisDok({ no, doc, sub, verif, act, anak }) {
   return (
     <div
       className={`flex items-center gap-2.5 sm:gap-3 border ${anak ? 'rounded-[10px] px-2.5 py-[7px]' : 'rounded-xl px-3 py-2.5'} ${
-        ok ? `${STATUS.doneBg} border-[rgba(22,163,74,.4)]` : `${T.surface} ${T.border}`
+        ok
+          ? `${STATUS.doneBg} border-[rgba(42,120,214,.35)] dark:border-[rgba(125,182,243,.35)]`
+          : `${T.surface} ${T.border}`
       } motion-safe:transition-colors motion-safe:duration-200`}
     >
       <span
@@ -104,7 +106,7 @@ function KelompokDok({ g, verif, act }) {
   const semuaDicetak = g.docs.every((d) => dokDicetak(verif, d.key));
   return (
     <div
-      className={`rounded-xl border ${semua ? `${STATUS.doneBg} border-[rgba(22,163,74,.4)]` : `${T.surface} ${T.border}`} motion-safe:transition-colors motion-safe:duration-200`}
+      className={`rounded-xl border ${semua ? `${STATUS.doneBg} border-[rgba(42,120,214,.35)] dark:border-[rgba(125,182,243,.35)]` : `${T.surface} ${T.border}`} motion-safe:transition-colors motion-safe:duration-200`}
     >
       <div className="flex items-center gap-2 sm:gap-2.5 px-3 py-2.5">
         <button
