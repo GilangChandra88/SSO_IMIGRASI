@@ -94,7 +94,7 @@ export default function LpjChecklist({
               ) : !r.scan ? (
                 <span className={`${BADGE} ${T.surface2} ${T.ink2}`}>Belum discan</span>
               ) : (
-                <span className={`${BADGE} ${STATUS.goodBg} ${STATUS.goodInk}`}>Sudah discan</span>
+                <span className={`${BADGE} ${STATUS.doneBg} ${STATUS.doneInk}`}>Sudah discan</span>
               )}
             </label>
           );

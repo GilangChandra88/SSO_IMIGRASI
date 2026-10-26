@@ -59,6 +59,14 @@ export const STATUS = {
   goodInk: 'text-[#147C55] dark:text-[#4FD39B]',
   goodBorder: 'border-[#147C55] dark:border-[#4FD39B]',
   goodSolid: 'bg-[#147C55] dark:bg-[#4FD39B]',
+  // "Selesai" dengan warna dasar aplikasi (navy/biru), dipakai berkas LPJ sebagai pengganti good*
+  doneBg: 'bg-[#EAF1FB] dark:bg-[rgba(125,182,243,.12)]',
+  doneInk: 'text-[#0f2040] dark:text-[#7DB6F3]',
+  doneBorder: 'border-[#2A78D6] dark:border-[#7DB6F3]',
+  doneSolid: 'bg-[#0f2040] dark:bg-[#7DB6F3]',
+  // Kontrol/lencana terisi penuh (mis. tombol centang aktif): latar + bingkai + teks
+  doneOn:
+    'bg-[#0f2040] border-[#0f2040] text-white dark:bg-[#7DB6F3] dark:border-[#7DB6F3] dark:text-[#0A121D]',
   warnBg: 'bg-[rgba(237,161,0,.16)] dark:bg-[rgba(201,133,0,.22)]',
   warnInk: 'text-[#8A5B00] dark:text-[#F0B93E]',
   warnBorder: 'border-[#8A5B00] dark:border-[#F0B93E]',

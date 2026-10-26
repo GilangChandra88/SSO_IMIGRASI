@@ -5,7 +5,6 @@ import MakDropdowns from '../../components/MakDropdowns';
 import PegawaiCards from '../../components/PegawaiCards';
 import Field from '../../ui/Field';
 import { BTN, FORM, STATUS, T } from '@/utils/uiTokens';
-import { rayakan } from '@/utils/animasi';
 
 function validateSpd(spd) {
   const e = {};
@@ -27,7 +26,7 @@ export default function StepSPD({ ctx }) {
     pf,
     setPf,
     errors,
-    setErrors,
+    tandaiGalat,
     persist,
     goStep,
     askConfirm,
@@ -41,8 +40,7 @@ export default function StepSPD({ ctx }) {
 
   function handleSelesai() {
     const e = validateSpd(spd);
-    setErrors(e);
-    if (Object.keys(e).length) return;
+    if (tandaiGalat(e)) return;
     askConfirm({
       label: 'SPD (Surat Perjalanan Dinas)',
       onYes: async () => {
@@ -53,14 +51,13 @@ export default function StepSPD({ ctx }) {
         closeConfirm();
         if (ok) {
           showToast('SPD ditandai selesai.');
-          rayakan({ judul: 'Selesai!', sub: 'SPD' });
           goStep('cetak-spd');
         }
       },
       onNo: async () => {
         await persist(ctx.pfRef.current, { quiet: true });
         closeConfirm();
-        ctx.navigate(ctx.detailUrl);
+        ctx.keDetail();
       },
     });
   }
@@ -68,7 +65,7 @@ export default function StepSPD({ ctx }) {
   return (
     <>
       <div
-        className={`flex items-center gap-2 px-3.5 py-2.5 mb-3.5 rounded-[10px] border text-[13px] ${STATUS.goodBg} ${STATUS.goodBorder} ${STATUS.goodInk}`}
+        className={`flex items-center gap-2 px-3.5 py-2.5 mb-3.5 rounded-[10px] border text-[13px] ${STATUS.doneBg} ${STATUS.doneBorder} ${STATUS.doneInk}`}
       >
         <FaCheck size={12} className="shrink-0" />
         <span>
@@ -106,15 +103,17 @@ export default function StepSPD({ ctx }) {
             err={errors.nomorSPD}
           >
             <div
-              className={`flex items-center gap-2 h-[38px] px-3 rounded-lg border ${STATUS.goodBg} border-[#86efac] dark:border-[rgba(79,211,155,.4)]`}
+              className={`flex items-center gap-2 h-[38px] px-3 rounded-lg border ${STATUS.doneBg} ${STATUS.doneBorder}`}
             >
-              <FaCheck size={12} className={STATUS.goodInk} />
+              <FaCheck size={12} className={STATUS.doneInk} />
               <span
-                className={`flex-1 min-w-0 truncate text-[13.5px] font-semibold ${STATUS.goodInk}`}
+                className={`flex-1 min-w-0 truncate text-[13.5px] font-semibold ${STATUS.doneInk}`}
               >
                 {spd.nomorSPD || '—'}
               </span>
-              <span className="text-[10.5px] font-semibold px-2 py-0.5 rounded-[10px] bg-[#dcfce7] text-[#16a34a] whitespace-nowrap">
+              <span
+                className={`text-[10.5px] font-semibold px-2 py-0.5 rounded-[10px] whitespace-nowrap ${STATUS.doneBg} ${STATUS.doneInk}`}
+              >
                 Otomatis
               </span>
             </div>
@@ -223,7 +222,11 @@ export default function StepSPD({ ctx }) {
           bertahap
           onChange={(m) => setSpd({ mak: { ...spd.mak, ...m } })}
         />
-        {errors.mak && <p className={FORM.err}>{errors.mak}</p>}
+        {errors.mak && (
+          <p data-galat className={FORM.err}>
+            {errors.mak}
+          </p>
+        )}
       </div>
 
       <div className="flex flex-wrap justify-end items-center gap-2 pb-6">

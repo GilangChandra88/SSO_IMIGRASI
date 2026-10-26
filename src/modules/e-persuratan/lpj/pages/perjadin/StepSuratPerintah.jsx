@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaCheck, FaLock, FaPlus, FaRegSave, FaRegTrashAlt } from 'react-icons/fa';
+import { FaCheck, FaChevronLeft, FaLock, FaPlus, FaRegTrashAlt } from 'react-icons/fa';
 import { DIPA_DASAR_TEXT, UNTUK_FIXED } from '../../data/masterLpj';
 import { hariIniISO } from '../../utils/formatTanggal';
 import PegawaiPicker from '../../components/PegawaiPicker';
@@ -7,7 +7,7 @@ import PejabatPicker from '../../components/PejabatPicker';
 import PegawaiCards from '../../components/PegawaiCards';
 import Field from '../../ui/Field';
 import { BTN, FORM, NAVY, T } from '@/utils/uiTokens';
-import { ANIM, hapusBaris, rayakan } from '@/utils/animasi';
+import { ANIM, hapusBaris } from '@/utils/animasi';
 
 function validateSp(sp) {
   const e = {};
@@ -20,14 +20,13 @@ function validateSp(sp) {
 
 /** Fase 1 — isian Surat Perintah. */
 export default function StepSuratPerintah({ ctx }) {
-  const { pf, setPf, errors, setErrors, persist, askConfirm, closeConfirm } = ctx;
+  const { pf, setPf, errors, tandaiGalat, persist, askConfirm, closeConfirm } = ctx;
   const sp = pf.sp;
   const setSp = (patch) => setPf((prev) => ({ ...prev, sp: { ...prev.sp, ...patch } }));
 
   function handleSelesai() {
     const e = validateSp(sp);
-    setErrors(e);
-    if (Object.keys(e).length) return;
+    if (tandaiGalat(e)) return;
     askConfirm({
       label: 'Surat Perintah',
       onYes: async () => {
@@ -41,15 +40,14 @@ export default function StepSuratPerintah({ ctx }) {
         );
         closeConfirm();
         if (ok) {
-          rayakan({ judul: 'Selesai!', sub: 'Draft Surat Perintah' });
           // Upload SP ber-TTE dilanjutkan dari Fase 2 di Detail LPJ
-          ctx.navigate(ctx.detailUrl);
+          ctx.keDetail();
         }
       },
       onNo: async () => {
         await persist(ctx.pfRef.current, { quiet: true });
         closeConfirm();
-        ctx.navigate(ctx.detailUrl);
+        ctx.keDetail();
       },
     });
   }
@@ -93,7 +91,15 @@ export default function StepSuratPerintah({ ctx }) {
         </Field>
         {sp.kepada.length > 0 && (
           <div className={`border-t pt-3.5 ${T.border}`}>
-            <PegawaiCards list={sp.kepada} />
+            <PegawaiCards
+              list={sp.kepada}
+              onHapus={(p) =>
+                setPf((prev) => ({
+                  ...prev,
+                  sp: { ...prev.sp, kepada: prev.sp.kepada.filter((s) => s.id !== p.id) },
+                }))
+              }
+            />
           </div>
         )}
       </div>
@@ -119,8 +125,9 @@ export default function StepSuratPerintah({ ctx }) {
       </div>
 
       <div className="flex flex-wrap justify-end items-center gap-2 mb-3.5">
-        <button type="button" className={BTN.ghost} onClick={() => persist(ctx.pfRef.current)}>
-          <FaRegSave size={13} /> Simpan
+        {/* Isian sudah tersimpan otomatis; tombol ini menyimpan sisa perubahan lalu kembali */}
+        <button type="button" className={BTN.ghost} onClick={ctx.backToDetail}>
+          <FaChevronLeft size={12} /> Kembali ke Detail LPJ
         </button>
         <button type="button" className={BTN.primaryDark} onClick={handleSelesai}>
           <FaCheck size={12} /> Selesai

@@ -4,8 +4,8 @@ import { useAuth } from '@/context/AuthContext';
 import { namaPengguna } from '@/modules/e-persuratan/lpj';
 import { showToast } from '@/utils/toastStore';
 import { ADMIN } from '@/utils/uiTokens';
-import { rayakan } from '@/utils/animasi';
 import { useMekarDariTombol } from '@/components/animasi';
+import { gulirKeGalat } from '../../../gulirPintar';
 import { SEKSI_OPTIONS, formatNomorSurat, prefixKode } from '../../data/nomorSuratConfig';
 import { buatNomorRegister } from '../../services/nomorSurat';
 import PilihKodeSurat from './PilihKodeSurat';
@@ -15,7 +15,10 @@ const hariIni = () => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-/** Form "Tambah Nomor Surat" (purwarupa admin) dengan kode dari hierarki kode surat. */
+/**
+ * Form "Tambah Nomor Surat" (purwarupa admin) dengan kode dari hierarki kode surat.
+ * `onKembali(nomor?)`: nomor terisi bila nomor baru berhasil dibuat.
+ */
 export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
   // Dibuka dari "Tambah Nomor Surat": form mekar dari tombol itu
   const mekarRef = useMekarDariTombol();
@@ -36,7 +39,8 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
       : `${prefixKode(kodeList)}-…`
     : 'Pilih kode surat';
 
-  const kelasIsian = (nilai) => (cekKosong && !String(nilai).trim() ? ADMIN.inputErr : ADMIN.input);
+  const kosong = (nilai) => cekKosong && !String(nilai).trim();
+  const kelasIsian = (nilai) => (kosong(nilai) ? ADMIN.inputErr : ADMIN.input);
 
   const submit = async () => {
     const kurang =
@@ -48,6 +52,7 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
           ? 'Pilih kode surat sampai tingkat terakhir.'
           : 'Mohon lengkapi field yang wajib diisi.',
       );
+      gulirKeGalat(mekarRef.current);
       return;
     }
     setError(null);
@@ -63,8 +68,7 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
         nama: namaPengguna(currentUser, userData),
       });
       showToast(`Nomor surat ${nomor} berhasil ditambahkan.`);
-      rayakan({ judul: 'Nomor Terbit', sub: nomor, nada: 'nomor' });
-      onKembali();
+      onKembali(nomor); // Daftar menggulir ke baris nomor baru
     } catch {
       showToast('Gagal membuat nomor surat.', 'error');
       setSibuk(false);
@@ -73,7 +77,7 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
 
   return (
     <div ref={mekarRef}>
-      <button type="button" className={ADMIN.crumb} onClick={onKembali}>
+      <button type="button" className={ADMIN.crumb} onClick={() => onKembali()}>
         <FaArrowLeft size={11} />
         Kembali ke Daftar
       </button>
@@ -99,6 +103,7 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
             id="nsTanggal"
             type="date"
             className={kelasIsian(form.tanggal)}
+            aria-invalid={kosong(form.tanggal) || undefined}
             value={form.tanggal}
             onChange={(e) => ubah({ tanggal: e.target.value })}
           />
@@ -110,6 +115,7 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
           <select
             id="nsSeksi"
             className={kelasIsian(form.seksi)}
+            aria-invalid={kosong(form.seksi) || undefined}
             value={form.seksi}
             onChange={(e) => ubah({ seksi: e.target.value })}
           >
@@ -148,6 +154,7 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
             id="nsPerihal"
             type="text"
             className={kelasIsian(form.perihal)}
+            aria-invalid={kosong(form.perihal) || undefined}
             placeholder="Perihal surat"
             value={form.perihal}
             onChange={(e) => ubah({ perihal: e.target.value })}
@@ -161,6 +168,7 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
             id="nsTujuan"
             type="text"
             className={kelasIsian(form.tujuan)}
+            aria-invalid={kosong(form.tujuan) || undefined}
             placeholder="Tujuan surat"
             value={form.tujuan}
             onChange={(e) => ubah({ tujuan: e.target.value })}

@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { FaFileImport } from 'react-icons/fa';
 import ToastViewport from '@/components/ToastViewport';
 import { ADMIN, FONT, FORM, T } from '@/utils/uiTokens';
-import { ANIM, rayakan } from '@/utils/animasi';
+import { ANIM } from '@/utils/animasi';
 import { showToast } from '@/utils/toastStore';
 import { useStatusAgen } from '../hooks/useStatusAgen';
 import { useHalaman } from '../hooks/useHalaman';
@@ -26,10 +26,9 @@ export default function ScannerPage() {
   const agenSiap = agen.status === 'terhubung';
   const { baruSiap, tandaiSiapDilihat } = agen;
 
-  // Agen baru saja tersambung setelah dipasang/dinyalakan dari halaman ini → rayakan
+  // Agen baru saja tersambung setelah dipasang/dinyalakan dari halaman ini → beri tahu
   useEffect(() => {
     if (!baruSiap) return;
-    rayakan({ judul: 'Agen Scanner siap', sub: 'Scanner siap dipakai', nada: 'final' });
     showToast('Agen Scanner tersambung. Scanner siap dipakai.');
     tandaiSiapDilihat();
   }, [baruSiap, tandaiSiapDilihat]);

@@ -10,13 +10,14 @@ import {
   FaArrowLeft,
   FaArchive,
   FaPrint,
+  FaClipboardCheck,
 } from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
 import AppLayout from '@/layouts/AppLayout';
 import TransisiHalaman from './TransisiHalaman';
 import { Dashboard } from './dashboard';
 import { PersuratanPage, SuratForm, NomorSuratKanim } from './surat-keluar';
-import { LPJPage, ArsipPage } from './lpj';
+import { LPJPage, ArsipPage, VerifikasiPage } from './lpj';
 import { MakSetup, MakHistory } from './data-master';
 import { ScannerPage } from './scanner';
 
@@ -124,6 +125,18 @@ export default function AppModule() {
             <FaFolderOpen size={16} className="shrink-0" />
             <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Berkas LPJ</span>
           </Link>
+          {(isSuperAdmin || isAdmin) && (
+            <Link
+              to="/e-persuratan/verifikasi"
+              title="Berkas Verifikasi"
+              className={navItemClass(isActive('/e-persuratan/verifikasi'))}
+            >
+              <FaClipboardCheck size={16} className="shrink-0" />
+              <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>
+                Berkas Verifikasi
+              </span>
+            </Link>
+          )}
           <Link
             to="/e-persuratan/arsip"
             title="Arsip"
@@ -200,6 +213,22 @@ export default function AppModule() {
           <Route path="/lpj" element={<LPJPage />} />
           <Route path="/lpj/:packId" element={<LPJPage />} />
           <Route path="/arsip/*" element={<ArsipPage />} />
+          <Route
+            path="/verifikasi"
+            element={
+              <ProtectedRoute requireRole="Admin">
+                <VerifikasiPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/verifikasi/:packId"
+            element={
+              <ProtectedRoute requireRole="Admin">
+                <VerifikasiPage />
+              </ProtectedRoute>
+            }
+          />
           <Route
             path="/mak-setup"
             element={

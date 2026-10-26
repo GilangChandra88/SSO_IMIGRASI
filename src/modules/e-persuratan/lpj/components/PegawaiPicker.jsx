@@ -1,11 +1,12 @@
 import React, { useState } from 'react';
-import { FaSearch, FaTimes } from 'react-icons/fa';
+import { FaSearch } from 'react-icons/fa';
 import { toPegawaiRef } from '../utils/emptyModels';
-import { FORM, NAVY, T } from '@/utils/uiTokens';
-import { ANIM, hapusBaris } from '@/utils/animasi';
+import { FORM, T } from '@/utils/uiTokens';
+import { ANIM } from '@/utils/animasi';
 
 /**
- * Cari & pilih beberapa pegawai (dipakai untuk "Kepada" Surat Perintah).
+ * Cari & pilih beberapa pegawai (dipakai untuk "Kepada" Surat Perintah). Hanya kolom cari +
+ * daftar pilihan; pegawai terpilih ditampilkan (dan dihapus) lewat `PegawaiCards` di bawahnya.
  * @param {{ pegawai: object[], selected: object[], onChange: (refs) => void, err?: boolean, loading?: boolean }} props
  */
 export default function PegawaiPicker({ pegawai, selected, onChange, err, loading }) {
@@ -21,32 +22,6 @@ export default function PegawaiPicker({ pegawai, selected, onChange, err, loadin
 
   return (
     <div className="relative">
-      {selected.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {selected.map((p) => (
-            <div
-              key={p.id}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-[20px] text-xs text-white ${NAVY.bg} ${ANIM.meletup}`}
-            >
-              {p.nip || '-'} — {p.nama}
-              <button
-                type="button"
-                aria-label={`Hapus ${p.nama}`}
-                onClick={(e) =>
-                  hapusBaris(
-                    e.currentTarget.parentElement,
-                    () => onChange(selected.filter((s) => s.id !== p.id)),
-                    { geser: false },
-                  )
-                }
-                className="flex text-white/70 hover:text-white"
-              >
-                <FaTimes size={10} />
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
       <div className="relative">
         <FaSearch
           size={13}

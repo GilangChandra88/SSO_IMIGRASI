@@ -5,9 +5,10 @@ import { formatTanggal } from '../../utils/formatTanggal';
 import { lpjIdOf } from '../../utils/lpjLogic';
 import { deleteLpjFile, pesanGagalUnggah, uploadLpjFile } from '../../services/lpjStorage';
 import PegawaiPicker from '../../components/PegawaiPicker';
+import PegawaiCards from '../../components/PegawaiCards';
 import Field from '../../ui/Field';
 import { BTN, FORM, T } from '@/utils/uiTokens';
-import { ANIM, hapusBaris, rayakan } from '@/utils/animasi';
+import { ANIM, hapusBaris } from '@/utils/animasi';
 
 /** Fase 4 — Laporan Kegiatan + foto dokumentasi, lalu berkas diselesaikan. */
 export default function StepLaporan({ ctx }) {
@@ -17,6 +18,7 @@ export default function StepLaporan({ ctx }) {
     setPf,
     errors,
     setErrors,
+    tandaiGalat,
     persist,
     askConfirm,
     closeConfirm,
@@ -125,8 +127,7 @@ export default function StepLaporan({ ctx }) {
     });
     if (!lap.penandatangan) e.penandatangan = 'Pilih penanda tangan';
     if (!String(lap.jabatanTtd || '').trim()) e.jabatanTtd = 'Wajib diisi';
-    setErrors(e);
-    if (Object.keys(e).length) return;
+    if (tandaiGalat(e)) return;
     askConfirm({
       label: 'Laporan Kegiatan',
       onYes: async () => {
@@ -146,14 +147,13 @@ export default function StepLaporan({ ctx }) {
         closeConfirm();
         if (ok) {
           showToast('Berkas LPJ berhasil diselesaikan.');
-          rayakan({ judul: 'Berkas Selesai!', sub: lpjIdOf(pack), nada: 'final' });
-          ctx.navigate(ctx.detailUrl); // berkas final: tampilkan Detail-nya
+          ctx.keDetail(); // berkas final: tampilkan Detail-nya
         }
       },
       onNo: async () => {
         await persist(ctx.pfRef.current, { quiet: true });
         closeConfirm();
-        ctx.navigate(ctx.detailUrl);
+        ctx.keDetail();
       },
     });
   }
@@ -203,11 +203,12 @@ export default function StepLaporan({ ctx }) {
               key === 'hasil' ? 'Satu baris = satu poin bernomor di Laporan Kegiatan' : undefined
             }
           >
+            {/* Tinggi kolom mengikuti panjang teks (tanpa gulir di dalam kolom) */}
             <textarea
               id={`lap-${key}`}
               value={lap[key]}
               onChange={(e) => setLap({ [key]: e.target.value })}
-              className={`${FORM.textarea} !min-h-[90px] ${errors[key] ? FORM.borderErr : FORM.borderOk}`}
+              className={`${FORM.textarea} !min-h-[90px] field-sizing-content ${errors[key] ? FORM.borderErr : FORM.borderOk}`}
             />
           </Field>
         ))}
@@ -233,6 +234,16 @@ export default function StepLaporan({ ctx }) {
             err={!!errors.penandatangan}
           />
         </Field>
+        {lap.penandatangan && (
+          <div className="mb-3.5">
+            <PegawaiCards
+              list={[lap.penandatangan]}
+              onHapus={() =>
+                setPf((prev) => ({ ...prev, lap: { ...prev.lap, penandatangan: null } }))
+              }
+            />
+          </div>
+        )}
         <Field
           label="Jabatan Penanda Tangan"
           htmlFor="lap-jabatan-ttd"

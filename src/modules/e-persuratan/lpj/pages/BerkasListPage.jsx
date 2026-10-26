@@ -42,7 +42,7 @@ export function TahapPill({ pack }) {
   const cls = d.legacy
     ? `${T.surface2} ${T.inkMuted} ${T.border}`
     : d.done
-      ? 'bg-[#dcfce7] text-[#15803d] border-[#86efac] dark:bg-[rgba(25,158,112,.2)] dark:text-[#4FD39B] dark:border-[rgba(79,211,155,.4)]'
+      ? STATUS.doneOn
       : 'bg-[#eff6ff] text-[#1d4ed8] border-[#bfdbfe] dark:bg-[rgba(57,135,229,.18)] dark:text-[#7DB6F3] dark:border-[rgba(125,182,243,.35)]';
   return (
     <span
@@ -354,7 +354,9 @@ export default function BerkasListPage() {
                   <BerkasRow
                     pack={pack}
                     urutan={i}
-                    onDetail={() => navigate(`/e-persuratan/lpj/${pack.id}`)}
+                    onDetail={() =>
+                      navigate(`/e-persuratan/lpj/${pack.id}`, { state: { sorot: 'aktif' } })
+                    }
                     onHapus={canDeletePack(pack, user) ? () => setHapusPack(pack) : null}
                   />
                 </Lipat>

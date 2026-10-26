@@ -6,7 +6,7 @@
  * Data: semua berkas LPJ bernomor (`lpj_packs`, field `arsip`) + koleksi `drpp`.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
 import {
   FaArchive,
@@ -48,14 +48,14 @@ import EditDaftarModal from './EditDaftarModal';
 import DrppPickerModal from './DrppPickerModal';
 import { useToast } from '@/utils/toastStore';
 import { BTN, FONT, LAYOUT, STATUS, T } from '@/utils/uiTokens';
-import { ANIM, rayakan } from '@/utils/animasi';
+import { ANIM } from '@/utils/animasi';
 import { AngkaBerjalan, useMunculBerurutan } from '@/components/animasi';
 
 const TONE = {
   navy: 'bg-[rgba(23,61,104,.10)] text-[#173D68] dark:bg-[rgba(125,182,243,.14)] dark:text-[#7DB6F3]',
   neutral: `${T.surface2} ${T.ink2}`,
   warn: `${STATUS.warnBg} ${STATUS.warnInk}`,
-  good: `${STATUS.goodBg} ${STATUS.goodInk}`,
+  good: `${STATUS.doneBg} ${STATUS.doneInk}`,
   info: `${STATUS.infoBg} ${STATUS.infoInk}`,
 };
 const TAB =
@@ -83,7 +83,6 @@ export default function ArsipKeuangan() {
   const parts = (useParams()['*'] || '').split('/').filter(Boolean);
   const tab = parts[0] === 'drpp' ? 'drpp' : 'lpj';
   const detailId = parts[0] === 'drpp' && parts[1] ? decodeURIComponent(parts[1]) : null;
-  const topRef = useRef(null);
   // Kartu statistik muncul berurutan (sekali, setelah data dimuat)
   const statRef = useMunculBerurutan('statistik');
 
@@ -102,10 +101,6 @@ export default function ArsipKeuangan() {
   const [editId, setEditId] = useState(null);
   const [hapusDrppId, setHapusDrppId] = useState(null);
   const [menghapus, setMenghapus] = useState(false);
-
-  useEffect(() => {
-    topRef.current?.scrollIntoView({ block: 'start' });
-  }, [tab, detailId]);
 
   const arsipPacks = useMemo(() => berkasArsip(packs), [packs]);
   const packsById = useMemo(
@@ -136,7 +131,6 @@ export default function ArsipKeuangan() {
         `Berkas ${r.id} berhasil dipindai${autoDrppId ? ' dan otomatis masuk ke ' + autoDrppId : ''}.`,
       );
       setScanId(null);
-      rayakan({ judul: 'Terpindai', sub: autoDrppId ? `${r.id} → ${autoDrppId}` : r.id });
       return true;
     } catch (err) {
       console.error('scanLpj error:', err);
@@ -167,7 +161,6 @@ export default function ArsipKeuangan() {
         );
       }
       setCreate(null);
-      rayakan({ judul: 'DRPP Dibuat', sub: r.id, nada: 'nomor' });
       if (wasAssign) setSelected({});
       openDrpp(r.id);
       return true;
@@ -187,7 +180,6 @@ export default function ArsipKeuangan() {
     try {
       const n = await assignToDrpp({ drpp: d, packIds: ids, packsById, drpps });
       showToast(`${n} berkas berhasil dimasukkan ke ${drppId}.`);
-      if (n > 0) rayakan({ judul: 'Masuk DRPP', sub: `${n} LPJ → ${drppId}` });
       setSelected({});
       setPickerIds(null);
       setAssignTarget(null);
@@ -226,7 +218,6 @@ export default function ArsipKeuangan() {
     try {
       await deleteDrpp({ drpp: d, packs: arsipPacks });
       showToast(`${d.id} dihapus. Berkas di dalamnya kembali "Belum Masuk DRPP".`);
-      rayakan({ judul: 'Dihapus', sub: d.id, nada: 'hapus' });
       setHapusDrppId(null);
       navigate(`${BASE}/drpp`);
     } catch (err) {
@@ -241,7 +232,6 @@ export default function ArsipKeuangan() {
     try {
       await hapusPindaian(r.pack);
       showToast(`Pindaian ${r.id} dihapus.`);
-      rayakan({ judul: 'Dihapus', sub: `Pindaian ${r.id}`, nada: 'hapus' });
       setLihatId(null);
       return true;
     } catch (err) {
@@ -402,16 +392,13 @@ export default function ArsipKeuangan() {
         {!detail && (
           <div className={LAYOUT.head}>
             <div>
-              <h1 ref={topRef} className={`${LAYOUT.h1} scroll-mt-4`}>
-                Arsip
-              </h1>
+              <h1 className={LAYOUT.h1}>Arsip</h1>
               <p className={LAYOUT.sub}>
                 Kelola berkas LPJ yang sudah terpindai &amp; lengkap, lalu kelompokkan ke DRPP
               </p>
             </div>
           </div>
         )}
-        {detail && <div ref={topRef} className="scroll-mt-4" />}
         {body}
       </div>
 

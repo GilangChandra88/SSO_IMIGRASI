@@ -8,7 +8,7 @@
  * dengan koleksi `drpp`. Hanya LPJ yang sudah dipindai & masuk DRPP yang tampil.
  */
 
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   FaArchive,
@@ -81,13 +81,6 @@ export default function ArsipPelaksana() {
   const { list, loading: loadingDrpp, error: errDrpp } = useDrppList({ uid });
   const { pegawai } = usePegawaiList();
   const [filters, setFilters] = useState(FILTER_AWAL);
-  const topRef = useRef(null);
-
-  // Area gulir ada di AppLayout (bukan window), jadi gulir ke awal halaman lewat elemen judul
-  useEffect(() => {
-    topRef.current?.scrollIntoView({ block: 'start' });
-  }, [drppId]);
-
   const drppList = useMemo(() => drppListForPelaksana(list, packs), [list, packs]);
 
   const loading = loadingPacks || loadingDrpp;
@@ -97,9 +90,7 @@ export default function ArsipPelaksana() {
   return (
     <div className={`min-h-full ${T.ground}`}>
       <div className={LAYOUT.page}>
-        <h1 ref={topRef} className={`${LAYOUT.h1} scroll-mt-4`}>
-          Arsip
-        </h1>
+        <h1 className={LAYOUT.h1}>Arsip</h1>
         <p className={LAYOUT.sub}>
           Berkas DRPP yang memuat LPJ Anda — buka untuk melihat atau mencetak dokumennya
         </p>
@@ -406,7 +397,7 @@ function ArsipDetail({ drpp, pegawai, onBack }) {
               >
                 <div
                   className={`w-[34px] h-[34px] shrink-0 rounded-[9px] grid place-items-center ${
-                    file ? `${STATUS.goodBg} ${STATUS.goodInk}` : `${T.surface2} ${T.inkMuted}`
+                    file ? `${STATUS.doneBg} ${STATUS.doneInk}` : `${T.surface2} ${T.inkMuted}`
                   }`}
                 >
                   {file ? <FaCheck size={14} /> : <FaRegFileAlt size={14} />}

@@ -13,6 +13,7 @@ import { createLPJPack, idBerkasBaru } from '../hooks/useLPJ';
 import { URAIAN_MAX } from '../data/masterLpj';
 import { kurangiGerakan } from '@/utils/animasi';
 import Modal from '@/components/Modal';
+import { gulirKeGalat } from '../../gulirPintar';
 import { BTN, FONT, FORM, NAVY, STATUS, T } from '@/utils/uiTokens';
 
 const CARDS = [
@@ -93,6 +94,7 @@ export default function CreatePackModal({
     const val = uraian.trim().slice(0, URAIAN_MAX);
     if (!val) {
       setErrUraian(true);
+      gulirKeGalat();
       return;
     }
     setBusy(true);
@@ -227,6 +229,7 @@ export default function CreatePackModal({
                   setUraian(e.target.value);
                   setErrUraian(false);
                 }}
+                aria-invalid={errUraian || undefined}
                 className={`${FORM.textarea} ${errUraian ? FORM.borderErr : FORM.borderOk}`}
               />
               <div className="flex justify-between gap-2.5 mt-1.5">

@@ -1,29 +1,25 @@
+const dua = (n) => String(n).padStart(2, '0');
+
+/** Tanggal dari objek Date (zona waktu lokal) dengan format baku tampilan: "01/10/2026". */
+export function formatTanggalDate(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '—';
+  return `${dua(date.getDate())}/${dua(date.getMonth() + 1)}/${date.getFullYear()}`;
+}
+
 /**
- * Format tanggal `YYYY-MM-DD` menjadi mis. "1 Oktober 2026".
+ * Format tanggal `YYYY-MM-DD` menjadi hari/bulan/tahun, mis. "01/10/2026" (format baku tampilan
+ * di layar; dokumen PDF tetap memakai format surat, mis. "1 Oktober 2026").
  * Diurai manual (bukan `new Date(str)`) agar tanggal tidak bergeser karena zona waktu.
  */
 export function formatTanggal(value) {
   if (!value || typeof value !== 'string') return '—';
-  const [y, m, d] = value.split('-').map(Number);
+  const [y, m, d] = value.slice(0, 10).split('-').map(Number);
   if (!y || !m || !d) return '—';
-  return new Date(y, m - 1, d).toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  });
+  return `${dua(d)}/${dua(m)}/${y}`;
 }
 
-/** Format singkat, mis. "1 Okt 2026". */
-export function formatTanggalPendek(value) {
-  if (!value || typeof value !== 'string') return '—';
-  const [y, m, d] = value.split('-').map(Number);
-  if (!y || !m || !d) return '—';
-  return new Date(y, m - 1, d).toLocaleDateString('id-ID', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-}
+/** Sama dengan formatTanggal (dipertahankan untuk pemanggil lama). */
+export const formatTanggalPendek = formatTanggal;
 
 /** Tanggal hari ini (zona waktu lokal) dalam format `YYYY-MM-DD`. */
 export function hariIniISO() {

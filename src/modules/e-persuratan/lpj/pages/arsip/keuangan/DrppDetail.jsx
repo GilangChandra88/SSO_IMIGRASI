@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   FaArchive,
   FaCheck,
@@ -37,7 +37,7 @@ import LinkBack from '../../../ui/LinkBack';
 import ProgressBar from '../../../ui/ProgressBar';
 import { useToast } from '@/utils/toastStore';
 import { BTN, FONT, LAYOUT, NAVY, STATUS, T } from '@/utils/uiTokens';
-import { ANIM, jedaKe, munculBerurutan, rayakan } from '@/utils/animasi';
+import { ANIM, jedaKe, munculBerurutan } from '@/utils/animasi';
 
 const PAGE_SIZE = 10;
 const SELECT = `h-[38px] pl-3 pr-2 rounded-[9px] border ${T.borderStrong} ${T.surface} ${T.ink} text-[12.5px] font-semibold cursor-pointer outline-none ${T.focus} dark:[color-scheme:dark]`;
@@ -68,16 +68,9 @@ export default function DrppDetail({
   const q = q0.trim().toLowerCase();
 
   const st = drppStatus(packsById, packs, d);
-  // Saat dibuka, isi mengalir dari atas ke bawah; saat DRPP berubah menjadi Lengkap: stempel
+  // Saat dibuka, isi mengalir dari atas ke bawah
   const kartuRef = useRef(null);
   useLayoutEffect(() => munculBerurutan(kartuRef.current), []);
-  const stLalu = useRef(st);
-  useEffect(() => {
-    if (stLalu.current !== 'lengkap' && st === 'lengkap') {
-      rayakan({ judul: 'DRPP Lengkap', sub: d.id, nada: 'final' });
-    }
-    stLalu.current = st;
-  }, [st, d.id]);
   const anggota = drppMembers(packs, d);
   const total = anggota.reduce((s, p) => s + barisLpj(p).total, 0);
   const prog = drppProgress(packsById, packs, d);
@@ -146,7 +139,7 @@ export default function DrppDetail({
             {prog.total > 0 && (
               <ProgressBar
                 value={pct}
-                className={`mt-2.5 h-1.5 w-full max-w-[320px] rounded-md ${T.surface2} [&::-webkit-progress-bar]:bg-[#F3F5F8] dark:[&::-webkit-progress-bar]:bg-[#16243A] [&::-webkit-progress-value]:bg-[#147C55] [&::-moz-progress-bar]:bg-[#147C55] dark:[&::-webkit-progress-value]:bg-[#4FD39B] dark:[&::-moz-progress-bar]:bg-[#4FD39B]`}
+                className={`mt-2.5 h-1.5 w-full max-w-[320px] rounded-md ${T.surface2} [&::-webkit-progress-bar]:bg-[#F3F5F8] dark:[&::-webkit-progress-bar]:bg-[#16243A] [&::-webkit-progress-value]:bg-[#0f2040] [&::-moz-progress-bar]:bg-[#0f2040] dark:[&::-webkit-progress-value]:bg-[#7DB6F3] dark:[&::-moz-progress-bar]:bg-[#7DB6F3]`}
               />
             )}
           </div>
@@ -197,7 +190,7 @@ export default function DrppDetail({
         </div>
         {locked && (
           <div
-            className={`flex items-center gap-2.5 mb-3.5 px-3.5 py-[11px] rounded-[11px] text-[12.5px] font-semibold ${ANIM.meletup} ${STATUS.goodBg} ${STATUS.goodInk}`}
+            className={`flex items-center gap-2.5 mb-3.5 px-3.5 py-[11px] rounded-[11px] text-[12.5px] font-semibold ${ANIM.meletup} ${STATUS.doneBg} ${STATUS.doneInk}`}
           >
             <FaCheck size={13} className="shrink-0" />
             <span>{drppLockNote(packsById, packs, d)}</span>
@@ -372,7 +365,7 @@ function BarisDokumen({ label, file, onScan, onLihat, onCetak }) {
       <div
         key={file ? 'ada' : 'belum'}
         className={`w-[34px] h-[34px] shrink-0 rounded-[9px] grid place-items-center ${ANIM.meletup} ${
-          file ? `${STATUS.goodBg} ${STATUS.goodInk}` : `${T.surface2} ${T.inkMuted}`
+          file ? `${STATUS.doneBg} ${STATUS.doneInk}` : `${T.surface2} ${T.inkMuted}`
         }`}
       >
         {file ? <FaCheck size={14} /> : <FaRegFileAlt size={14} />}

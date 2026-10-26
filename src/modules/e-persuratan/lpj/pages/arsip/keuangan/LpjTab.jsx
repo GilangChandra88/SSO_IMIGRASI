@@ -75,7 +75,6 @@ export default function LpjTab({
   const allChecked = checkable.length > 0 && nChecked === checkable.length;
   const someChecked = nChecked > 0 && !allChecked;
   const checkAllRef = useRef(null);
-  const tableRef = useRef(null);
   useEffect(() => {
     if (checkAllRef.current) checkAllRef.current.indeterminate = someChecked;
   }, [someChecked]);
@@ -153,8 +152,7 @@ export default function LpjTab({
       </div>
 
       <div
-        ref={tableRef}
-        className={`scroll-mt-4 border rounded-[14px] overflow-x-auto ${T.border} max-md:border-0 max-md:overflow-visible`}
+        className={`border rounded-[14px] overflow-x-auto ${T.border} max-md:border-0 max-md:overflow-visible`}
       >
         <table className="w-full border-collapse min-w-[920px] max-md:min-w-0 max-md:block">
           <thead className="max-md:hidden">
@@ -282,10 +280,7 @@ export default function LpjTab({
         page={cur}
         pageSize={LPJ_PAGE_SIZE}
         noun="berkas"
-        onPage={(n) => {
-          setPage(n);
-          tableRef.current?.scrollIntoView({ block: 'start', behavior: 'smooth' });
-        }}
+        onPage={setPage}
       />
 
       {selIds.length > 0 && (

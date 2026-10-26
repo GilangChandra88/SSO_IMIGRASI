@@ -55,7 +55,7 @@ export function useSimpanOtomatis(simpan, { jeda = 1200, batasMs = 8000 } = {}) 
     timer.current = setTimeout(jalankan, jeda);
   }, [jalankan, jeda]);
 
-  /** Isian baru saja disimpan lewat jalur lain (Simpan Draft / Selesai): batalkan jadwal. */
+  /** Isian baru saja disimpan lewat jalur lain (Kembali ke Detail / Selesai): batalkan jadwal. */
   const bersih = useCallback(() => {
     kotor.current = false;
     clearTimeout(timer.current);

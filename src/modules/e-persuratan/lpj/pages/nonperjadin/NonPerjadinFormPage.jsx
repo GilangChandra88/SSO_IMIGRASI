@@ -3,9 +3,11 @@
  * (?isi=np), Fase 2 Lampiran (?isi=lampiran). Langkah dibatasi status kunci tiap fase.
  */
 
-import React, { useRef, useState } from 'react';
+import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
 import { saveLPJ } from '../../hooks/useLPJ';
+import { useSimpanOtomatis } from '../../hooks/useSimpanOtomatis';
+import { InfoSimpan, PeringatanSimpan } from '../../components/StatusSimpan';
 import { usePegawaiList } from '../../hooks/usePegawaiList';
 import { useMakTree } from '../../hooks/useMakTree';
 import { useDokumenLpj } from '../../hooks/useDokumenLpj';
@@ -14,6 +16,7 @@ import LinkBack from '../../ui/LinkBack';
 import { useToast } from '@/utils/toastStore';
 import { useMekarDariTombol } from '@/components/animasi';
 import { ANIM } from '@/utils/animasi';
+import { gulirKeAtas, gulirKeGalat } from '../../../gulirPintar';
 import { LAYOUT, T } from '@/utils/uiTokens';
 import StepRincianBayar from './StepRincianBayar';
 import StepLampiran from './StepLampiran';
@@ -42,6 +45,8 @@ export default function NonPerjadinFormPage({ pack, isi, user }) {
   const { pegawai, loading: loadingPeg } = usePegawaiList();
   const mak = useMakTree();
   const topRef = useRef(null);
+  // Form selalu dibuka dari atas (Detail sebelumnya bisa tergulir jauh), sebelum kartu mekar
+  useLayoutEffect(() => gulirKeAtas(topRef.current), []);
   // Dibuka dari "Buat Sekarang/Edit/Upload": kartu form mekar dari tombol itu
   const kartuRef = useMekarDariTombol();
 
@@ -54,9 +59,17 @@ export default function NonPerjadinFormPage({ pack, isi, user }) {
       return next;
     });
 
+  // Setiap perubahan isian (lewat ctx.setPf) disimpan otomatis setelah pengguna berhenti mengetik
+  const otomatis = useSimpanOtomatis(() => persist(pfRef.current, { quiet: true, auto: true }));
+  const ubahPf = (fn) => {
+    setPf(fn);
+    otomatis.tandai();
+  };
+
   const [errors, setErrors] = useState({});
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
+  const [lastSaved, setLastSaved] = useState(() => pack.updated_at?.toDate?.() || null);
 
   const detailUrl = `/e-persuratan/lpj/${pack.id}`;
   const packView = { ...pack, ...pf };
@@ -67,21 +80,23 @@ export default function NonPerjadinFormPage({ pack, isi, user }) {
     const prev = pfRef.current;
     const next = typeof nextOrFn === 'function' ? nextOrFn(prev) : nextOrFn;
     setPf(next);
+    if (!opts.auto) otomatis.bersih(); // simpanan ini sudah memuat isian terbaru
     try {
-      const nomor = await saveLPJ(
+      await saveLPJ(
         pack,
         { np: next.np, ...(opts.extra || {}) },
         { teks: opts.teks, uid: user.uid, nama: user.nama },
         { beriNomor: !!opts.beriNomor },
       );
+      setLastSaved(new Date());
       if (!opts.quiet) showToast('Draft tersimpan.');
-      // beriNomor: kembalikan nomor LPJ (string, tetap truthy) untuk stempel perayaan
-      return opts.beriNomor ? nomor || true : true;
+      return true;
     } catch (err) {
       console.error('saveLPJ error:', err);
       // SPBy selesai + nomor LPJ: kembalikan isian agar fase tidak tampak terkunci tanpa nomor
       if (opts.beriNomor) setPf(prev);
-      showToast('Gagal menyimpan. Periksa koneksi lalu coba lagi.', 'error');
+      // Simpan otomatis yang gagal cukup ditandai lewat peringatan di atas form
+      if (!opts.auto) showToast('Gagal menyimpan. Periksa koneksi lalu coba lagi.', 'error');
       return false;
     }
   }
@@ -92,9 +107,20 @@ export default function NonPerjadinFormPage({ pack, isi, user }) {
     topRef.current?.scrollIntoView({ block: 'start' });
   }
 
+  /** Kembali ke Detail LPJ; Detail menggulir ke kartu fase langkah ini (hasil berkasnya). */
+  const keDetail = () => navigate(detailUrl, { state: { sorot: step } });
+
   async function backToDetail() {
     await persist(pfRef.current, { quiet: true });
-    navigate(detailUrl);
+    keDetail();
+  }
+
+  /** Tampilkan galat validasi; bila ada, gulir ke isian merah pertama. @returns true bila ada galat */
+  function tandaiGalat(e) {
+    setErrors(e);
+    const ada = Object.values(e).some(Boolean);
+    if (ada) gulirKeGalat(kartuRef.current);
+    return ada;
   }
 
   const closeConfirm = () => {
@@ -118,12 +144,16 @@ export default function NonPerjadinFormPage({ pack, isi, user }) {
     pack,
     packView,
     pf,
-    setPf,
+    setPf: ubahPf,
     pfRef,
+    // Baris "Tersimpan otomatis" dipasang tiap langkah tepat di bawah judulnya
+    infoSimpan: <InfoSimpan status={otomatis.status} lastSaved={lastSaved} />,
     errors,
     setErrors,
+    tandaiGalat,
     persist,
     goStep,
+    keDetail,
     backToDetail,
     askConfirm: setConfirm,
     closeConfirm,
@@ -141,8 +171,9 @@ export default function NonPerjadinFormPage({ pack, isi, user }) {
     <div className={`min-h-full ${T.ground}`}>
       <div className={LAYOUT.page}>
         <section ref={kartuRef} className={`${LAYOUT.card} overflow-x-clip`}>
+          <PeringatanSimpan status={otomatis.status} onCoba={otomatis.simpanSekarang} />
           <div ref={topRef} className="scroll-mt-4">
-            <LinkBack onClick={backToDetail}>Kembali</LinkBack>
+            <LinkBack onClick={backToDetail}>Kembali ke Detail Dokumen</LinkBack>
           </div>
           <div key={step} className={arah === 'maju' ? ANIM.geserKiri : ANIM.geserKanan}>
             {step === 'np' && <StepRincianBayar ctx={ctx} />}

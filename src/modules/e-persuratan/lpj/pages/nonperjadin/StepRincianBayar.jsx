@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaCheck, FaChevronLeft, FaPlus } from 'react-icons/fa';
+import { FaCheck, FaChevronLeft } from 'react-icons/fa';
 import { NP_RINCIAN_DOCS, URAIAN_MAX } from '../../data/masterLpj';
 import { emptyTransaksi } from '../../utils/emptyModels';
 import { groupTransaksiByItem, parseNum } from '../../utils/lpjLogic';
@@ -7,10 +7,10 @@ import { makItemsOfAkun } from '../../utils/makTree';
 import { catatMakHistory } from '../../services/makHistory';
 import MakDropdowns from '../../components/MakDropdowns';
 import PegawaiPicker from '../../components/PegawaiPicker';
+import PegawaiCards from '../../components/PegawaiCards';
 import TransaksiTable from '../../components/TransaksiTable';
 import Field from '../../ui/Field';
 import { BTN, FONT, FORM, LAYOUT, NAVY, STATUS, T } from '@/utils/uiTokens';
-import { rayakan } from '@/utils/animasi';
 
 function npValidateForm(np) {
   const e = {};
@@ -30,7 +30,7 @@ export default function StepRincianBayar({ ctx }) {
     pf,
     setPf,
     errors,
-    setErrors,
+    tandaiGalat,
     persist,
     askConfirm,
     closeConfirm,
@@ -45,8 +45,7 @@ export default function StepRincianBayar({ ctx }) {
 
   function handleSelesai() {
     const e = npValidateForm(np);
-    setErrors(e);
-    if (Object.keys(e).length) return;
+    if (tandaiGalat(e)) return;
     askConfirm({
       label: 'SPBy & Rincian Bayar',
       onYes: async () => {
@@ -74,19 +73,14 @@ export default function StepRincianBayar({ ctx }) {
             showToast('Data tersimpan, tetapi pencatatan History MAK gagal.', 'error');
           }
           showToast('SPBy & Rincian Bayar ditandai selesai. Nomor LPJ sudah terbit.');
-          rayakan({
-            judul: 'Nomor LPJ Terbit',
-            sub: typeof ok === 'string' ? ok : 'SPBy & Rincian Bayar selesai',
-            nada: 'nomor',
-          });
         }
         closeConfirm();
-        if (ok) ctx.navigate(ctx.detailUrl);
+        if (ok) ctx.keDetail();
       },
       onNo: async () => {
         await persist(ctx.pfRef.current, { quiet: true });
         closeConfirm();
-        ctx.navigate(ctx.detailUrl);
+        ctx.keDetail();
       },
     });
   }
@@ -109,6 +103,7 @@ export default function StepRincianBayar({ ctx }) {
           </span>
         </div>
       </div>
+      {ctx.infoSimpan}
 
       <div className="max-w-[860px] mx-auto">
         <div className={FORM.card}>
@@ -137,6 +132,19 @@ export default function StepRincianBayar({ ctx }) {
               />
             </Field>
           </div>
+          {np.pelaksana.length > 0 && (
+            <div className={`border-t pt-3.5 mb-3.5 ${T.border}`}>
+              <PegawaiCards
+                list={np.pelaksana}
+                onHapus={(p) =>
+                  setPf((prev) => ({
+                    ...prev,
+                    np: { ...prev.np, pelaksana: prev.np.pelaksana.filter((s) => s.id !== p.id) },
+                  }))
+                }
+              />
+            </div>
+          )}
           <Field label="Uraian Kegiatan" htmlFor="np-uraian" required err={errors.uraian}>
             <textarea
               id="np-uraian"
@@ -159,7 +167,10 @@ export default function StepRincianBayar({ ctx }) {
           >
             Kode MAK{' '}
             {errors.mak && (
-              <span className={`text-[11.5px] font-normal ml-2.5 ${STATUS.critInk}`}>
+              <span
+                data-galat
+                className={`inline-block text-[11.5px] font-normal ml-2.5 ${STATUS.critInk}`}
+              >
                 {errors.mak}
               </span>
             )}
@@ -177,25 +188,19 @@ export default function StepRincianBayar({ ctx }) {
         </div>
 
         <div className={FORM.card}>
-          <div className="flex items-center justify-between gap-3 mb-4">
-            <div>
-              <h3 className={FORM.cardTitle}>Detail Transaksi</h3>
-              <p className={FORM.cardSub}>Pelaksana · Item · Jumlah</p>
-            </div>
-            <button
-              type="button"
-              className={BTN.action}
-              onClick={() => updateNp({ transaksi: [...np.transaksi, emptyTransaksi()] })}
-            >
-              <FaPlus size={11} /> Tambah
-            </button>
+          <div className="mb-4">
+            <h3 className={FORM.cardTitle}>Detail Transaksi</h3>
+            <p className={FORM.cardSub}>Pelaksana · Item · Jumlah</p>
           </div>
           {errors.transaksi && (
-            <div className={`text-xs mb-2.5 ${STATUS.critInk}`}>{errors.transaksi}</div>
+            <div data-galat className={`text-xs mb-2.5 ${STATUS.critInk}`}>
+              {errors.transaksi}
+            </div>
           )}
           <TransaksiTable
             rows={np.transaksi}
             onChange={(transaksi) => updateNp({ transaksi })}
+            onTambah={() => updateNp({ transaksi: [...np.transaksi, emptyTransaksi()] })}
             pelaksana={np.pelaksana}
             items={akunItems}
             akunKode={akun?.kode || ''}

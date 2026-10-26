@@ -33,7 +33,7 @@ export default function SlotBerkas({ label, file, onPick, disabled, hint, err })
       >
         <span
           className={`w-[34px] h-[34px] shrink-0 rounded-[9px] grid place-items-center ${
-            ada ? `${STATUS.goodBg} ${STATUS.goodInk}` : `${T.surface} ${T.inkMuted}`
+            ada ? `${STATUS.doneBg} ${STATUS.doneInk}` : `${T.surface} ${T.inkMuted}`
           }`}
         >
           {ada ? <FaCheck size={14} /> : <FaUpload size={13} />}

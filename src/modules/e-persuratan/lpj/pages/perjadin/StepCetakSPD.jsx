@@ -74,9 +74,7 @@ export default function StepCetakSPD({ ctx }) {
               <div
                 key={p.id}
                 className={`rounded-[10px] border-[1.5px] overflow-hidden ${
-                  printed
-                    ? `${STATUS.goodBorder} bg-[#f0fdf4] dark:bg-[rgba(25,158,112,.12)]`
-                    : `${T.border} ${T.surface}`
+                  printed ? `${STATUS.doneBorder} ${STATUS.doneBg}` : `${T.border} ${T.surface}`
                 }`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
@@ -84,7 +82,7 @@ export default function StepCetakSPD({ ctx }) {
                     <div
                       key={printed ? 'sudah' : 'belum'}
                       className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-white text-xs font-bold ${ANIM.meletup} ${
-                        printed ? 'bg-[#16a34a]' : NAVY.bg
+                        printed ? STATUS.doneOn : NAVY.bg
                       }`}
                     >
                       {inisial(p.nama)}
@@ -99,7 +97,7 @@ export default function StepCetakSPD({ ctx }) {
                   <div className="flex flex-wrap items-center gap-2">
                     {printed && (
                       <span
-                        className={`text-[11.5px] font-semibold text-[#16a34a] dark:text-[#4FD39B] flex items-center gap-1 ${ANIM.meletup}`}
+                        className={`text-[11.5px] font-semibold flex items-center gap-1 ${STATUS.doneInk} ${ANIM.meletup}`}
                       >
                         <FaCheck size={10} /> Sudah dicetak
                       </span>
@@ -128,7 +126,7 @@ export default function StepCetakSPD({ ctx }) {
           <div
             className={`mt-4 flex items-center gap-2 px-3.5 py-2.5 rounded-lg border text-[12.5px] ${
               allPrinted
-                ? 'bg-[#f0fdf4] text-[#166534] border-[#147C55] dark:bg-[rgba(25,158,112,.12)] dark:text-[#4FD39B] dark:border-[#4FD39B]'
+                ? `${STATUS.doneBg} ${STATUS.doneInk} ${STATUS.doneBorder}`
                 : 'bg-[#fef9c3] text-[#92400e] border-[#8A5B00] dark:bg-[rgba(201,133,0,.22)] dark:text-[#F0B93E] dark:border-[#F0B93E]'
             }`}
           >
