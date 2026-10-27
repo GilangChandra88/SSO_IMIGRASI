@@ -1,14 +1,32 @@
 import React, { useState } from 'react';
-import { FaChevronLeft, FaCircleNotch, FaRegSave, FaRegTrashAlt, FaUpload } from 'react-icons/fa';
-import { LAP_FOTO_MAX_BYTES, LAP_FOTO_MAX_COUNT, LAP_SECTIONS } from '../../data/masterLpj';
+import {
+  FaChevronLeft,
+  FaCircleNotch,
+  FaInfoCircle,
+  FaRegSave,
+  FaRegTrashAlt,
+  FaUpload,
+} from 'react-icons/fa';
+import {
+  LAP_FOTO_MAX_BYTES,
+  LAP_FOTO_MAX_COUNT,
+  LAP_PENUTUP_BAKU,
+  LAP_SECTIONS,
+} from '../../data/masterLpj';
 import { formatTanggal } from '../../utils/formatTanggal';
 import { lpjIdOf } from '../../utils/lpjLogic';
 import { deleteLpjFile, pesanGagalUnggah, uploadLpjFile } from '../../services/lpjStorage';
 import PegawaiPicker from '../../components/PegawaiPicker';
 import PegawaiCards from '../../components/PegawaiCards';
 import Field from '../../ui/Field';
-import { BTN, FORM, T } from '@/utils/uiTokens';
+import { BTN, FORM, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, hapusBaris } from '@/utils/animasi';
+
+// Petunjuk singkat di bawah isian Laporan Kegiatan
+const HINT_LAP = {
+  hasil: 'Satu baris = satu poin bernomor di Laporan Kegiatan',
+  penutup: 'Boleh dikosongkan — dicetak kalimat penutup baku seperti contoh di kolom',
+};
 
 /** Fase 4 — Laporan Kegiatan + foto dokumentasi, lalu berkas diselesaikan. */
 export default function StepLaporan({ ctx }) {
@@ -126,7 +144,6 @@ export default function StepLaporan({ ctx }) {
       if (required && !String(lap[key] || '').trim()) e[key] = 'Wajib diisi';
     });
     if (!lap.penandatangan) e.penandatangan = 'Pilih penanda tangan';
-    if (!String(lap.jabatanTtd || '').trim()) e.jabatanTtd = 'Wajib diisi';
     if (tandaiGalat(e)) return;
     askConfirm({
       label: 'Laporan Kegiatan',
@@ -192,6 +209,15 @@ export default function StepLaporan({ ctx }) {
             className={`${FORM.input} ${errors.tanggalLaporan ? FORM.borderErr : FORM.borderOk} max-w-[240px]`}
           />
         </Field>
+        <p
+          className={`flex items-start gap-2 px-3 py-2 mb-3.5 rounded-lg border text-xs ${STATUS.infoBg} ${STATUS.infoBorder} ${STATUS.infoInk}`}
+        >
+          <FaInfoCircle size={13} className="shrink-0 mt-px" />
+          <span>
+            A.4 Dasar, B.1 Pelaksana Kegiatan, dan B.2 Waktu dan Tempat Kegiatan terisi otomatis
+            dari Surat Perintah &amp; SPD.
+          </span>
+        </p>
         {LAP_SECTIONS.map(([key, label, required]) => (
           <Field
             key={key}
@@ -199,14 +225,13 @@ export default function StepLaporan({ ctx }) {
             htmlFor={`lap-${key}`}
             required={required}
             err={errors[key]}
-            hint={
-              key === 'hasil' ? 'Satu baris = satu poin bernomor di Laporan Kegiatan' : undefined
-            }
+            hint={HINT_LAP[key]}
           >
             {/* Tinggi kolom mengikuti panjang teks (tanpa gulir di dalam kolom) */}
             <textarea
               id={`lap-${key}`}
-              value={lap[key]}
+              value={lap[key] || ''}
+              placeholder={key === 'penutup' ? LAP_PENUTUP_BAKU : undefined}
               onChange={(e) => setLap({ [key]: e.target.value })}
               className={`${FORM.textarea} !min-h-[90px] field-sizing-content ${errors[key] ? FORM.borderErr : FORM.borderOk}`}
             />
@@ -221,16 +246,7 @@ export default function StepLaporan({ ctx }) {
             pegawai={pegawai}
             loading={loadingPeg}
             selected={lap.penandatangan ? [lap.penandatangan] : []}
-            onChange={(refs) => {
-              const baru = refs[refs.length - 1] || null;
-              setLap({
-                penandatangan: baru,
-                jabatanTtd:
-                  baru && !String(lap.jabatanTtd || '').trim()
-                    ? baru.jabatan || ''
-                    : lap.jabatanTtd || '',
-              });
-            }}
+            onChange={(refs) => setLap({ penandatangan: refs[refs.length - 1] || null })}
             err={!!errors.penandatangan}
           />
         </Field>
@@ -244,21 +260,6 @@ export default function StepLaporan({ ctx }) {
             />
           </div>
         )}
-        <Field
-          label="Jabatan Penanda Tangan"
-          htmlFor="lap-jabatan-ttd"
-          required
-          err={errors.jabatanTtd}
-          hint="Dicetak di atas nama penanda tangan, mis. Kepala Subseksi Izin Tinggal"
-        >
-          <input
-            id="lap-jabatan-ttd"
-            value={lap.jabatanTtd || ''}
-            placeholder="Kepala Subseksi Izin Tinggal"
-            onChange={(e) => setLap({ jabatanTtd: e.target.value })}
-            className={`${FORM.input} ${errors.jabatanTtd ? FORM.borderErr : FORM.borderOk}`}
-          />
-        </Field>
       </div>
 
       <div className={FORM.card}>

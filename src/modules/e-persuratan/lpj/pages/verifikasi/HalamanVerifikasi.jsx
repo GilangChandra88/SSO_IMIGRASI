@@ -5,7 +5,7 @@
  * (`kunci`): dokumen & Lembar Verifikasi tetap bisa dicetak.
  */
 
-import React, { createElement, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FaCheck,
@@ -27,7 +27,7 @@ import {
   useMakBerkas,
 } from '../../hooks/useVerifikasi';
 import { resolveDokumen } from '../../utils/dokumenLpj';
-import { bukaPdf, cetakGabungan, unduhPdf } from '../../utils/cetakPdf';
+import { cetakGabungan } from '../../utils/cetakPdf';
 import {
   faseAktifLabel,
   isPerjadin,
@@ -38,7 +38,6 @@ import {
 } from '../../utils/lpjLogic';
 import { formatTanggal } from '../../utils/formatTanggal';
 import {
-  dataLembar,
   dokDicetak,
   dokLengkap,
   kelompokDokumen,
@@ -54,8 +53,6 @@ import LampiranViewer from '../../components/LampiranViewer';
 import { InfoBerkasVerif, TabelPelaksana } from '../../components/verifikasi/InfoBerkasVerif';
 import { EditTransaksi, TabelTransaksi } from '../../components/verifikasi/DetailTransaksi';
 import PemeriksaanDokumen from '../../components/verifikasi/PemeriksaanDokumen';
-import LembarVerifikasiPdf from '../../components/verifikasi/LembarVerifikasiPdf';
-import ModalLembar from '../../components/verifikasi/ModalLembar';
 import ModalCetakSemua from '../../components/verifikasi/ModalCetakSemua';
 import ModalSelesaiVerifikasi from '../../components/verifikasi/ModalSelesaiVerifikasi';
 import { IB_PANDUAN, JENIS_DOT, TONE, XLBL } from '../../components/verifikasi/tahapTampil';
@@ -82,13 +79,12 @@ export default function HalamanVerifikasi({ pack, user }) {
   const navigate = useNavigate();
   const showToast = useToast();
   const { pegawai } = usePegawaiList();
-  const dok = useDokumenLpj({ pack, pegawai, showToast });
   const { mak, opsiItem } = useMakBerkas(pack);
+  const dok = useDokumenLpj({ pack, pegawai, showToast, mak });
 
   const [detailBuka, setDetailBuka] = useState(true);
   const [edit, setEdit] = useState(false);
   const [menyimpan, setMenyimpan] = useState(false);
-  const [lembar, setLembar] = useState(false);
   const [cetakSemua, setCetakSemua] = useState(null); // { label, docs }
   const [konfirmasi, setKonfirmasi] = useState(false);
   const [lampiran, setLampiran] = useState(null); // { label, files }
@@ -139,7 +135,12 @@ export default function HalamanVerifikasi({ pack, user }) {
       if (!kunci)
         jalankan(ubahDokumen(pack, [d.key], { dicetak: true }), 'Gagal mencatat dokumen dicetak.');
     },
-    cetakSemua: (label, list) => setCetakSemua({ label, docs: list }),
+    // Selama belum terkunci, yang dicetak hanya dokumen yang belum dicentang.
+    cetakSemua: (label, list) =>
+      setCetakSemua({
+        label,
+        docs: kunci ? list : list.filter((d) => !dokLengkap(verif, d.key)),
+      }),
     centang: (list) =>
       jalankan(
         ubahDokumen(
@@ -162,7 +163,7 @@ export default function HalamanVerifikasi({ pack, user }) {
 
   async function cetakDaftar(list) {
     const siap = list
-      .map((d) => resolveDokumen(pack, d.cetak.item, pegawai))
+      .map((d) => resolveDokumen(pack, d.cetak.item, pegawai, mak))
       .filter((r) => r.kind === 'pdf');
     try {
       await cetakGabungan(siap);
@@ -191,18 +192,6 @@ export default function HalamanVerifikasi({ pack, user }) {
     if (ok) {
       setEdit(false);
       showToast('Detail transaksi disimpan.');
-    }
-  }
-
-  async function pdfLembar(mode) {
-    const data = dataLembar(pack, mak, pegawai);
-    const buat = () => createElement(LembarVerifikasiPdf, { data });
-    try {
-      if (mode === 'unduh') await unduhPdf(buat, `Lembar Verifikasi ${data.id || pack.id}.pdf`);
-      else await bukaPdf(buat);
-    } catch (err) {
-      console.error('Lembar Verifikasi PDF error:', err);
-      showToast('Gagal menyiapkan Lembar Verifikasi.', 'error');
     }
   }
 
@@ -409,9 +398,9 @@ export default function HalamanVerifikasi({ pack, user }) {
                     <button
                       type="button"
                       className={MINI}
-                      onClick={() => setCetakSemua({ label: 'semua dokumen', docs })}
+                      onClick={() => act.cetakSemua('dokumen yang belum dicentang', docs)}
                     >
-                      <FaPrint size={10} /> Cetak semua
+                      <FaPrint size={10} /> Cetak yang belum dicentang
                     </button>
                   )}
                   {!semuaOk && (
@@ -492,7 +481,7 @@ export default function HalamanVerifikasi({ pack, user }) {
             <button
               type="button"
               className={`${BTN.primaryDark} shrink-0`}
-              onClick={() => setLembar(true)}
+              onClick={() => dok.lihat({ key: 'lembar_verifikasi', label: 'Lembar Verifikasi' })}
             >
               <FaRegEye size={13} /> Lihat
             </button>
@@ -538,13 +527,6 @@ export default function HalamanVerifikasi({ pack, user }) {
           verif={verif}
           onClose={() => setCetakSemua(null)}
           onCetak={cetakDaftar}
-        />
-      )}
-      {lembar && (
-        <ModalLembar
-          data={dataLembar(pack, mak, pegawai)}
-          onClose={() => setLembar(false)}
-          onPdf={pdfLembar}
         />
       )}
       {lampiran && (

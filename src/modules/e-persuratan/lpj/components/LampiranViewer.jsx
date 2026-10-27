@@ -3,11 +3,13 @@ import {
   FaChevronLeft,
   FaCircleNotch,
   FaExternalLinkAlt,
+  FaPrint,
   FaRegFilePdf,
   FaTimes,
 } from 'react-icons/fa';
 import Modal from '@/components/Modal';
 import { halamanDariBerkas } from '../utils/halamanBerkas';
+import { cetakBlob, pdfGabungan } from '../utils/cetakPdf';
 import { BTN, FONT, T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
 
@@ -21,6 +23,22 @@ const isGambar = (f) => String(f?.type || '').startsWith('image/');
 export default function LampiranViewer({ label, files, onClose }) {
   const [dipilih, setDipilih] = useState(files.length === 1 ? 0 : null);
   const file = dipilih === null ? null : files[dipilih];
+  const [mencetak, setMencetak] = useState(false);
+
+  /** Cetak berkas yang sedang dilihat (gambar/PDF → PDF A4) tanpa membuka tab baru. */
+  async function cetakBerkas() {
+    setMencetak(true);
+    try {
+      const { blob, gagal } = await pdfGabungan([{ kind: 'files', files: [file] }]);
+      if (gagal) throw new Error('Berkas tidak bisa diolah untuk dicetak.');
+      await cetakBlob(blob);
+    } catch (err) {
+      console.error('cetak berkas unggahan error:', err);
+      window.open(file.url, '_blank', 'noopener'); // cadangan: cetak dari tab baru
+    } finally {
+      setMencetak(false);
+    }
+  }
 
   return (
     <Modal widthClass="max-w-[860px]" onClose={onClose} labelledBy="judul-lampiran" dariTombol>
@@ -96,6 +114,21 @@ export default function LampiranViewer({ label, files, onClose }) {
         <button type="button" className={BTN.ghost} onClick={onClose}>
           Tutup
         </button>
+        {file && (
+          <button
+            type="button"
+            className={`${BTN.primaryDark} disabled:opacity-60`}
+            disabled={mencetak}
+            onClick={cetakBerkas}
+          >
+            {mencetak ? (
+              <FaCircleNotch size={12} className="animate-spin" />
+            ) : (
+              <FaPrint size={12} />
+            )}
+            {mencetak ? 'Menyiapkan…' : 'Cetak'}
+          </button>
+        )}
       </div>
     </Modal>
   );

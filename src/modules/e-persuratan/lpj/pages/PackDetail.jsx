@@ -48,11 +48,11 @@ import LinkBack from '../ui/LinkBack';
 import TombolBuat from '../components/TombolBuat';
 import KilauFase from '../components/KilauFase';
 import RingkasanBerkas, { InfoBerkasKop } from '../components/RingkasanBerkas';
+import BuktiPengeluaran from '../components/BuktiPengeluaran';
+import FaseProgresBerkas from '../components/FaseProgresBerkas';
 import ProgressBar from '../ui/ProgressBar';
-import { bukaBerkas } from '../services/lpjStorage';
 import { punyaTemplatePdf } from '../utils/dokumenLpj';
 import { siapkanBerkas } from '../utils/halamanBerkas';
-import { formatTanggal } from '../utils/formatTanggal';
 import { useToast } from '@/utils/toastStore';
 import { BTN, FONT, LAYOUT, NAVY, STAGE_CLS, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, munculBerurutan } from '@/utils/animasi';
@@ -348,6 +348,10 @@ export default function PackDetail({ packId }) {
                       onLihat={dok.lihat}
                     />
                   ))}
+                  {/* Fase 4 Perjadin: bukti pengeluaran per pelaksana (opsional) */}
+                  {isPerjadin(pack) && stage.num === 4 && (
+                    <BuktiPengeluaran pack={pack} user={user} showToast={showToast} />
+                  )}
                 </>
               )}
             </div>
@@ -355,7 +359,13 @@ export default function PackDetail({ packId }) {
         })}
       </div>
 
-      <StatusPembayaran pembayaran={pack.pembayaran} />
+      {/* Fase terakhir: progres pengolahan berkas oleh Admin/Keuangan (hanya-baca) */}
+      <FaseProgresBerkas
+        pack={pack}
+        num={stages.length + 1}
+        pegawai={pegawai}
+        showToast={showToast}
+      />
 
       {dok.modal}
     </Shell>
@@ -490,9 +500,9 @@ function BelumDibuat({ teks = 'Belum dibuat' }) {
 function SingleCard({ doc, status, onLihat }) {
   let actions = null;
   if (status === 'selesai' || status === 'proses') {
-    // Satu tombol: popup pratinjau PDF, yang juga bisa langsung mencetak. Draf dan berkas
-    // unggahan (scan SP, bukan template PDF) cukup berlabel "Lihat".
-    const bisaPrint = status === 'selesai' && !doc.berkas;
+    // Satu tombol: popup pratinjau, yang juga bisa langsung mencetak (berkas unggahan seperti
+    // scan SP lewat tombol Cetak di popup). Draf yang belum selesai cukup berlabel "Lihat".
+    const bisaPrint = status === 'selesai';
     actions = (
       <TombolLihat onClick={() => onLihat(doc)}>
         {bisaPrint ? 'Lihat / Print' : 'Lihat'}
@@ -755,70 +765,6 @@ function KelompokPelaksana({ bagian, selesai, onLihat }) {
           />
         ))}
       </Lipat>
-    </div>
-  );
-}
-
-function StatusPembayaran({ pembayaran }) {
-  const p = pembayaran || {};
-  return (
-    <div
-      data-bertahap
-      className={`rounded-xl border p-[22px] mb-3.5 ${T.surface} ${T.border} ${T.ink}`}
-    >
-      <h3 className={`text-[13.5px] font-bold mb-1 ${T.ink}`}>Status Pembayaran dari Bendahara</h3>
-      <p className={`text-xs mb-3.5 ${T.ink2}`}>
-        Bukti transfer diunggah oleh Bendahara setelah verifikasi selesai
-      </p>
-      {p.buktiTransfer ? (
-        <div
-          className={`flex items-center gap-3 px-4 py-3.5 rounded-[10px] border ${STATUS.doneBg} ${STATUS.doneBorder}`}
-        >
-          <div
-            className={`w-8 h-8 shrink-0 rounded-full border flex items-center justify-center ${STATUS.doneOn}`}
-          >
-            <FaCheck size={14} />
-          </div>
-          <div>
-            <div className={`text-[13px] font-semibold ${STATUS.doneInk}`}>
-              Bukti transfer sudah diunggah
-            </div>
-            <div className={`text-[11.5px] mt-0.5 break-all ${T.ink2}`}>
-              {p.berkas?.url ? (
-                <button
-                  type="button"
-                  className="underline underline-offset-2 hover:no-underline"
-                  onClick={() => bukaBerkas(p.berkas)}
-                >
-                  {p.buktiTransfer}
-                </button>
-              ) : (
-                p.buktiTransfer
-              )}
-              {p.tanggalTransfer ? ' · ' + formatTanggal(p.tanggalTransfer) : ''}
-              {p.nomorRekening ? ' · ' + p.nomorRekening : ''}
-            </div>
-          </div>
-        </div>
-      ) : (
-        <div
-          className={`flex items-center gap-3 px-4 py-3.5 rounded-[10px] border border-dashed ${T.surface2} ${T.borderStrong}`}
-        >
-          <div
-            className={`w-8 h-8 shrink-0 rounded-full flex items-center justify-center ${T.bgBorder} ${T.ink2}`}
-          >
-            <FaClock size={14} />
-          </div>
-          <div>
-            <div className={`text-[13px] font-semibold ${T.ink}`}>
-              Belum ada bukti transfer dari Bendahara
-            </div>
-            <div className={`text-[11.5px] mt-0.5 ${T.inkMuted}`}>
-              Status ini akan diperbarui begitu Bendahara mengunggah bukti pembayaran
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

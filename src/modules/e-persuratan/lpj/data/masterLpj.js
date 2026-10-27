@@ -76,13 +76,30 @@ export const LPJ_DOCS = [
   { num: 7, key: 'nominatif', label: 'Nominatif Rincian Detail Transaksi', perPelaksana: false },
 ];
 
-// Bagian Laporan Kegiatan: [kunci, judul, wajib]
+// Bagian Laporan Kegiatan yang diisi di form: [kunci, judul, wajib]. Susunan cetak:
+// A. Pendahuluan (1. Umum, 2. Maksud dan Tujuan, 3. Ruang Lingkup, 4. Dasar*), B. Kegiatan yang
+// dilaksanakan (1. Pelaksana*, 2. Waktu dan Tempat*, 3. Uraian), C. Hasil, D. Simpulan dan Saran,
+// E. Penutup. (*) otomatis dari Surat Perintah & SPD. Kunci `pendahuluan` = A.1 Umum (data lama).
 export const LAP_SECTIONS = [
-  ['pendahuluan', 'I. Pendahuluan', true],
-  ['pelaksanaan', 'II. Pelaksanaan Kegiatan', true],
-  ['hasil', 'III. Hasil yang Dicapai', true],
-  ['kesimpulan', 'IV. Kesimpulan', false],
-  ['rekomendasi', 'V. Rekomendasi / Tindak Lanjut', false],
+  ['pendahuluan', 'A.1 Umum', true],
+  ['maksud', 'A.2 Maksud dan Tujuan', true],
+  ['ruangLingkup', 'A.3 Ruang Lingkup', true],
+  ['pelaksanaan', 'B.3 Uraian Kegiatan', true],
+  ['hasil', 'C. Hasil yang Dicapai', true],
+  ['kesimpulan', 'D. Simpulan dan Saran', true],
+  ['penutup', 'E. Penutup', false],
+];
+
+// Kalimat E. Penutup bila tidak diisi
+export const LAP_PENUTUP_BAKU =
+  'Demikian laporan ini dibuat dengan sebenarnya untuk dapat dipergunakan sebagaimana mestinya.';
+
+// Bukti pengeluaran per pelaksana di Fase 4 Detail LPJ (opsional), satu berkas per label: [kunci, label]
+export const LAP_BUKTI_JENIS = [
+  ['taksi_asal', 'Taksi Asal'],
+  ['taksi_tujuan', 'Taksi Tujuan'],
+  ['tiket_pp', 'Tiket PP'],
+  ['bill_hotel', 'Bill Hotel'],
 ];
 
 export const LAP_FOTO_MAX_COUNT = 10;

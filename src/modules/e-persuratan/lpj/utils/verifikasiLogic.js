@@ -91,36 +91,38 @@ export function nipSpasi(nip) {
 }
 
 // ─── Dokumen yang diperiksa ──────────────────────────────────────────────────
-// Dokumen: { key, nama, singkat, cetak, sub }
+// Dokumen: { key, nama, singkat, code, cetak, sub }
+//   code  = kode singkat dokumen (sama dengan badge di Detail LPJ)
 //   cetak = { jenis: 'pdf', item } (item untuk resolveDokumen) | { jenis: 'files', files } | null
 //   (null = dokumen fisik dari pelaksana, mis. tiket — hanya dicentang)
 
 const pdf = (item) => ({ jenis: 'pdf', item });
 
-function dokTunggal(key, nama, docKey = key) {
-  return { key, nama, singkat: nama, cetak: pdf({ key, docKey, label: nama }) };
+function dokTunggal(key, nama, code) {
+  return { key, nama, singkat: nama, code, cetak: pdf({ key, docKey: key, label: nama }) };
 }
 
 /** Dokumen per pelaksana; jadi kelompok yang bisa dibuka bila pelaksananya lebih dari satu. */
-function perOrang(pelaksana, docKey, nama) {
+function perOrang(pelaksana, docKey, nama, code) {
   const docs = pelaksana.map((p) => ({
     key: `${docKey}_${p.id}`,
     nama: `${nama} — ${p.nama}`,
     singkat: p.nama,
+    code,
     cetak: pdf({ key: `${docKey}_${p.id}`, docKey, pegawai: p, label: `${nama} — ${p.nama}` }),
   }));
-  if (docs.length > 1) return { label: nama, kelompok: true, docs };
+  if (docs.length > 1) return { label: nama, code, kelompok: true, satuan: 'pelaksana', docs };
   if (docs.length === 1) {
     return {
       label: null,
       docs: [{ ...docs[0], nama, singkat: nama, sub: `Pelaksana: ${pelaksana[0].nama}` }],
     };
   }
-  return { label: null, docs: [{ key: docKey, nama, singkat: nama, cetak: null }] };
+  return { label: null, docs: [{ key: docKey, nama, singkat: nama, code, cetak: null }] };
 }
 
 /** Lampiran unggahan pelaksana: kelompok berisi satu baris per berkas. */
-function kelompokLampiran(files) {
+function kelompokLampiran(files, code) {
   if (!files.length) {
     return {
       label: null,
@@ -129,6 +131,7 @@ function kelompokLampiran(files) {
           key: 'lampiran',
           nama: 'Lampiran',
           singkat: 'Lampiran',
+          code,
           cetak: null,
           sub: 'Belum ada lampiran yang diunggah pelaksana',
         },
@@ -137,11 +140,14 @@ function kelompokLampiran(files) {
   }
   return {
     label: 'Lampiran',
+    code,
     kelompok: true,
+    satuan: 'berkas',
     docs: files.map(({ key, judul, file }) => ({
       key,
       nama: `Lampiran — ${file.name || judul}`,
       singkat: judul ? `${judul} · ${file.name || ''}` : file.name || 'Berkas',
+      code,
       cetak: { jenis: 'files', files: [file] },
     })),
   };
@@ -149,7 +155,8 @@ function kelompokLampiran(files) {
 
 /**
  * Kelompok dokumen Pemeriksaan Dokumen (pegawai2DocGroups purwarupa, dipetakan ke dokumen
- * berkas): { label, kelompok, docs }[]. Kunci dokumen aman dipakai sebagai nama field Firestore.
+ * berkas): { label, code, kelompok, satuan, docs }[], urut seperti Detail LPJ.
+ * Kunci dokumen aman dipakai sebagai nama field Firestore.
  */
 export function kelompokDokumen(pack) {
   const pelaksana = pelaksanaOf(pack);
@@ -168,10 +175,13 @@ export function kelompokDokumen(pack) {
       })),
     ];
     return [
-      { label: null, docs: [dokTunggal('spby', 'SPBy'), dokTunggal('nota_dinas', 'Nota Dinas')] },
-      perOrang(pelaksana, 'sptjm', 'SPTJM'),
-      { label: null, docs: [dokTunggal('kwitansi', 'Kwitansi')] },
-      kelompokLampiran(files),
+      {
+        label: null,
+        docs: [dokTunggal('spby', 'SPBy', 'SPBY'), dokTunggal('nota_dinas', 'Nota Dinas', 'ND')],
+      },
+      perOrang(pelaksana, 'sptjm', 'SPTJM', 'SPTJM'),
+      { label: null, docs: [dokTunggal('kwitansi', 'Kwitansi', 'KWT')] },
+      kelompokLampiran(files, 'DOC'),
     ];
   }
 
@@ -181,29 +191,33 @@ export function kelompokDokumen(pack) {
     file,
   }));
   return [
-    { label: 'Surat Perintah', docs: [dokTunggal('sp', 'Surat Perintah (SP)')] },
-    perOrang(pelaksana, 'spd', 'SPD'),
-    { label: 'LPJ & SPBy', docs: [dokTunggal('spby', 'SPBy')] },
-    perOrang(pelaksana, 'rincian_spby', 'Rincian SPBy'),
+    { label: null, docs: [dokTunggal('sp', 'Surat Perintah (SP)', 'SP')] },
+    perOrang(pelaksana, 'spd', 'SPD', 'SPD'),
+    { label: null, docs: [dokTunggal('spby', 'SPBy', 'SPBY')] },
+    perOrang(pelaksana, 'rincian_spby', 'Rincian SPBy', 'RSB'),
     {
       label: null,
-      docs: [dokTunggal('nota_dinas', 'Nota Dinas'), dokTunggal('kwitansi', 'Kwitansi')],
+      docs: [
+        dokTunggal('nota_dinas', 'Nota Dinas', 'ND'),
+        dokTunggal('kwitansi', 'Kwitansi', 'KWT'),
+      ],
     },
-    perOrang(pelaksana, 'sptjm', 'SPTJM'),
-    perOrang(pelaksana, 'suratpernyataan', 'Surat Pernyataan Pengeluaran'),
-    { label: null, docs: [dokTunggal('nominatif', 'Daftar Nominatif')] },
-    { label: 'Lap. Kegiatan', docs: [dokTunggal('laporan', 'Laporan Kegiatan')] },
-    kelompokLampiran(fotos),
+    perOrang(pelaksana, 'sptjm', 'SPTJM', 'SPTJM'),
+    perOrang(pelaksana, 'suratpernyataan', 'Surat Pernyataan Pengeluaran', 'SPP'),
+    { label: null, docs: [dokTunggal('nominatif', 'Daftar Nominatif', 'NOM')] },
+    { label: null, docs: [dokTunggal('laporan', 'Laporan Kegiatan', 'LAP')] },
+    kelompokLampiran(fotos, 'FOTO'),
     {
-      label: 'Bukti Perjalanan',
+      label: null,
       docs: [
         {
           key: 'tiket',
           nama: 'Tiket dan Boarding Pass',
           singkat: 'Tiket dan Boarding Pass',
+          code: 'TKT',
           cetak: null,
         },
-        { key: 'bill_hotel', nama: 'Bill Hotel', singkat: 'Bill Hotel', cetak: null },
+        { key: 'bill_hotel', nama: 'Bill Hotel', singkat: 'Bill Hotel', code: 'HTL', cetak: null },
       ],
     },
   ];
@@ -307,13 +321,6 @@ export function nominalBerkas(pack, verif, mak) {
 /** "Rp.195.000,-" seperti penulisan di lembar. */
 export const rpTitik = (n) => 'Rp.' + Math.round(Number(n) || 0).toLocaleString('id-ID') + ',-';
 
-/** "Tiket PP (Pulang Pergi)" → "Tiket PP", "Biaya Penginapan / Hotel" → "Penginapan / Hotel". */
-export const itemSingkat = (label) =>
-  String(label || '')
-    .replace(/\s*\([^)]*\)/g, '')
-    .replace(/^Biaya\s+/i, '')
-    .trim();
-
 /**
  * Baris tabel lembar: satu baris per JENIS dokumen (dokumen per pelaksana / per berkas
  * cukup satu baris; tercentang bila semua dokumen di kelompoknya tercentang).
@@ -352,7 +359,10 @@ function namaBendahara(pegawaiList) {
   return b?.nama || '';
 }
 
-/** Data lengkap Lembar Verifikasi (dipakai pratinjau di layar & PDF). */
+/**
+ * Data lengkap Lembar Verifikasi untuk template PDF `lembar-verifikasi` di
+ * src/components/SuratPreview/SuratPreviewCanvas.jsx (lewat resolveDokumen → `data.lembar`).
+ */
 export function dataLembar(pack, mak, pegawaiList) {
   const verif = verifOf(pack);
   const kelompok = kelompokDokumen(pack);

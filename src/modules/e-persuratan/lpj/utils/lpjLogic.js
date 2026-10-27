@@ -111,10 +111,13 @@ export function pfHasLapData(lap) {
   return !!(
     lap.tanggalLaporan ||
     lap.pendahuluan ||
+    lap.maksud ||
+    lap.ruangLingkup ||
     lap.pelaksanaan ||
     lap.hasil ||
     lap.kesimpulan ||
     lap.rekomendasi ||
+    lap.penutup ||
     lap.penandatangan ||
     (lap.fotos && lap.fotos.length)
   );
