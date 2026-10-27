@@ -7,7 +7,8 @@ import { TONE } from './tahapTampil';
 import { ADMIN, BTN, FONT, STATUS, T } from '@/utils/uiTokens';
 
 /**
- * Pop-up "Cetak semua" (PgvCetakAllModal purwarupa): daftar dokumen yang akan dicetak, lalu
+ * Pop-up "Cetak semua" (PgvCetakAllModal purwarupa): daftar dokumen yang akan dicetak (yang
+ * belum dicentang, atau semua bila berkas sudah terkunci; disaring pemanggil), lalu
  * semuanya dicetak sebagai satu PDF. Dokumen tanpa template (lampiran unggahan, bukti fisik)
  * tidak ikut dicetak. `onCetak()` mengembalikan Promise.
  */

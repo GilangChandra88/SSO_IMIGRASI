@@ -8,6 +8,8 @@ import {
   StyleSheet,
   Image,
   Font,
+  Svg,
+  Path,
 } from '@react-pdf/renderer';
 import { isiPlaceholder } from './isiPlaceholder';
 
@@ -2261,8 +2263,10 @@ const SuratPernyataanPengeluaran = ({ data }) => {
 };
 
 // ─── LAPORAN KEGIATAN ──────────────────────────────────────────────────────
-// A. Umum (Dasar, Pendahuluan, Waktu & Tempat, Pelaksana, Pelaksanaan), B. Hasil, C. Kesimpulan,
-// D. Rekomendasi. Dasar/Waktu & Tempat/Pelaksana otomatis dari SP & SPD; sisanya dari form laporan.
+// A. Pendahuluan (1. Umum, 2. Maksud dan Tujuan, 3. Ruang Lingkup, 4. Dasar), B. Kegiatan yang
+// dilaksanakan (1. Pelaksana, 2. Waktu dan Tempat, 3. Uraian), C. Hasil yang dicapai, D. Simpulan
+// dan Saran, E. Penutup, lalu TTD pegawai yang melaksanakan tugas. Dasar, Pelaksana, serta Waktu &
+// Tempat otomatis dari SP & SPD; sisanya dari form laporan.
 const BULAN_ID = [
   'Januari',
   'Februari',
@@ -2326,10 +2330,9 @@ const lapStyles = StyleSheet.create({
   baris: { flexDirection: 'row', marginTop: 2 },
   isi: { flex: 1, textAlign: 'justify' },
   paragraf: { textAlign: 'justify', textIndent: 36, marginTop: 2 },
-  pelaksana: { flexDirection: 'row', marginTop: 6, marginLeft: 70 },
-  kvLabel: { width: 118 },
-  ttd: { marginLeft: '56%', marginTop: 20 },
-  ttdLabel: { width: 52 },
+  kvLabel: { width: 82 },
+  ttd: { marginLeft: '52%', marginTop: 20 },
+  ttdLabel: { width: 74 },
 });
 
 // Judul tidak boleh tertinggal sendirian di bawah halaman: judul + `pembuka` selalu satu halaman,
@@ -2382,17 +2385,19 @@ const LaporanKegiatan = ({ data }) => {
   const pelaksana = Array.isArray(data.pegawai_list) ? data.pegawai_list : [];
   const hasil = barisIsi(data.lap_hasil);
   const [namaTtd, nipTtd] = String(data.lap_ttd || '').split('\n');
+  const huruf = (i) => `${String.fromCharCode(97 + i)}.`;
 
+  // B.1 Pelaksana: a., b., c. … masing-masing Nama / NIP / Pangkat/Gol. / Jabatan
   const kartuPelaksana = (pelaksana.length ? pelaksana : ['[Nama Pelaksana]']).map((p, i) => {
     const l = p.split('\n');
     return (
-      <View key={i} style={lapStyles.pelaksana} wrap={false}>
-        <Text style={lapStyles.nomor}>{i + 1}.</Text>
+      <View key={i} style={lapStyles.baris} wrap={false}>
+        <Text style={lapStyles.nomor}>{huruf(i)}</Text>
         <View style={{ flex: 1 }}>
           {[
             ['Nama', l[0]?.toUpperCase()],
             ['NIP', l[1]?.replace('NIP. ', '')],
-            ['Pangkat / Gol Ruang', l[2]?.replace('Pangkat: ', '')],
+            ['Pangkat/Gol.', l[2]?.replace('Pangkat: ', '')],
             ['Jabatan', l[3]?.replace('Jabatan: ', '')],
           ].map(([label, nilai]) => (
             <View key={label} style={{ flexDirection: 'row' }}>
@@ -2405,62 +2410,16 @@ const LaporanKegiatan = ({ data }) => {
     );
   });
 
-  // Sub-poin A dan bagian B dst. hanya dicetak bila ada isinya, nomor/huruf menyesuaikan
-  const subUmum = [
-    {
-      judul: 'Dasar',
-      isi: (
-        <DaftarLap
-          items={dasar.length ? dasar : ['[Dasar]']}
-          penanda={(i) => `${String.fromCharCode(97 + i)}.`}
-        />
-      ),
-    },
-    data.lap_pendahuluan && {
-      judul: 'Pendahuluan',
-      isi: <ParagrafLap teks={data.lap_pendahuluan} />,
-      utuh: true,
-    },
-    {
-      judul: 'Waktu dan Tempat Pelaksanaan',
-      isi: <ParagrafLap teks={data.maksud} kosong="[Waktu dan tempat pelaksanaan]" />,
-      utuh: true,
-    },
-    { judul: 'Pelaksana kegiatan :', pembuka: kartuPelaksana[0], isi: kartuPelaksana.slice(1) },
-    data.lap_pelaksanaan && {
-      judul: 'Pelaksanaan Kegiatan',
-      isi: <ParagrafLap teks={data.lap_pelaksanaan} />,
-      utuh: true,
-    },
-  ].filter(Boolean);
+  // B.2 Waktu dan Tempat: dari tanggal berangkat–kembali & tujuan SPD
+  const berangkat = data.tanggal_berangkat;
+  const kembali = data.tanggal_kembali;
+  const waktu = berangkat
+    ? `${fmtTanggalPanjang(berangkat)}${kembali && kembali !== berangkat ? ` s.d. ${fmtTanggalPanjang(kembali)}` : ''}`
+    : '[Tanggal kegiatan]';
+  const waktuTempat = `Kegiatan dilaksanakan pada tanggal ${waktu} bertempat di ${data.tempat_tujuan || '[Tempat kegiatan]'}.`;
 
-  const bagianLain = [
-    {
-      judul: 'HASIL YANG DICAPAI',
-      pembuka: (
-        <Text style={lapStyles.paragraf}>
-          Berdasarkan hasil pelaksanaan tugas tersebut diatas, dilaporkan hasil kegiatan sebagai
-          berikut :
-        </Text>
-      ),
-      isi:
-        hasil.length > 1 ? (
-          <DaftarLap items={hasil} penanda={(i) => `${i + 1}.`} />
-        ) : (
-          <ParagrafLap teks={hasil[0] && tanpaNomor(hasil[0])} kosong="[Hasil yang dicapai]" />
-        ),
-    },
-    data.lap_kesimpulan && {
-      judul: 'KESIMPULAN',
-      isi: <ParagrafLap teks={data.lap_kesimpulan} />,
-      utuh: true,
-    },
-    data.lap_rekomendasi && {
-      judul: 'REKOMENDASI / TINDAK LANJUT',
-      isi: <ParagrafLap teks={data.lap_rekomendasi} />,
-      utuh: true,
-    },
-  ].filter(Boolean);
+  // D. Simpulan dan Saran (berkas lama: isian Rekomendasi ikut dicetak di sini)
+  const simpulan = [data.lap_kesimpulan, data.lap_rekomendasi].filter(Boolean).join('\n');
 
   return (
     <Page size="A4" style={lapStyles.page}>
@@ -2468,40 +2427,261 @@ const LaporanKegiatan = ({ data }) => {
       <Text style={lapStyles.judul}>LAPORAN KEGIATAN</Text>
       <Text style={lapStyles.subjudul}>{data.lap_judul || '[Judul Kegiatan]'}</Text>
 
-      <BagianLap huruf="A" judul="UMUM">
-        {subUmum.map(({ judul, pembuka, isi, utuh }, i) => (
-          <SubPoinLap key={judul} no={i + 1} judul={judul} pembuka={pembuka} utuh={utuh}>
-            {isi}
-          </SubPoinLap>
-        ))}
+      <BagianLap huruf="A" judul="Pendahuluan">
+        <SubPoinLap no={1} judul="Umum" utuh>
+          <ParagrafLap teks={data.lap_pendahuluan} kosong="[Umum]" />
+        </SubPoinLap>
+        <SubPoinLap no={2} judul="Maksud dan Tujuan" utuh>
+          <ParagrafLap teks={data.lap_maksud} kosong="[Maksud dan tujuan]" />
+        </SubPoinLap>
+        <SubPoinLap no={3} judul="Ruang Lingkup" utuh>
+          <ParagrafLap teks={data.lap_ruang_lingkup} kosong="[Ruang lingkup]" />
+        </SubPoinLap>
+        <SubPoinLap no={4} judul="Dasar">
+          <DaftarLap items={dasar.length ? dasar : ['[Dasar]']} penanda={huruf} />
+        </SubPoinLap>
       </BagianLap>
 
-      {bagianLain.map(({ judul, pembuka, isi, utuh }, i) => (
-        <BagianLap
-          key={judul}
-          huruf={String.fromCharCode(66 + i)}
-          judul={judul}
-          pembuka={pembuka}
-          utuh={utuh}
-        >
-          {isi}
-        </BagianLap>
-      ))}
+      <BagianLap huruf="B" judul="Kegiatan yang dilaksanakan">
+        <SubPoinLap no={1} judul="Pelaksana Kegiatan" pembuka={kartuPelaksana[0]}>
+          {kartuPelaksana.slice(1)}
+        </SubPoinLap>
+        <SubPoinLap no={2} judul="Waktu dan Tempat Kegiatan" utuh>
+          <ParagrafLap teks={waktuTempat} />
+        </SubPoinLap>
+        <SubPoinLap no={3} judul="Uraian Kegiatan">
+          <ParagrafLap teks={data.lap_pelaksanaan} kosong="[Uraian kegiatan]" />
+        </SubPoinLap>
+      </BagianLap>
+
+      <BagianLap huruf="C" judul="Hasil yang dicapai">
+        {hasil.length > 1 ? (
+          <DaftarLap items={hasil} penanda={(i) => `${i + 1}.`} />
+        ) : (
+          <ParagrafLap teks={hasil[0] && tanpaNomor(hasil[0])} kosong="[Hasil yang dicapai]" />
+        )}
+      </BagianLap>
+
+      <BagianLap huruf="D" judul="Simpulan dan Saran" utuh>
+        <ParagrafLap teks={simpulan} kosong="[Simpulan dan saran]" />
+      </BagianLap>
+
+      <BagianLap huruf="E" judul="Penutup" utuh>
+        <ParagrafLap teks={data.lap_penutup} kosong="[Penutup]" />
+      </BagianLap>
 
       <View style={lapStyles.ttd} wrap={false}>
         <View style={{ flexDirection: 'row' }}>
-          <Text style={lapStyles.ttdLabel}>Dibuat di</Text>
+          <Text style={lapStyles.ttdLabel}>Dikeluarkan di</Text>
           <Text>: Singaraja</Text>
         </View>
         <View style={{ flexDirection: 'row' }}>
-          <Text style={lapStyles.ttdLabel}>Tanggal</Text>
+          <Text style={lapStyles.ttdLabel}>Pada tanggal</Text>
           <Text>: {fmtTanggalPanjang(data.lap_tanggal)}</Text>
         </View>
-        <Text>{data.lap_jabatan_ttd || '[Jabatan Penanda Tangan]'}</Text>
+        <Text style={{ marginTop: 6 }}>Pegawai yang Melaksanakan Tugas,</Text>
         <View style={{ height: 50 }} />
         <Text>{namaTtd || '[Nama Penanda Tangan]'}</Text>
         <Text>NIP. {nipTtd?.replace('NIP. ', '') || '[NIP]'}</Text>
       </View>
+    </Page>
+  );
+};
+
+// ─── LEMBAR VERIFIKASI PPK ────────────────────────────────────────────────────
+// Lembar Verifikasi berkas LPJ (LembarSheet purwarupa admin). `data.lembar` disusun modul LPJ
+// (dataLembar di lpj/utils/verifikasiLogic.js): { id, jenisTeks, meta, nom, rows, catatan }.
+// Huruf standar PDF tidak punya tanda centang, jadi centang digambar dengan SVG.
+const LV_GARIS = '#1f2937';
+
+const lvStyles = StyleSheet.create({
+  page: { padding: 36, fontFamily: 'Helvetica', fontSize: 9.5, color: '#111827' },
+  bingkai: { borderWidth: 1.2, borderColor: LV_GARIS },
+  kepala: { flexDirection: 'row', borderBottomWidth: 1.2, borderColor: LV_GARIS },
+  judul: {
+    flex: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    fontFamily: 'Helvetica-Bold',
+    fontSize: 17,
+    lineHeight: 1.15,
+    letterSpacing: 1,
+  },
+  ppk: {
+    width: 170,
+    borderLeftWidth: 1.2,
+    borderColor: LV_GARIS,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  ppkB: { fontFamily: 'Helvetica-Bold', fontSize: 15 },
+  ppkS: { fontFamily: 'Helvetica-Bold', fontSize: 8.5, marginTop: 2, letterSpacing: 0.4 },
+  grup: {
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderBottomWidth: 0.8,
+    borderColor: LV_GARIS,
+  },
+  baris: { flexDirection: 'row', marginVertical: 1.5 },
+  dt: { width: 118 },
+  dd: { flex: 1 },
+  items: { width: '100%' },
+  item: { flexDirection: 'row', marginBottom: 1 },
+  itemKode: { width: 52, fontFamily: 'Courier', fontSize: 8.5 },
+  itemNama: { flex: 1 },
+  itemNilai: { width: 92, textAlign: 'right' },
+  tabel: { borderBottomWidth: 0.8, borderColor: LV_GARIS },
+  tr: { flexDirection: 'row', borderTopWidth: 0.8, borderColor: LV_GARIS },
+  th: { fontFamily: 'Helvetica-Bold', backgroundColor: '#f3f4f6' },
+  cNo: { width: 30, padding: 4, textAlign: 'center', borderRightWidth: 0.8, borderColor: LV_GARIS },
+  cDok: { flex: 1, padding: 4, borderRightWidth: 0.8, borderColor: LV_GARIS },
+  cCek: {
+    width: 52,
+    padding: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRightWidth: 0.8,
+    borderColor: LV_GARIS,
+  },
+  cKet: { width: 110, padding: 4 },
+  catatan: { padding: 5, paddingHorizontal: 8, borderTopWidth: 0.8, borderColor: LV_GARIS },
+  catatanPpk: { minHeight: 46 },
+  tebal: { fontFamily: 'Helvetica-Bold' },
+  merah: { color: '#A62D2D', fontFamily: 'Helvetica-Bold' },
+  paraf: { flexDirection: 'row' },
+  parafSel: { flex: 1, height: 74, padding: 6 },
+  parafKiri: { borderRightWidth: 0.8, borderColor: LV_GARIS },
+  labelDaftar: { marginBottom: 3 },
+  kaki: { marginTop: 6, fontSize: 7.5, color: '#6b7280' },
+});
+
+const LvCentang = () => (
+  <Svg width={10} height={10} viewBox="0 0 24 24">
+    <Path d="M4 12.5l5 5L20 6.5" stroke="#111827" strokeWidth={3} fill="none" />
+  </Svg>
+);
+
+const lvRupiah = (n) => 'Rp.' + Math.round(Number(n) || 0).toLocaleString('id-ID') + ',-';
+const lvRupiahAtauStrip = (n) => (n == null ? '—' : lvRupiah(n));
+// "Tiket PP (Pulang Pergi)" → "Tiket PP", "Biaya Penginapan / Hotel" → "Penginapan / Hotel"
+const lvItemSingkat = (label) =>
+  String(label || '')
+    .replace(/\s*\([^)]*\)/g, '')
+    .replace(/^Biaya\s+/i, '')
+    .trim();
+
+const LvDaftarItem = ({ lines, nilai }) => (
+  <View style={lvStyles.items}>
+    {lines.map((ln) => (
+      <View key={ln.key} style={lvStyles.item}>
+        <Text style={lvStyles.itemKode}>{ln.kode}</Text>
+        <Text style={lvStyles.itemNama}>{lvItemSingkat(ln.label)}</Text>
+        <Text style={lvStyles.itemNilai}>{lvRupiahAtauStrip(nilai(ln))}</Text>
+      </View>
+    ))}
+  </View>
+);
+
+const LembarVerifikasi = ({ data }) => {
+  const lv = lvStyles;
+  const l = data.lembar || {};
+  const nom = l.nom || { lines: [] };
+  const rows = l.rows || [];
+  return (
+    <Page size="A4" style={lv.page}>
+      <View style={lv.bingkai}>
+        <View style={lv.kepala}>
+          <Text style={lv.judul}>{'LEMBAR\nVERIFIKASI'}</Text>
+          <View style={lv.ppk}>
+            <Text style={lv.ppkB}>PPK</Text>
+            <Text style={lv.ppkS}>{l.jenisTeks || ''}</Text>
+          </View>
+        </View>
+
+        {(l.meta || []).map((grup, gi) => (
+          <View key={gi} style={lv.grup}>
+            {grup.map(([label, nilai]) => (
+              <View key={label} style={lv.baris}>
+                <Text style={lv.dt}>{label}</Text>
+                <Text>: </Text>
+                {label === 'Jumlah' && nom.multi ? (
+                  <View style={lv.dd}>
+                    <LvDaftarItem lines={nom.lines} nilai={(ln) => ln.nilai} />
+                  </View>
+                ) : (
+                  <Text style={lv.dd}>{nilai || '—'}</Text>
+                )}
+              </View>
+            ))}
+          </View>
+        ))}
+
+        <View style={lv.tabel}>
+          <View style={[lv.tr, lv.th]}>
+            <Text style={lv.cNo}>No.</Text>
+            <Text style={lv.cDok}>Kelengkapan Dokumen</Text>
+            <Text style={lv.cCek}>Staf PPK</Text>
+            <Text style={lv.cCek}>PPK</Text>
+            <Text style={lv.cKet}>Keterangan</Text>
+          </View>
+          {rows.map((r, i) => (
+            <View key={r.label} style={lv.tr} wrap={false}>
+              <Text style={lv.cNo}>{i + 1}</Text>
+              <Text style={lv.cDok}>{r.label}</Text>
+              <View style={lv.cCek}>{r.staf && <LvCentang />}</View>
+              <View style={lv.cCek}>{r.ppk && <LvCentang />}</View>
+              <Text style={lv.cKet}>{r.ket}</Text>
+            </View>
+          ))}
+          <View style={lv.tr} wrap={false}>
+            <Text style={lv.cNo}>{rows.length + 1}</Text>
+            <Text style={lv.cDok}>POK Terakhir</Text>
+            <View style={lv.cCek} />
+            <View style={lv.cCek} />
+            <Text style={lv.cKet}>{nom.multi || nom.pok == null ? '' : lvRupiah(nom.pok)}</Text>
+          </View>
+
+          <View style={lv.catatan} wrap={false}>
+            <Text>
+              Catatan Staf PPK:{' '}
+              <Text style={l.catatan === 'Lengkap' ? lv.tebal : lv.merah}>{l.catatan || ''}</Text>
+            </Text>
+          </View>
+          {nom.multi && (
+            <View style={lv.catatan} wrap={false}>
+              <Text style={lv.labelDaftar}>POK terakhir :</Text>
+              <LvDaftarItem lines={nom.lines} nilai={(ln) => ln.pok} />
+            </View>
+          )}
+          <View style={[lv.catatan, lv.catatanPpk]} wrap={false}>
+            <Text>Catatan PPK:</Text>
+          </View>
+          <View style={lv.catatan} wrap={false}>
+            {nom.multi ? (
+              <>
+                <Text style={lv.labelDaftar}>Sisa Anggaran Setelah Tagihan ini :</Text>
+                <LvDaftarItem lines={nom.lines} nilai={(ln) => ln.sisa} />
+              </>
+            ) : (
+              <Text>
+                Sisa Anggaran Setelah Tagihan ini :{' '}
+                <Text style={lv.tebal}>{lvRupiahAtauStrip(nom.sisa)}</Text>
+              </Text>
+            )}
+          </View>
+        </View>
+
+        <View style={lv.paraf} wrap={false}>
+          <View style={[lv.parafSel, lv.parafKiri]}>
+            <Text>Paraf PPK</Text>
+          </View>
+          <View style={lv.parafSel}>
+            <Text>Paraf KPA</Text>
+          </View>
+        </View>
+      </View>
+      {l.id ? <Text style={lv.kaki}>{l.id}</Text> : null}
     </Page>
   );
 };
@@ -2551,6 +2731,8 @@ export const MyPdfDocument = ({ surat, data, packItem }) => (
       <SPTJMPelaksana data={data} packItem={packItem} />
     ) : surat.id === 'laporan' ? (
       <LaporanKegiatan data={data} />
+    ) : surat.id === 'lembar-verifikasi' ? (
+      <LembarVerifikasi data={data} />
     ) : (
       <Page size="A4" style={styles.page}>
         <KopSurat />

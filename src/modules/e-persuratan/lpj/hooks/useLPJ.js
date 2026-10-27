@@ -6,6 +6,7 @@
 import { useState, useEffect } from 'react';
 import {
   arrayRemove,
+  arrayUnion,
   collection,
   doc,
   getDocs,
@@ -245,6 +246,37 @@ export async function saveLPJ(pack, patch, aktivitas = {}, { beriNomor = false }
       ...(baru ? { nomor_lpj_at: serverTimestamp() } : {}),
     });
     return nomor;
+  });
+}
+
+/**
+ * Bukti pengeluaran per pelaksana (Fase 4 Detail LPJ, opsional). Disimpan di field tersendiri
+ * `bukti_pengeluaran.{id pelaksana}` (bukan di `lap`) supaya simpan otomatis form Laporan yang
+ * menulis ulang `lap` tidak menghapusnya.
+ * @param {object[]} metas  meta berkas unggahan + `jenis`
+ */
+export async function tambahBuktiPengeluaran(pack, pelaksanaId, metas, aktivitas = {}) {
+  await updateDoc(doc(db, 'lpj_packs', pack.id), {
+    [`bukti_pengeluaran.${pelaksanaId}`]: arrayUnion(...metas),
+    updated_at: serverTimestamp(),
+    ...(aktivitas.teks
+      ? {
+          aktivitas: {
+            teks: aktivitas.teks,
+            at: new Date().toISOString(),
+            oleh: aktivitas.nama || '',
+            uid: aktivitas.uid || '',
+          },
+        }
+      : {}),
+  });
+}
+
+/** Lepas satu bukti pengeluaran (objek harus sama persis dengan yang tersimpan). */
+export async function hapusBuktiPengeluaran(pack, pelaksanaId, meta) {
+  await updateDoc(doc(db, 'lpj_packs', pack.id), {
+    [`bukti_pengeluaran.${pelaksanaId}`]: arrayRemove(meta),
+    updated_at: serverTimestamp(),
   });
 }
 

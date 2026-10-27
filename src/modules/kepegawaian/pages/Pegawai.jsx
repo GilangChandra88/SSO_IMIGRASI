@@ -1,9 +1,23 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { db, secondaryAuth } from '@/config/firebase';
+import { useAuth } from '@/context/AuthContext';
+import ToastViewport from '@/components/ToastViewport';
+import { showToast } from '@/utils/toastStore';
+import {
+  MAKS_FOTO_ULTAH,
+  adalahUltahHariIni,
+  daftarFoto,
+  formatTanggal,
+  ultahMd,
+} from '@/utils/ulangTahun';
+import { hapusFotoPegawai, unggahFotoPegawai, validasiFoto } from '../services/fotoPegawai';
+import ModalKejutanUltah from '../components/ModalKejutanUltah';
 import {
   collection,
   addDoc,
   deleteDoc,
+  deleteField,
   doc,
   updateDoc,
   onSnapshot,
@@ -22,6 +36,8 @@ import {
   FaPlus,
   FaKey,
   FaStar,
+  FaBirthdayCake,
+  FaCamera,
 } from 'react-icons/fa';
 
 export default function Pegawai() {
@@ -40,7 +56,21 @@ export default function Pegawai() {
     jabatan: '',
     role: 'Pegawai',
     status_khusus: '',
+    tanggal_lahir: '',
   });
+  // Foto captcha ulang tahun: fotoLama = [{ path, url }] tersimpan & dipertahankan,
+  // fotoBaru = berkas yang akan diunggah, fotoDihapus = path tersimpan yang dibuang
+  const [fotoLama, setFotoLama] = useState([]);
+  const [fotoBaru, setFotoBaru] = useState([]);
+  const [fotoDihapus, setFotoDihapus] = useState([]);
+  const [menyimpan, setMenyimpan] = useState(false);
+  const [kejutanTarget, setKejutanTarget] = useState(null);
+  const pratinjauFoto = useMemo(() => fotoBaru.map((f) => URL.createObjectURL(f)), [fotoBaru]);
+  useEffect(() => () => pratinjauFoto.forEach((u) => URL.revokeObjectURL(u)), [pratinjauFoto]);
+  const jumlahFoto = fotoLama.length + fotoBaru.length;
+
+  const navigate = useNavigate();
+  const { currentUser, isAdmin } = useAuth();
 
   const [isAddingMaster, setIsAddingMaster] = useState(false);
   const [editingMasterId, setEditingMasterId] = useState(null);
@@ -102,24 +132,67 @@ export default function Pegawai() {
         await updateDoc(doc(db, 'pegawai', oldHolder.id), { status_khusus: '' });
       }
 
-      if (editingPegawaiId) {
-        await updateDoc(doc(db, 'pegawai', editingPegawaiId), formPegawai);
+      setMenyimpan(true);
+      // ultah_md ('MM-DD') dipakai untuk mencari siapa yang berulang tahun hari ini
+      const data = { ...formPegawai, ultah_md: ultahMd(formPegawai.tanggal_lahir) };
+      let id = editingPegawaiId;
+      if (id) {
+        await updateDoc(doc(db, 'pegawai', id), data);
       } else {
-        await addDoc(PegawaiCol, { ...formPegawai, createdAt: new Date().toISOString() });
+        id = (await addDoc(PegawaiCol, { ...data, createdAt: new Date().toISOString() })).id;
       }
-      setIsAddingPegawai(false);
-      setEditingPegawaiId(null);
-      setFormPegawai({
-        nama: '',
-        nip: '',
-        pangkat: '',
-        jabatan: '',
-        role: 'Pegawai',
-        status_khusus: '',
-      });
+      if (fotoBaru.length || fotoDihapus.length) {
+        try {
+          const unggahan = await Promise.all(fotoBaru.map((f) => unggahFotoPegawai(id, f)));
+          // `foto` tunggal (bentuk awal) dilebur ke `fotos`
+          await updateDoc(doc(db, 'pegawai', id), {
+            fotos: [...fotoLama, ...unggahan],
+            foto: deleteField(),
+          });
+          fotoDihapus.forEach((path) => hapusFotoPegawai(path).catch(() => {}));
+        } catch {
+          showToast('Data tersimpan, tetapi foto gagal diunggah. Periksa storage.rules.', 'error');
+        }
+      }
+      tutupFormPegawai();
     } catch (error) {
       console.error('Error saving:', error);
+      showToast('Gagal menyimpan data pegawai.', 'error');
+    } finally {
+      setMenyimpan(false);
     }
+  };
+
+  const tutupFormPegawai = () => {
+    setIsAddingPegawai(false);
+    setEditingPegawaiId(null);
+    setFormPegawai({
+      nama: '',
+      nip: '',
+      pangkat: '',
+      jabatan: '',
+      role: 'Pegawai',
+      status_khusus: '',
+      tanggal_lahir: '',
+    });
+    setFotoLama([]);
+    setFotoBaru([]);
+    setFotoDihapus([]);
+  };
+
+  const pilihFoto = (e) => {
+    const files = [...(e.target.files || [])];
+    e.target.value = '';
+    const sah = files.filter((f) => !validasiFoto(f));
+    if (sah.length < files.length) showToast(validasiFoto(files.find(validasiFoto)), 'error');
+    const sisa = MAKS_FOTO_ULTAH - jumlahFoto;
+    if (sah.length > sisa) showToast(`Maksimal ${MAKS_FOTO_ULTAH} foto per pegawai.`, 'error');
+    if (sisa > 0 && sah.length) setFotoBaru((f) => [...f, ...sah.slice(0, sisa)]);
+  };
+
+  const buangFotoLama = (foto) => {
+    setFotoLama((d) => d.filter((f) => f !== foto));
+    if (foto.path) setFotoDihapus((d) => [...d, foto.path]);
   };
 
   const handleDeletePegawai = async (id) => {
@@ -139,7 +212,11 @@ export default function Pegawai() {
       jabatan: k.jabatan || '',
       role: k.role || 'Pegawai',
       status_khusus: k.status_khusus || '',
+      tanggal_lahir: k.tanggal_lahir || '',
     });
+    setFotoLama(daftarFoto(k));
+    setFotoBaru([]);
+    setFotoDihapus([]);
     setEditingPegawaiId(k.id);
     setIsAddingPegawai(true);
   };
@@ -252,16 +329,8 @@ export default function Pegawai() {
               {!isAddingPegawai && (
                 <button
                   onClick={() => {
+                    tutupFormPegawai();
                     setIsAddingPegawai(true);
-                    setEditingPegawaiId(null);
-                    setFormPegawai({
-                      nama: '',
-                      nip: '',
-                      pangkat: '',
-                      jabatan: '',
-                      role: 'Pegawai',
-                      status_khusus: '',
-                    });
                   }}
                   className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2 shadow-sm transition-all"
                 >
@@ -364,19 +433,82 @@ export default function Pegawai() {
                     <option value="KPA">Kuasa Pengguna Anggaran (KPA)</option>
                   </select>
                 </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+                    <FaBirthdayCake className="text-amber-500" /> TANGGAL LAHIR
+                  </label>
+                  <input
+                    type="date"
+                    value={formPegawai.tanggal_lahir}
+                    onChange={(e) =>
+                      setFormPegawai({ ...formPegawai, tanggal_lahir: e.target.value })
+                    }
+                    className="w-full text-sm py-2 px-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
+                    <FaCamera className="text-amber-500" /> FOTO UNTUK KEJUTAN ULANG TAHUN (
+                    {jumlahFoto}/{MAKS_FOTO_ULTAH})
+                  </label>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {[
+                      ...fotoLama.map((f) => ({ url: f.url, buang: () => buangFotoLama(f) })),
+                      ...pratinjauFoto.map((url, i) => ({
+                        url,
+                        baru: true,
+                        buang: () => setFotoBaru((d) => d.filter((_, j) => j !== i)),
+                      })),
+                    ].map((f, i) => (
+                      <div key={f.url} className="relative">
+                        <img
+                          src={f.url}
+                          alt={`Foto ${i + 1}`}
+                          className={`w-12 h-12 rounded-lg object-cover border ${f.baru ? 'border-indigo-400 dark:border-indigo-500' : 'border-slate-300 dark:border-slate-700'}`}
+                        />
+                        <button
+                          type="button"
+                          onClick={f.buang}
+                          title="Buang foto"
+                          aria-label={`Buang foto ${i + 1}`}
+                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-700 hover:bg-rose-600 text-white flex items-center justify-center shadow"
+                        >
+                          <FaTimes size={9} />
+                        </button>
+                      </div>
+                    ))}
+                    {jumlahFoto < MAKS_FOTO_ULTAH && (
+                      <label className="cursor-pointer text-xs font-bold bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex items-center gap-1.5">
+                        <FaCamera /> Tambah Foto
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          onChange={pilihFoto}
+                          className="sr-only"
+                        />
+                      </label>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    JPG/PNG, maks. 2 MB per foto. Bisa pilih beberapa sekaligus; foto dipakai
+                    bergiliran di kotak captcha.
+                  </p>
+                </div>
                 <div className="md:col-span-3 flex justify-end gap-2 mt-2">
                   <button
                     type="button"
-                    onClick={() => setIsAddingPegawai(false)}
+                    onClick={tutupFormPegawai}
                     className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2"
                   >
                     <FaTimes /> Batal
                   </button>
                   <button
                     type="submit"
-                    className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2 shadow-sm"
+                    disabled={menyimpan}
+                    className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 flex items-center gap-2 shadow-sm"
                   >
-                    <FaSave /> Simpan
+                    <FaSave /> {menyimpan ? 'Menyimpan…' : 'Simpan'}
                   </button>
                 </div>
               </form>
@@ -413,13 +545,42 @@ export default function Pegawai() {
                       className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group"
                     >
                       <td className="p-4">
-                        <div className="font-bold text-slate-800 dark:text-slate-100">{k.nama}</div>
-                        <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-500 mt-1">
-                          {k.role || 'Pegawai'}
+                        <div className="flex items-center gap-3">
+                          {daftarFoto(k)[0] ? (
+                            <img
+                              src={daftarFoto(k)[0].url}
+                              alt=""
+                              className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700"
+                            />
+                          ) : (
+                            <div className="w-9 h-9 rounded-full shrink-0 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center justify-center text-sm font-bold">
+                              {(k.nama || '?')[0].toUpperCase()}
+                            </div>
+                          )}
+                          <div>
+                            <div className="font-bold text-slate-800 dark:text-slate-100">
+                              {k.nama}
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+                                {k.role || 'Pegawai'}
+                              </span>
+                              {adalahUltahHariIni(k.tanggal_lahir) && (
+                                <span className="text-[10px] font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 px-1.5 py-0.5 rounded">
+                                  🎂 Ulang tahun hari ini
+                                </span>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </td>
                       <td className="p-4 text-slate-600 dark:text-slate-300 font-mono text-sm">
                         {k.nip}
+                        {k.tanggal_lahir && (
+                          <div className="font-sans text-xs text-slate-400 mt-0.5">
+                            Lahir {formatTanggal(k.tanggal_lahir)}
+                          </div>
+                        )}
                       </td>
                       <td className="p-4">
                         <div className="text-slate-700 dark:text-slate-200 text-sm font-semibold">
@@ -452,6 +613,16 @@ export default function Pegawai() {
                         )}
                       </td>
                       <td className="p-4 text-right flex items-center justify-end gap-2">
+                        {isAdmin && (
+                          <button
+                            onClick={() => setKejutanTarget(k)}
+                            title="Kejutan ulang tahun"
+                            aria-label={`Kejutan ulang tahun ${k.nama}`}
+                            className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-lg"
+                          >
+                            <FaBirthdayCake size={14} />
+                          </button>
+                        )}
                         <button
                           onClick={() => startEditPegawai(k)}
                           className="p-2 text-slate-400 hover:text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 rounded-lg"
@@ -641,6 +812,16 @@ export default function Pegawai() {
           </div>
         </div>
       )}
+
+      {kejutanTarget && (
+        <ModalKejutanUltah
+          pegawai={kejutanTarget}
+          olehEmail={currentUser?.email || ''}
+          onUji={() => navigate(`/?uji-ultah=${kejutanTarget.id}`)}
+          onClose={() => setKejutanTarget(null)}
+        />
+      )}
+      <ToastViewport />
     </div>
   );
 }

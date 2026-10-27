@@ -125,6 +125,38 @@ export async function cetakGabungan(daftar) {
 }
 
 /**
+ * Cetak PDF (`blob`) lewat bingkai tersembunyi: dialog cetak browser muncul tanpa membuka tab baru.
+ * Melempar galat bila browser tidak mengizinkan (pemanggil bisa membuka tab baru sebagai cadangan).
+ */
+export function cetakBlob(blob) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(blob);
+    const bingkai = document.createElement('iframe');
+    bingkai.setAttribute('aria-hidden', 'true');
+    bingkai.className = 'fixed right-0 bottom-0 w-px h-px opacity-0 pointer-events-none';
+    const bersih = () => {
+      bingkai.remove();
+      URL.revokeObjectURL(url);
+    };
+    bingkai.onload = () => {
+      // Beri waktu penampil PDF di dalam bingkai siap sebelum memanggil print()
+      setTimeout(() => {
+        try {
+          bingkai.contentWindow.focus();
+          bingkai.contentWindow.print();
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+        setTimeout(bersih, 60000); // dialog cetak tidak memberi tanda selesai yang andal
+      }, 300);
+    };
+    bingkai.src = url;
+    document.body.appendChild(bingkai);
+  });
+}
+
+/**
  * Seperti cetakGabungan, tetapi mengembalikan PDF-nya (untuk ditampilkan di popup).
  * @returns {Promise<{ blob: Blob, gagal: number }>}
  */

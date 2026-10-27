@@ -13,16 +13,17 @@ import PdfGabunganModal from '../components/PdfGabunganModal';
  * - Belum ada template → pratinjau placeholder (seperti purwarupa).
  * - `cetakSemua(items, label)` → dokumen ber-template PDF & berkas unggahan digabung jadi satu
  *   PDF dan ditampilkan di popup (Cetak / Unduh).
+ * `mak` (opsional, dari useMakBerkas) mengisi POK & Sisa Anggaran di Lembar Verifikasi.
  * Render `modal` di halaman pemanggil.
  */
-export function useDokumenLpj({ pack, pegawai, showToast }) {
+export function useDokumenLpj({ pack, pegawai, showToast, mak }) {
   const [preview, setPreview] = useState(null);
   const urutGabungan = useRef(0); // abaikan hasil penyusunan yang popupnya sudah ditutup
 
-  const lihat = (item) => setPreview(resolveDokumen(pack, item, pegawai));
+  const lihat = (item) => setPreview(resolveDokumen(pack, item, pegawai, mak));
 
   const cetak = async (item) => {
-    const r = resolveDokumen(pack, item, pegawai);
+    const r = resolveDokumen(pack, item, pegawai, mak);
     if (r.kind !== 'pdf') {
       setPreview(r);
       return;
@@ -41,7 +42,7 @@ export function useDokumenLpj({ pack, pegawai, showToast }) {
    */
   const cetakSemua = async (items, label = 'Cetak Semua') => {
     const siap = items
-      .map((item) => resolveDokumen(pack, item, pegawai))
+      .map((item) => resolveDokumen(pack, item, pegawai, mak))
       .filter((r) => r.kind === 'pdf' || (r.kind === 'files' && r.files.length > 0));
     if (!siap.length) {
       showToast?.('Belum ada dokumen yang bisa dicetak.', 'error');

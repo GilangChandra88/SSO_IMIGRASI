@@ -5,8 +5,9 @@
  */
 
 import { SURAT_REGISTRY } from '@/data/surat';
-import { DIPA_DASAR_TEXT } from '../data/masterLpj';
+import { DIPA_DASAR_TEXT, LAP_PENUTUP_BAKU } from '../data/masterLpj';
 import { isPerjadin, lpjIdOf, makOf, parseNum, pelaksanaOf, transaksiOf } from './lpjLogic';
+import { dataLembar } from './verifikasiLogic';
 
 // Dokumen yang sudah punya template PDF (key dokumen → id definisi surat)
 const TEMPLATE_BY_DOC = {
@@ -21,6 +22,7 @@ const TEMPLATE_BY_DOC = {
   // SPBy memakai format "Surat Perintah Bayar" kantor (template SPB yang sudah ada)
   spby: 'surat-perintah-bayar',
   laporan: 'laporan',
+  lembar_verifikasi: 'lembar-verifikasi',
 };
 
 // Dokumen khusus LPJ yang punya template PDF tetapi tidak didaftarkan di SURAT_REGISTRY
@@ -32,6 +34,7 @@ const SURAT_KHUSUS_LPJ = [
     nama: 'Surat Pernyataan Pengeluaran Biaya Perjalanan Dinas',
     variables: [],
   },
+  { id: 'lembar-verifikasi', kode: 'LV', nama: 'Lembar Verifikasi', variables: [] },
 ];
 
 // Lampiran Non-Perjadin berupa berkas unggahan
@@ -138,13 +141,15 @@ export function dataDokumen(pack, pegawaiList) {
     // Laporan Kegiatan (dasar, maksud, dan pegawai_list dipakai juga)
     lap_judul: pack.uraian || '',
     lap_tanggal: lap.tanggalLaporan || '',
-    lap_pendahuluan: lap.pendahuluan || '',
-    lap_pelaksanaan: lap.pelaksanaan || '',
+    lap_pendahuluan: lap.pendahuluan || '', // A.1 Umum
+    lap_maksud: lap.maksud || '',
+    lap_ruang_lingkup: lap.ruangLingkup || '',
+    lap_pelaksanaan: lap.pelaksanaan || '', // B.3 Uraian Kegiatan
     lap_hasil: lap.hasil || '',
     lap_kesimpulan: lap.kesimpulan || '',
-    lap_rekomendasi: lap.rekomendasi || '',
+    lap_rekomendasi: lap.rekomendasi || '', // data lama: dicetak bersama D. Simpulan dan Saran
+    lap_penutup: lap.penutup || LAP_PENUTUP_BAKU,
     lap_ttd: lap.penandatangan ? formatPegawai(lap.penandatangan) : '',
-    lap_jabatan_ttd: lap.jabatanTtd || '',
   };
 }
 
@@ -157,9 +162,11 @@ export function punyaTemplatePdf(item) {
 /**
  * Tentukan cara menampilkan satu dokumen.
  * @param item dokumen/sub-dokumen dari lpjDetailStages: { key, docKey?, pegawai?, label }
+ * @param mak konteks MAK (useMakBerkas) untuk POK & Sisa Anggaran Lembar Verifikasi; tanpa ini
+ *   kolom POK/Sisa berisi "—"
  * @returns {{kind:'pdf', label, surat, data, packItem}|{kind:'files', label, files}|{kind:'placeholder', label}}
  */
-export function resolveDokumen(pack, item, pegawaiList) {
+export function resolveDokumen(pack, item, pegawaiList, mak) {
   const docKey = item.docKey || item.key;
   if (FILE_DOCS.includes(docKey)) {
     return { kind: 'files', label: item.label, files: pack.np?.lampiran?.[docKey] || [] };
@@ -174,6 +181,7 @@ export function resolveDokumen(pack, item, pegawaiList) {
   if (!surat) return { kind: 'placeholder', label: item.label };
 
   const data = dataDokumen(pack, pegawaiList);
+  if (docKey === 'lembar_verifikasi') data.lembar = dataLembar(pack, mak, pegawaiList);
   let packItem;
   if (item.pegawai) {
     if (docKey === 'spd') data.pegawai = formatPegawai(item.pegawai);

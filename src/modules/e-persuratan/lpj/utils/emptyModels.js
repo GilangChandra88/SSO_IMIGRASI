@@ -59,13 +59,14 @@ export const emptyLpj = () => ({
 
 export const emptyLap = () => ({
   tanggalLaporan: '',
-  pendahuluan: '',
-  pelaksanaan: '',
+  pendahuluan: '', // A.1 Umum
+  maksud: '',
+  ruangLingkup: '',
+  pelaksanaan: '', // B.3 Uraian Kegiatan
   hasil: '',
-  kesimpulan: '',
-  rekomendasi: '',
+  kesimpulan: '', // D. Simpulan dan Saran
+  penutup: '',
   penandatangan: null,
-  jabatanTtd: '',
   fotos: [],
   locked: false,
 });

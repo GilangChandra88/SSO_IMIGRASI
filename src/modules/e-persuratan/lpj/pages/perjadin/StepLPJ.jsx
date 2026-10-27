@@ -185,30 +185,6 @@ export default function StepLPJ({ ctx }) {
         )}
       </div>
 
-      <div className={FORM.cardMuted}>
-        <h3 className={`${FORM.cardTitle} mb-1`}>Pack 7 Dokumen Pertanggungjawaban</h3>
-        <p className={`text-xs mb-3.5 ${T.ink2}`}>Digenerate otomatis setelah data disimpan</p>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          {LPJ_DOCS.map((d) => (
-            <div
-              key={d.key}
-              className={`flex items-center gap-2 px-3 py-[9px] rounded-lg border ${T.surface} ${T.border}`}
-            >
-              <div
-                className={`w-5 h-5 shrink-0 rounded-full border flex items-center justify-center text-[10px] font-bold ${STATUS.infoBg} ${STATUS.infoBorder} ${STATUS.infoInk}`}
-              >
-                {d.num}
-              </div>
-              <span className={`text-[12.5px] ${T.ink}`}>
-                {d.label === 'Surat Pernyataan Pengeluaran Biaya Perjalanan Dinas'
-                  ? 'Surat Pernyataan Pengeluaran'
-                  : d.label}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
-
       <div className="flex flex-wrap justify-end items-center gap-2 pb-6">
         {/* Isian sudah tersimpan otomatis; tombol ini menyimpan sisa perubahan lalu kembali */}
         <button type="button" className={BTN.ghost} onClick={ctx.backToDetail}>

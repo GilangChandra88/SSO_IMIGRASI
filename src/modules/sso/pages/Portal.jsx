@@ -1,13 +1,60 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FaMoneyCheckAlt, FaBoxes, FaUserTie, FaSignOutAlt, FaChevronRight } from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
+import ToastViewport from '@/components/ToastViewport';
+import {
+  adalahUltahHariIni,
+  ambilPegawai,
+  perluKejutan,
+  tandaiKejutanSelesai,
+} from '@/utils/ulangTahun';
+import KejutanUltah from '../ulang-tahun/KejutanUltah';
+import BannerUltah from '../ulang-tahun/BannerUltah';
 
 export default function Portal() {
   const navigate = useNavigate();
-  const { currentUser, userData, userRole } = useAuth();
+  const { currentUser, userData, userRole, isAdmin } = useAuth();
+  const [params, setParams] = useSearchParams();
+  const ujiId = params.get('uji-ultah');
+  // { pegawai, uji }: captcha ulang tahun yang sedang tampil
+  const [kejutan, setKejutan] = useState(null);
+
+  // Pegawai yang berulang tahun hari ini & belum menyelesaikan captcha tahun ini
+  useEffect(() => {
+    if (ujiId || !userData?.id || !adalahUltahHariIni(userData.tanggal_lahir)) return undefined;
+    let batal = false;
+    perluKejutan(userData.id)
+      .then((perlu) => {
+        if (perlu && !batal) setKejutan({ pegawai: userData, uji: false });
+      })
+      .catch(() => {});
+    return () => {
+      batal = true;
+    };
+  }, [userData, ujiId]);
+
+  // Pratinjau admin dari Kepegawaian: /?uji-ultah=<id pegawai>
+  useEffect(() => {
+    if (!ujiId || !isAdmin) return undefined;
+    let batal = false;
+    ambilPegawai(ujiId)
+      .then((p) => {
+        if (p && !batal) setKejutan({ pegawai: p, uji: true });
+      })
+      .catch(() => {});
+    return () => {
+      batal = true;
+    };
+  }, [ujiId, isAdmin]);
+
+  const selesaiKejutan = () => {
+    if (kejutan?.uji) setParams({}, { replace: true });
+    else if (kejutan) tandaiKejutanSelesai(kejutan.pegawai.id).catch(() => {});
+    setKejutan(null);
+  };
 
   const handleLogout = async () => {
     await signOut(auth);
@@ -83,6 +130,8 @@ export default function Portal() {
           </div>
         </div>
 
+        <BannerUltah />
+
         {/* Title for Apps Section */}
         <div className="pt-4">
           <h2 className="font-bold text-slate-800 dark:text-slate-200 text-xl">Portal Layanan</h2>
@@ -133,6 +182,16 @@ export default function Portal() {
           ))}
         </div>
       </div>
+
+      {kejutan && (
+        <KejutanUltah
+          key={`${kejutan.pegawai.id}-${kejutan.uji}`}
+          pegawai={kejutan.pegawai}
+          uji={kejutan.uji}
+          onSelesai={selesaiKejutan}
+        />
+      )}
+      <ToastViewport />
     </div>
   );
 }
