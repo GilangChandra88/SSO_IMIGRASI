@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import SplashScreen from '@/components/SplashScreen';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
-import { Login, Portal } from '@/modules/sso';
+import { Login, Portal, PopupUcapan } from '@/modules/sso';
 import { EPersuratanApp } from '@/modules/e-persuratan';
 import { InventoryApp } from '@/modules/inventory';
 import { KepegawaianApp } from '@/modules/kepegawaian';
@@ -76,6 +76,8 @@ function App() {
     <AuthProvider>
       {showSplash && <SplashScreen onFinish={() => setShowSplash(false)} />}
       <AppContent />
+      {/* Ucapan ulang tahun dari rekan kerja: popup di halaman mana pun */}
+      <PopupUcapan />
     </AuthProvider>
   );
 }
