@@ -4,7 +4,7 @@ import { FaCheck, FaExclamationTriangle } from 'react-icons/fa';
 import { FONT, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, jedaKe } from '@/utils/animasi';
 import { AngkaBerjalan } from '@/components/animasi';
-import { SEKSI } from '@/data/seksi';
+import { useUnitKerja } from '@/context/useUnitKerja';
 import { K } from '../ui/kelas';
 import { useInventori } from '../hooks/useInventori';
 import { useTransaksi, useTransaksiTerbaru } from '../hooks/useTransaksi';
@@ -126,6 +126,7 @@ function GrafikBatang({ data }) {
 export default function Dashboard() {
   const navigate = useNavigate();
   const { siap, barang, semuaBarang, sisa, bulanan, izin, setLengkapiId } = useInventori();
+  const { pilihanSeksi } = useUnitKerja();
   const [semuaTanpaSakti, setSemuaTanpaSakti] = useState(false);
   const kini = hariIni();
   const bulanIni = kini.slice(0, 7);
@@ -147,7 +148,7 @@ export default function Dashboard() {
     const keluarBulan = keluarBulanIni.rows.filter((k) => k.status !== 'batal');
 
     const daftarSeksi = [
-      ...new Set([...SEKSI, ...keluarBulan.map((k) => k.seksi).filter(Boolean)]),
+      ...new Set([...pilihanSeksi, ...keluarBulan.map((k) => k.seksi).filter(Boolean)]),
     ];
     const perSeksi = daftarSeksi
       .map((s) => ({
@@ -226,6 +227,7 @@ export default function Dashboard() {
     keluarBulanIni.rows,
     terbaruMasuk.rows,
     terbaruKeluar.rows,
+    pilihanSeksi,
   ]);
 
   if (!siap) return <MemuatInventori judul="Dashboard" />;

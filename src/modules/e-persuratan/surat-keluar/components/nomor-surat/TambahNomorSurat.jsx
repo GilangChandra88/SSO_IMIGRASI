@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { FaArrowLeft, FaExclamationTriangle, FaHashtag } from 'react-icons/fa';
+import { useUnitKerja } from '@/context/useUnitKerja';
 import { PANJANG } from '@/utils/batas';
 import { tanggalIso } from '@/utils/nilai';
 import { pesanGalat } from '@/utils/pesanGalat';
@@ -7,7 +8,7 @@ import { showToast } from '@/utils/toastStore';
 import { ADMIN } from '@/utils/uiTokens';
 import { useMekarDariTombol } from '@/components/animasi';
 import { gulirKeGalat } from '../../../gulirPintar';
-import { SEKSI_OPTIONS, formatNomorSurat, prefixKode } from '../../data/nomorSuratConfig';
+import { formatNomorSurat, prefixKode } from '../../data/nomorSuratConfig';
 import { useNomorTerakhir } from '../../hooks/useNomorSurat';
 import { terbitkanNomorSurat } from '../../services/nomorSurat';
 import PilihKodeSurat from './PilihKodeSurat';
@@ -18,6 +19,7 @@ import PilihKodeSurat from './PilihKodeSurat';
  * `onKembali(nomor?)`: nomor terisi bila nomor baru berhasil dibuat.
  */
 export default function TambahNomorSurat({ indeks, onKembali }) {
+  const { pilihanSeksi } = useUnitKerja();
   // Dibuka dari "Tambah Nomor Surat": form mekar dari tombol itu
   const mekarRef = useMekarDariTombol();
   const [form, setForm] = useState({ tanggal: tanggalIso(), seksi: '', perihal: '', tujuan: '' });
@@ -120,7 +122,7 @@ export default function TambahNomorSurat({ indeks, onKembali }) {
             <option value="" disabled>
               Pilih seksi/bagian
             </option>
-            {SEKSI_OPTIONS.map((s) => (
+            {pilihanSeksi.map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>

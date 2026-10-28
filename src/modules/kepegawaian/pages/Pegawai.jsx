@@ -1,13 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FaBirthdayCake,
   FaBriefcase,
+  FaFileImport,
   FaKey,
   FaMedal,
   FaPen,
-  FaSave,
-  FaTimes,
+  FaSearch,
+  FaSitemap,
   FaUserCheck,
   FaUserPlus,
   FaUserShield,
@@ -16,34 +17,30 @@ import {
   FaUsers,
 } from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
+import { useUnitKerja } from '@/context/useUnitKerja';
 import ToastViewport from '@/components/ToastViewport';
-import { showToast } from '@/utils/toastStore';
-import { PANJANG } from '@/utils/batas';
-import { pesanGagalUnggah } from '@/utils/berkasStorage';
 import { labelPeran, peranDariKlaim } from '@/utils/peran';
 import { adalahUltahHariIni } from '@/utils/ulangTahun';
-import { SEKSI } from '@/data/seksi';
 import {
-  PEGAWAI_KOSONG,
-  idPegawaiBaru,
-  pantauMaster,
-  pantauPegawai,
-  pesanGalat,
-  simpanPegawai,
-} from '../services/pegawaiDb';
-import { hapusFotoPegawai, unggahFotoPegawai } from '../services/fotoPegawai';
+  STATUS_KEPEGAWAIAN,
+  dataBelumLengkap,
+  formatNip,
+  formatWa,
+  labelPangkat,
+  labelStatus,
+} from '@/utils/dataPegawai';
+import { pantauKontak, pantauMaster, pantauPegawai } from '../services/pegawaiDb';
 import AvatarPegawai from '../components/AvatarPegawai';
-import FotoPegawaiEditor from '../components/FotoPegawaiEditor';
+import FormPegawai from '../components/FormPegawai';
 import ModalBuatAkun from '../components/ModalBuatAkun';
 import ModalAturPeran from '../components/ModalAturPeran';
+import ModalImporPegawai from '../components/ModalImporPegawai';
 import ModalKejutanUltah from '../components/ModalKejutanUltah';
 import ModalStatusPegawai from '../components/ModalStatusPegawai';
 import TabMaster from '../components/TabMaster';
 import TabPejabat from '../components/TabPejabat';
-
-const masukan =
-  'w-full text-sm py-2 px-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100';
-const labelKelas = 'block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1';
+import TabUnitKerja from '../components/TabUnitKerja';
+import { K } from '../ui/kelas';
 
 const formatTanggal = (iso) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return '';
@@ -55,30 +52,40 @@ const formatTanggal = (iso) => {
   });
 };
 
+/** true bila unit `unitId` adalah `indukId` atau berada di bawahnya. */
+function dalamUnit(byId, unitId, indukId) {
+  let u = byId[unitId];
+  for (let i = 0; u && i < 4; i++) {
+    if (u.id === indukId) return true;
+    u = byId[u.indukId];
+  }
+  return false;
+}
+
 /**
- * Data pegawai, akun, peran, foto, dan pejabat penandatangan (docs/skema-database.md §5.1).
- * Data pegawai ditulis langsung (rules memvalidasi); akun, peran, dan status aktif hanya lewat
- * Cloud Function. Data Super Admin hanya bisa diubah Super Admin; akun sendiri tidak bisa diubah
- * peran/statusnya. Foto diunggah dulu, lalu data disimpan, baru foto yang dibuang dihapus.
+ * Data pegawai, akun, peran, foto, unit kerja, dan pejabat penandatangan (skema §5.1).
+ * Data pegawai & kontak ditulis langsung (rules memvalidasi); akun, peran, dan status aktif hanya
+ * lewat Cloud Function. Data Super Admin hanya bisa diubah Super Admin; akun sendiri tidak bisa
+ * diubah peran/statusnya. Data bisa diimpor dari CSV (Excel).
  */
 export default function Pegawai() {
   const navigate = useNavigate();
   const { currentUser, userData, isSuperAdmin, isKepegawaian } = useAuth();
   const uid = currentUser?.uid;
+  const unit = useUnitKerja();
   const [tab, setTab] = useState('pegawai');
   const [daftar, setDaftar] = useState([]);
+  const [kontak, setKontak] = useState({});
   const [pangkat, setPangkat] = useState([]);
   const [jabatan, setJabatan] = useState([]);
   const [memuat, setMemuat] = useState(true);
 
-  const [form, setForm] = useState(null); // null = tertutup; { id?, ...data }
-  const [galatForm, setGalatForm] = useState('');
-  const [menyimpan, setMenyimpan] = useState(false);
-  // Foto di form: form.fotoPaths = foto tersimpan yang dipertahankan, fotoBaru = berkas yang akan
-  // diunggah, fotoDihapus = path tersimpan yang dibuang (dihapus setelah simpan berhasil)
-  const [fotoBaru, setFotoBaru] = useState([]);
-  const [fotoDihapus, setFotoDihapus] = useState([]);
-  const [modal, setModal] = useState(null); // { jenis: 'akun'|'peran'|'status'|'ultah', pegawai }
+  const [form, setForm] = useState(null); // null = tertutup; { pegawai: object|null }
+  const [modal, setModal] = useState(null); // { jenis: 'akun'|'peran'|'status'|'ultah'|'impor', pegawai? }
+  const [cari, setCari] = useState('');
+  const [saringUnit, setSaringUnit] = useState('');
+  const [saringStatus, setSaringStatus] = useState('');
+  const [hanyaKurang, setHanyaKurang] = useState(false);
 
   useEffect(() => {
     const berhenti = [
@@ -89,6 +96,7 @@ export default function Pegawai() {
         },
         () => setMemuat(false),
       ),
+      pantauKontak(setKontak),
       pantauMaster('pangkat', setPangkat),
       pantauMaster('jabatan', setJabatan),
     ];
@@ -99,69 +107,35 @@ export default function Pegawai() {
   const bolehUbah = (k) => isKepegawaian && (isSuperAdmin || !dataSuperAdmin(k));
   const akunSendiri = (k) => userData?.id === k.id;
 
-  function bukaForm(k) {
-    setGalatForm('');
-    setFotoBaru([]);
-    setFotoDihapus([]);
-    setForm(k ? { id: k.id, ...PEGAWAI_KOSONG, ...k } : { ...PEGAWAI_KOSONG });
-  }
+  const eselonById = useMemo(
+    () => Object.fromEntries(jabatan.map((j) => [j.id, j.eselon || ''])),
+    [jabatan],
+  );
 
-  function buangFotoTersimpan(path) {
-    setForm((f) => ({ ...f, fotoPaths: f.fotoPaths.filter((p) => p !== path) }));
-    setFotoDihapus((d) => [...d, path]);
-  }
+  const tampil = useMemo(() => {
+    const kata = cari.trim().toLowerCase();
+    const angka = kata.replace(/\s/g, '');
+    return daftar
+      .map((k) => ({ ...k, kurang: dataBelumLengkap(k, kontak[k.id]) }))
+      .filter((k) => {
+        if (
+          kata &&
+          !k.nama.toLowerCase().includes(kata) &&
+          !(angka && (k.nip || '').includes(angka))
+        )
+          return false;
+        if (saringUnit && !dalamUnit(unit.byId, k.unitId, saringUnit)) return false;
+        if (saringStatus && k.statusKepegawaian !== saringStatus) return false;
+        if (hanyaKurang && (!k.kurang.length || k.aktif === false)) return false;
+        return true;
+      });
+  }, [daftar, kontak, cari, saringUnit, saringStatus, hanyaKurang, unit.byId]);
 
-  function pilihMaster(jenis, id) {
-    const sumber = jenis === 'pangkat' ? pangkat : jabatan;
-    const m = sumber.find((x) => x.id === id);
-    setForm((f) => ({ ...f, [`${jenis}Id`]: m?.id || '', [`${jenis}Nama`]: m?.nama || '' }));
-  }
-
-  async function simpan(e) {
-    e.preventDefault();
-    const nama = form.nama.trim();
-    const nip = form.nip.trim();
-    if (!nama) return setGalatForm('Nama wajib diisi.');
-    if (nip && !/^\d{18}$/.test(nip))
-      return setGalatForm('NIP harus 18 digit angka (kosongkan untuk non-PNS).');
-    setGalatForm('');
-    setMenyimpan(true);
-    const id = form.id || idPegawaiBaru();
-    try {
-      const hasil = await Promise.allSettled(fotoBaru.map((f) => unggahFotoPegawai(id, f, uid)));
-      const unggahan = hasil.filter((h) => h.status === 'fulfilled').map((h) => h.value);
-      const gagal = hasil.find((h) => h.status === 'rejected');
-      if (gagal) {
-        unggahan.forEach((p) => hapusFotoPegawai(p).catch(() => {}));
-        setGalatForm(
-          pesanGagalUnggah(gagal.reason, 'Foto gagal diproses atau diunggah. Coba foto lain.'),
-        );
-        return;
-      }
-      try {
-        await simpanPegawai(
-          { ...form, nama, nip, fotoPaths: [...form.fotoPaths, ...unggahan] },
-          id,
-          uid,
-          { baru: !form.id },
-        );
-      } catch (err) {
-        unggahan.forEach((p) => hapusFotoPegawai(p).catch(() => {}));
-        throw err;
-      }
-      fotoDihapus.forEach((p) => hapusFotoPegawai(p).catch(() => {}));
-      showToast(form.id ? 'Data pegawai diperbarui.' : 'Pegawai ditambahkan.');
-      setForm(null);
-    } catch (err) {
-      setGalatForm(pesanGalat(err, 'Data pegawai gagal disimpan.'));
-    } finally {
-      setMenyimpan(false);
-    }
-  }
-
-  /** Pilihan master: yang aktif, ditambah nilai yang sedang dipakai pegawai ini (bila dinonaktifkan). */
-  const opsiMaster = (sumber, idTerpilih) =>
-    sumber.filter((m) => m.aktif !== false || m.id === idTerpilih);
+  const jumlahKurang = useMemo(
+    () =>
+      daftar.filter((k) => k.aktif !== false && dataBelumLengkap(k, kontak[k.id]).length).length,
+    [daftar, kontak],
+  );
 
   if (memuat)
     return (
@@ -192,216 +166,148 @@ export default function Pegawai() {
             Data Pegawai
           </h1>
           <p className="text-slate-500 dark:text-slate-400 font-medium text-sm mt-1">
-            Kelola data pegawai, pangkat, jabatan, akun sistem, peran, dan pejabat penandatangan.
+            Kelola data pegawai, unit kerja, pangkat, jabatan, akun sistem, peran, dan pejabat
+            penandatangan.
           </p>
         </div>
 
         <div className="flex gap-4 mb-6 border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
           {tombolTab('pegawai', <FaUsers />, 'Pegawai')}
+          {tombolTab('unit', <FaSitemap />, 'Unit Kerja')}
           {tombolTab('pejabat', <FaUserTie />, 'Pejabat')}
           {tombolTab('pangkat', <FaMedal />, 'Master Pangkat')}
           {tombolTab('jabatan', <FaBriefcase />, 'Master Jabatan')}
         </div>
 
         {tab === 'pegawai' && (
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center gap-3">
-              <h2 className="font-bold text-slate-700 dark:text-slate-200">
-                Daftar Pegawai ({daftar.length})
+          <div className={K.kartu}>
+            <div className={K.kepalaKartu}>
+              <h2 className={K.judulKartu}>
+                Daftar Pegawai ({tampil.length}
+                {tampil.length !== daftar.length && ` dari ${daftar.length}`})
               </h2>
               {!form && isKepegawaian && (
-                <button
-                  type="button"
-                  onClick={() => bukaForm(null)}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2 shadow-sm transition-all"
-                >
-                  <FaUserPlus /> Tambah Pegawai
-                </button>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setModal({ jenis: 'impor' })}
+                    className={K.tombolKedua}
+                  >
+                    <FaFileImport /> Impor CSV
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm({ pegawai: null })}
+                    className={K.tombolUtama}
+                  >
+                    <FaUserPlus /> Tambah Pegawai
+                  </button>
+                </div>
               )}
             </div>
 
             {form && (
-              <form
-                onSubmit={simpan}
-                className="p-4 border-b border-indigo-100 dark:border-indigo-900 bg-indigo-50/30 dark:bg-indigo-900/10 grid grid-cols-1 md:grid-cols-3 gap-4 items-end"
-              >
-                <div>
-                  <label htmlFor="f-nama" className={labelKelas}>
-                    NAMA
-                  </label>
-                  <input
-                    id="f-nama"
-                    required
-                    maxLength={PANJANG.namaPegawai}
-                    value={form.nama}
-                    onChange={(e) => setForm({ ...form, nama: e.target.value })}
-                    className={masukan}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="f-nip" className={labelKelas}>
-                    NIP (18 digit, kosongkan bila non-PNS)
-                  </label>
-                  <input
-                    id="f-nip"
-                    inputMode="numeric"
-                    maxLength={18}
-                    value={form.nip}
-                    onChange={(e) => setForm({ ...form, nip: e.target.value.replace(/\D/g, '') })}
-                    className={`${masukan} font-mono`}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="f-lahir" className={labelKelas}>
-                    TANGGAL LAHIR
-                  </label>
-                  <input
-                    id="f-lahir"
-                    type="date"
-                    value={form.tanggalLahir}
-                    onChange={(e) => setForm({ ...form, tanggalLahir: e.target.value })}
-                    className={`${masukan} dark:[color-scheme:dark]`}
-                  />
-                </div>
-                <div>
-                  <label htmlFor="f-pangkat" className={labelKelas}>
-                    PANGKAT/GOL
-                  </label>
-                  <select
-                    id="f-pangkat"
-                    value={form.pangkatId}
-                    onChange={(e) => pilihMaster('pangkat', e.target.value)}
-                    className={masukan}
-                  >
-                    <option value="">-- Pilih --</option>
-                    {opsiMaster(pangkat, form.pangkatId).map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.nama}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="f-jabatan" className={labelKelas}>
-                    JABATAN
-                  </label>
-                  <select
-                    id="f-jabatan"
-                    value={form.jabatanId}
-                    onChange={(e) => pilihMaster('jabatan', e.target.value)}
-                    className={masukan}
-                  >
-                    <option value="">-- Pilih --</option>
-                    {opsiMaster(jabatan, form.jabatanId).map((j) => (
-                      <option key={j.id} value={j.id}>
-                        {j.nama}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label htmlFor="f-seksi" className={labelKelas}>
-                    SEKSI
-                  </label>
-                  <select
-                    id="f-seksi"
-                    value={form.seksi}
-                    onChange={(e) => setForm({ ...form, seksi: e.target.value })}
-                    className={masukan}
-                  >
-                    <option value="">-- Pilih --</option>
-                    {SEKSI.map((s) => (
-                      <option key={s} value={s}>
-                        {s}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="md:col-span-3">
-                  <FotoPegawaiEditor
-                    tersimpan={form.fotoPaths}
-                    baru={fotoBaru}
-                    onBuangTersimpan={buangFotoTersimpan}
-                    onTambah={(files) => setFotoBaru((d) => [...d, ...files])}
-                    onBuangBaru={(i) => setFotoBaru((d) => d.filter((_, j) => j !== i))}
-                    disabled={menyimpan}
-                  />
-                </div>
-                {galatForm && (
-                  <p
-                    role="alert"
-                    className="md:col-span-3 text-sm text-rose-600 dark:text-rose-300 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-900/50 rounded-lg px-3 py-2"
-                  >
-                    {galatForm}
-                  </p>
-                )}
-                <div className="md:col-span-3 flex flex-wrap justify-between items-center gap-2 mt-1">
-                  <p className="text-[11px] text-slate-400">
-                    Akun login, peran, dan status aktif diatur dari tombol di daftar pegawai.
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setForm(null)}
-                      disabled={menyimpan}
-                      className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60 flex items-center gap-2"
-                    >
-                      <FaTimes /> Batal
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={menyimpan}
-                      className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 flex items-center gap-2 shadow-sm"
-                    >
-                      <FaSave />{' '}
-                      {menyimpan ? (fotoBaru.length ? 'Mengunggah foto…' : 'Menyimpan…') : 'Simpan'}
-                    </button>
-                  </div>
-                </div>
-              </form>
+              <FormPegawai
+                key={form.pegawai?.id || 'baru'}
+                pegawai={form.pegawai}
+                kontak={form.pegawai ? kontak[form.pegawai.id] : undefined}
+                pangkat={pangkat}
+                jabatan={jabatan}
+                unit={unit}
+                uid={uid}
+                onTutup={() => setForm(null)}
+              />
             )}
 
+            <div className="p-3 sm:p-4 border-b border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_14rem_10rem_auto] gap-2 items-center">
+              <label className="relative block">
+                <span className="sr-only">Cari nama atau NIP</span>
+                <FaSearch
+                  size={12}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
+                />
+                <input
+                  type="search"
+                  value={cari}
+                  onChange={(e) => setCari(e.target.value)}
+                  placeholder="Cari nama atau NIP…"
+                  className={`${K.masukan} pl-8`}
+                />
+              </label>
+              <select
+                aria-label="Saring unit kerja"
+                value={saringUnit}
+                onChange={(e) => setSaringUnit(e.target.value)}
+                className={K.masukan}
+              >
+                <option value="">Semua unit kerja</option>
+                {unit.pohon.map((u) => (
+                  <option key={u.id} value={u.id}>
+                    {'\u2003'.repeat(u.kedalaman)}
+                    {u.nama}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label="Saring status kepegawaian"
+                value={saringStatus}
+                onChange={(e) => setSaringStatus(e.target.value)}
+                className={K.masukan}
+              >
+                <option value="">Semua status</option>
+                {STATUS_KEPEGAWAIAN.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+              <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300 cursor-pointer whitespace-nowrap">
+                <input
+                  type="checkbox"
+                  checked={hanyaKurang}
+                  onChange={(e) => setHanyaKurang(e.target.checked)}
+                  className="accent-indigo-600"
+                />
+                Belum lengkap ({jumlahKurang})
+              </label>
+            </div>
+
             <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
+              <table className="w-full text-left border-collapse min-w-[860px]">
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
-                    <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400">
-                      NAMA / PERAN
-                    </th>
-                    <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400">
-                      NIP
-                    </th>
-                    <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400">
-                      JABATAN & PANGKAT
-                    </th>
-                    <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400">
-                      AKUN SISTEM
-                    </th>
-                    <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400 text-right">
-                      AKSI
-                    </th>
+                    <th className={K.th}>NAMA / PERAN</th>
+                    <th className={K.th}>NIP & KONTAK</th>
+                    <th className={K.th}>PANGKAT, JABATAN & UNIT</th>
+                    <th className={K.th}>AKUN SISTEM</th>
+                    <th className={`${K.th} text-right`}>AKSI</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {daftar.length === 0 && (
+                  {tampil.length === 0 && (
                     <tr>
                       <td colSpan={5} className="p-8 text-center text-sm text-slate-400">
-                        Belum ada data pegawai.
+                        {daftar.length
+                          ? 'Tidak ada pegawai yang cocok dengan saringan.'
+                          : 'Belum ada data pegawai. Tambah satu per satu atau pakai Impor CSV.'}
                       </td>
                     </tr>
                   )}
-                  {daftar.map((k) => {
+                  {tampil.map((k) => {
                     const nonaktif = k.aktif === false;
                     const sendiri = akunSendiri(k);
+                    const ko = kontak[k.id];
+                    const u = unit.byId[k.unitId];
+                    const eselon = eselonById[k.jabatanId];
                     return (
                       <tr
                         key={k.id}
                         className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${nonaktif ? 'opacity-60' : ''}`}
                       >
-                        <td className="p-4">
-                          <div className="flex items-center gap-3">
+                        <td className={K.td}>
+                          <div className="flex items-start gap-3">
                             <AvatarPegawai pegawai={k} />
-                            <div>
+                            <div className="min-w-0">
                               <div className="font-bold text-slate-800 dark:text-slate-100">
                                 {k.nama}{' '}
                                 {sendiri && (
@@ -414,18 +320,26 @@ export default function Pegawai() {
                                 <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
                                   {labelPeran(peranDariKlaim({ peran: k.peran }))}
                                 </span>
-                                {k.seksi && (
-                                  <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
-                                    · {k.seksi}
+                                {k.statusKepegawaian && (
+                                  <span className={`${K.lencana} ${K.lencanaNetral}`}>
+                                    {labelStatus(k.statusKepegawaian)}
                                   </span>
                                 )}
                                 {nonaktif && (
-                                  <span className="text-[10px] font-bold bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50 px-1.5 py-0.5 rounded">
+                                  <span className={`${K.lencana} ${K.lencanaBahaya}`}>
                                     Nonaktif
                                   </span>
                                 )}
+                                {!nonaktif && k.kurang.length > 0 && (
+                                  <span
+                                    title={`Belum diisi: ${k.kurang.join(', ')}`}
+                                    className={`${K.lencana} ${K.lencanaWaspada} cursor-help`}
+                                  >
+                                    {k.kurang.length} data kosong
+                                  </span>
+                                )}
                                 {!nonaktif && adalahUltahHariIni(k.tanggalLahir) && (
-                                  <span className="text-[10px] font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 px-1.5 py-0.5 rounded">
+                                  <span className={`${K.lencana} ${K.lencanaWaspada}`}>
                                     🎂 Ulang tahun hari ini
                                   </span>
                                 )}
@@ -433,23 +347,43 @@ export default function Pegawai() {
                             </div>
                           </div>
                         </td>
-                        <td className="p-4 text-slate-600 dark:text-slate-300 font-mono text-sm">
-                          {k.nip || '-'}
+                        <td className={`${K.td} text-sm`}>
+                          <div className="font-mono text-slate-600 dark:text-slate-300 whitespace-nowrap">
+                            {formatNip(k.nip) || '-'}
+                          </div>
                           {k.tanggalLahir && (
-                            <div className="font-sans text-xs text-slate-400 mt-0.5">
+                            <div className="text-xs text-slate-400 mt-0.5">
                               Lahir {formatTanggal(k.tanggalLahir)}
                             </div>
                           )}
+                          {ko?.noWa && (
+                            <div className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 font-mono">
+                              WA {formatWa(ko.noWa)}
+                            </div>
+                          )}
+                          {ko?.emailPribadi && (
+                            <div className="text-xs text-slate-500 dark:text-slate-400 break-all">
+                              {ko.emailPribadi}
+                            </div>
+                          )}
                         </td>
-                        <td className="p-4">
+                        <td className={`${K.td} max-w-xs`}>
                           <div className="text-slate-700 dark:text-slate-200 text-sm font-semibold">
                             {k.jabatanNama || '-'}
+                            {eselon && (
+                              <span className={`${K.lencana} ${K.lencanaInfo} ml-1.5`}>
+                                Eselon {eselon}
+                              </span>
+                            )}
                           </div>
                           <div className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
-                            {k.pangkatNama || '-'}
+                            {labelPangkat(k.pangkatNama, k.golongan) || '-'}
+                          </div>
+                          <div className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
+                            {u ? u.nama : k.seksi || '-'}
                           </div>
                         </td>
-                        <td className="p-4">
+                        <td className={K.td}>
                           {k.authUid ? (
                             <span className="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 px-2 py-1 rounded text-xs font-bold border border-emerald-200 dark:border-emerald-900/50 break-all">
                               {k.email}
@@ -460,14 +394,14 @@ export default function Pegawai() {
                               <button
                                 type="button"
                                 onClick={() => setModal({ jenis: 'akun', pegawai: k })}
-                                className="text-xs font-bold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900/50 hover:bg-indigo-100 flex items-center gap-1.5"
+                                className="text-xs font-bold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900/50 hover:bg-indigo-100 flex items-center gap-1.5 whitespace-nowrap"
                               >
                                 <FaKey /> Buat Akun
                               </button>
                             )
                           )}
                         </td>
-                        <td className="p-4">
+                        <td className={K.td}>
                           <div className="flex items-center justify-end gap-1">
                             {isKepegawaian && !nonaktif && (
                               <button
@@ -486,7 +420,7 @@ export default function Pegawai() {
                                 onClick={() => setModal({ jenis: 'peran', pegawai: k })}
                                 title="Atur peran"
                                 aria-label={`Atur peran ${k.nama}`}
-                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg"
+                                className={K.tombolIkon}
                               >
                                 <FaUserShield size={14} />
                               </button>
@@ -494,10 +428,10 @@ export default function Pegawai() {
                             {bolehUbah(k) && (
                               <button
                                 type="button"
-                                onClick={() => bukaForm(k)}
+                                onClick={() => setForm({ pegawai: k })}
                                 title="Ubah data"
                                 aria-label={`Ubah data ${k.nama}`}
-                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg"
+                                className={K.tombolIkon}
                               >
                                 <FaPen size={14} />
                               </button>
@@ -524,11 +458,32 @@ export default function Pegawai() {
           </div>
         )}
 
+        {tab === 'unit' && (
+          <TabUnitKerja
+            unit={unit}
+            pegawai={daftar}
+            uid={uid}
+            bolehUbah={isKepegawaian}
+            superAdmin={isSuperAdmin}
+          />
+        )}
         {tab === 'pejabat' && <TabPejabat pegawai={daftar} uid={uid} bolehUbah={isKepegawaian} />}
         {tab === 'pangkat' && <TabMaster jenis="pangkat" daftar={pangkat} uid={uid} />}
         {tab === 'jabatan' && <TabMaster jenis="jabatan" daftar={jabatan} uid={uid} />}
       </div>
 
+      {modal?.jenis === 'impor' && (
+        <ModalImporPegawai
+          pegawai={daftar}
+          kontak={kontak}
+          pangkat={pangkat}
+          jabatan={jabatan}
+          unit={unit}
+          uid={uid}
+          superAdmin={isSuperAdmin}
+          onTutup={() => setModal(null)}
+        />
+      )}
       {modal?.jenis === 'ultah' && (
         <ModalKejutanUltah
           pegawai={modal.pegawai}

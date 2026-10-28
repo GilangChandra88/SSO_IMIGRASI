@@ -7,6 +7,7 @@ import {
   FaSignOutAlt,
   FaChevronRight,
   FaKey,
+  FaIdCard,
 } from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
 import ToastViewport from '@/components/ToastViewport';
@@ -126,6 +127,14 @@ export default function Portal() {
           </div>
 
           <div className="relative z-10 shrink-0 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/profil')}
+              className="bg-slate-800 hover:bg-cyan-500/20 border border-slate-700 hover:border-cyan-500/50 text-slate-300 hover:text-cyan-300 rounded-xl p-3 px-5 flex items-center gap-3 transition-all shadow-lg active:scale-95"
+            >
+              <FaIdCard size={14} />
+              <span className="font-bold text-sm">Profil Saya</span>
+            </button>
             <button
               type="button"
               onClick={() => navigate('/ganti-sandi')}

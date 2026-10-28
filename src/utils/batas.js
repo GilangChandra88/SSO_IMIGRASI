@@ -8,7 +8,11 @@
 /** Panjang maksimum teks (karakter). */
 export const PANJANG = Object.freeze({
   namaPegawai: 120,
-  namaMaster: 160, // pangkat & jabatan
+  namaMaster: 160, // pangkat, jabatan, unit kerja
+  kodeUnit: 20,
+  singkatanUnit: 30, // label pendek unit (dipakai sebagai seksi di modul lain)
+  alamat: 300,
+  emailPribadi: 120,
   uraianBerkas: 220,
   teksLaporan: 5000, // tiap bagian Laporan Kegiatan
   labelBukti: 120,
@@ -61,7 +65,8 @@ export const LIMIT_KUERI = Object.freeze({
   kodeSurat: 2000,
   makNode: 5000,
   pegawaiRingkas: 500,
-  masterPegawai: 200, // pangkat, jabatan, pejabat
+  masterPegawai: 200, // pangkat, jabatan, unit kerja, pejabat
+  kontakPegawai: 500,
   transaksiInventory: 200,
   kategoriInventory: 500,
   barangInventory: 2000,

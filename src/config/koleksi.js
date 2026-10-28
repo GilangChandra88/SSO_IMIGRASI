@@ -11,8 +11,10 @@ export const KOLEKSI = Object.freeze({
   // Pegawai & akun
   pegawai: 'pegawai',
   pegawaiRingkas: 'pegawai_ringkas',
+  pegawaiKontak: 'pegawai_kontak',
   pegawaiPangkat: 'pegawai_pangkat',
   pegawaiJabatan: 'pegawai_jabatan',
+  pegawaiUnit: 'pegawai_unit',
   pegawaiPejabat: 'pegawai_pejabat',
   penggunaPreferensi: 'pengguna_preferensi',
   ultahStatus: 'ultah_status',

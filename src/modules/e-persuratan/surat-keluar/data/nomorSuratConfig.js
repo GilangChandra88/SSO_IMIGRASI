@@ -3,8 +3,6 @@
 // Tingkat kode surat (`surat_kode.tingkat` 0–3), sama dengan SuratForm
 export const HIERARKI_KODE = ['KOP', 'Kode surat 1', 'Kode surat 2', 'Kode surat 3'];
 
-export { SEKSI as SEKSI_OPTIONS } from '@/data/seksi';
-
 /** Kode tiap tingkat yang terisi, digabung titik (awal nomor surat SuratForm). */
 export const prefixKode = (kodeList) =>
   kodeList

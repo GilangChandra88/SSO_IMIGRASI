@@ -1,6 +1,6 @@
 import React from 'react';
 import { FaCheck, FaChevronLeft } from 'react-icons/fa';
-import { SEKSI } from '@/data/seksi';
+import { opsiSeksiDengan, useUnitKerja } from '@/context/useUnitKerja';
 import { ALAT_ANGKUT } from '../../data/masterLpj';
 import MakDropdowns from '../../components/MakDropdowns';
 import PegawaiCards from '../../components/PegawaiCards';
@@ -23,6 +23,7 @@ function validateSpd(spd) {
 
 /** Fase 2 — Surat Perjalanan Dinas (satu form untuk semua pelaksana). */
 export default function StepSPD({ ctx }) {
+  const { pilihanSeksi } = useUnitKerja();
   const {
     pf,
     setPf,
@@ -126,7 +127,7 @@ export default function StepSPD({ ctx }) {
               className={`${FORM.select} ${border('seksi')}`}
             >
               <option value="">— Pilih Seksi —</option>
-              {SEKSI.map((s) => (
+              {opsiSeksiDengan(pilihanSeksi, spd.seksi).map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>

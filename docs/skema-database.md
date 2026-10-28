@@ -85,28 +85,35 @@ Singkatan akses: `SA` superadmin · `KEU` keuangan · `KEP` kepegawaian · `UM` 
 
 **`pegawai/{pegawaiId}`** (auto-id) — data lengkap pegawai.
 
-| Field                      | Tipe                      | Ditulis | Keterangan                               |
-| -------------------------- | ------------------------- | ------- | ---------------------------------------- |
-| `nama`                     | string 1–120              | KEP     |                                          |
-| `nip`                      | string 18 digit atau `''` | KEP     | `''` untuk non-PNS                       |
-| `pangkatId`, `pangkatNama` | string                    | KEP     | ID + salinan nama dari `pegawai_pangkat` |
-| `jabatanId`, `jabatanNama` | string                    | KEP     | ID + salinan nama dari `pegawai_jabatan` |
-| `seksi`                    | string ≤80                | KEP     | dari `src/data/seksi.js`                 |
-| `tanggalLahir`             | `'YYYY-MM-DD'` atau `''`  | KEP     | data pribadi                             |
-| `fotoPaths`                | list ≤9, unik             | KEP     | path `pegawai/{id}/foto/{nama}` sendiri  |
-| `email`, `authUid`         | string                    | **Fn**  | diisi `buatAkunPegawai`                  |
-| `peran`                    | list                      | **Fn**  | cermin claims (untuk tampilan)           |
-| `aktif`                    | bool                      | **Fn**  | `nonaktifkanPegawai`                     |
-| `ultahMd`                  | `'MM-DD'`                 | **Fn**  | turunan `tanggalLahir`                   |
-| `Audit`                    |                           |         |                                          |
+| Field                      | Tipe                                       | Ditulis | Keterangan                                                                                                                                      |
+| -------------------------- | ------------------------------------------ | ------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| `nama`                     | string 1–120                               | KEP     |                                                                                                                                                 |
+| `nip`                      | string 18 digit atau `''`                  | KEP     | tanpa spasi; `''` untuk non-ASN                                                                                                                 |
+| `statusKepegawaian`        | `pns`, `cpns`, `pppk`, `nonasn`, atau `''` | KEP     | `''` = belum diisi                                                                                                                              |
+| `pangkatId`, `pangkatNama` | string                                     | KEP     | ID + salinan nama dari `pegawai_pangkat`                                                                                                        |
+| `golongan`                 | `'III/c'` (PNS), `'V'` (PPPK) atau `''`    | KEP     | salinan dari `pegawai_pangkat`                                                                                                                  |
+| `jabatanId`, `jabatanNama` | string                                     | KEP     | ID + salinan nama dari `pegawai_jabatan`; eselon dibaca dari jabatan, tidak disimpan per pegawai                                                |
+| `unitId`                   | ID `pegawai_unit` atau `''`                | KEP     | unit kerja paling rinci                                                                                                                         |
+| `seksi`                    | string ≤60                                 | KEP     | label pendek unit bagiannya (seksi/subbagian/urusan; anggota subseksi ikut seksinya), disalin klien; dipakai modul lain lewat `pegawai_ringkas` |
+| `tanggalLahir`             | `'YYYY-MM-DD'` atau `''`                   | KEP     | data pribadi                                                                                                                                    |
+| `fotoPaths`                | list ≤9, unik                              | KEP     | path `pegawai/{id}/foto/{nama}` sendiri                                                                                                         |
+| `email`, `authUid`         | string                                     | **Fn**  | diisi `buatAkunPegawai`                                                                                                                         |
+| `peran`                    | list                                       | **Fn**  | cermin claims (untuk tampilan)                                                                                                                  |
+| `aktif`                    | bool                                       | **Fn**  | `nonaktifkanPegawai`                                                                                                                            |
+| `ultahMd`                  | `'MM-DD'`                                  | **Fn**  | turunan `tanggalLahir`                                                                                                                          |
+| `Audit`                    |                                            |         |                                                                                                                                                 |
 
-Akses: baca KEP, SA, pemilik (`token.pegawaiId == id`) · daftar KEP (limit ≤500) · buat/ubah KEP, semua field klien wajib ada · data Super Admin hanya diubah SA · hapus ditolak.
+Akses: baca KEP, SA, pemilik (`token.pegawaiId == id`) · daftar KEP (limit ≤500) · buat KEP, semua field klien wajib ada · ubah KEP (field `statusKepegawaian`, `golongan`, `unitId` boleh belum ada di dokumen lama, jadi pembaruan sebagian tetap bisa) · data Super Admin hanya diubah SA · hapus ditolak. Data bisa diimpor dari CSV (Kepegawaian → Impor CSV): dicocokkan lewat NIP, sel kosong tidak menimpa data lama.
 
 Foto: setiap foto diunggah dua kali dengan nama berkas yang sama, `pegawai/{id}/foto/{nama}` (asli, untuk captcha ulang tahun) dan `pegawai/{id}/thumb/{nama}` (thumbnail). Rules memeriksa setiap isi `fotoPaths` berada di folder `foto/` pegawai itu sendiri dan tidak ganda. Foto pertama = foto profil. Pegawai baru memakai ID yang dibuat lebih dulu di browser, supaya fotonya bisa diunggah sebelum dokumen disimpan.
 
-**`pegawai_ringkas/{pegawaiId}`** — ditulis **Fn** dari `pegawai`. Field: `nama`, `nip`, `pangkatNama`, `jabatanNama`, `seksi`, `authUid`, `aktif`, `ultahMd`, `fotoThumbPath` (thumbnail foto pertama; `''` bila belum ada foto). Baca PG (limit ≤500). Dipakai semua modul di luar Kepegawaian (pemilih pegawai, Inventory, banner ulang tahun, nama pejabat dan pengirim ucapan).
+**`pegawai_kontak/{pegawaiId}`** — kontak pribadi, terpisah supaya tidak ikut terbaca di daftar pegawai. Field: `alamat` (≤300), `emailPribadi` (`''` atau e-mail huruf kecil ≤120), `noWa` (`''` atau `62` + 8–13 digit), `Audit`. Baca KEP & pemilik · daftar KEP (limit ≤500) · buat/ubah KEP & pemilik (halaman Profil Saya) · hapus ditolak. Tidak masuk `pegawai_ringkas`.
 
-**`pegawai_pangkat/{id}`**, **`pegawai_jabatan/{id}`** (auto-id) — `nama` (1–160), `urutan` (int 0–9999), `aktif`, `Audit`. Baca PG (limit ≤200) · tulis KEP · hapus ditolak.
+**`pegawai_ringkas/{pegawaiId}`** — ditulis **Fn** dari `pegawai`. Field: `nama`, `nip`, `pangkatNama`, `golongan`, `jabatanNama`, `unitId`, `seksi`, `authUid`, `aktif`, `ultahMd`, `fotoThumbPath` (thumbnail foto pertama; `''` bila belum ada foto). Baca PG (limit ≤500). Dipakai semua modul di luar Kepegawaian (pemilih pegawai, Inventory, banner ulang tahun, nama pejabat dan pengirim ucapan).
+
+**`pegawai_pangkat/{id}`**, **`pegawai_jabatan/{id}`** (auto-id) — `nama` (1–160), `urutan` (int 0–9999), `aktif`, `Audit`, ditambah: pangkat `jenis` (`'pns'` dengan `golongan` I/a–IV/e, atau `'pppk'` dengan golongan I–XVII); jabatan `jenis` (`'struktural'|'fungsional'|'pelaksana'`) dan `eselon` (`''`, atau mis. `'IV.b'`/`'V'` khusus struktural). Baca PG (limit ≤200) · tulis KEP · hapus ditolak (pakai `aktif: false`). Pangkat baku PNS & PPPK diisi lewat tombol "Isi pangkat baku".
+
+**`pegawai_unit/{id}`** (auto-id) — struktur unit kerja, diatur KEP di tab Unit Kerja. Field: `kode` (huruf besar/angka/`-`, ≤20, unik dijaga klien), `nama` (1–160), `singkatan` (label pendek 1–30; dipakai sebagai "seksi" di modul lain), `jenis` (`'kantor'|'subbagian'|'seksi'|'urusan'|'subseksi'`), `indukId` (`''` khusus kantor), `urutan`, `aktif`, `Audit`. Tingkat kantor (0) → subbagian/seksi (1) → urusan/subseksi (2); induk wajib tepat satu tingkat di atasnya (rules memeriksa lewat `getAfter`), jadi pohon tidak bisa berputar. `jenis` tidak bisa diubah. Baca PG (limit ≤200) · tulis KEP · hapus ditolak. Dibaca semua modul lewat `@/context/useUnitKerja`: pilihan "Seksi / Bagian" di SPD, Nomor Surat, dan Inventory = label unit bagian (subbagian, seksi, urusan) yang aktif. Saat nama/label/induk unit berubah, klien memperbarui `seksi` pegawai yang terdampak. Struktur awal diisi tombol "Isi struktur awal".
 
 **`pegawai_pejabat/{id}`** (auto-id) — penetapan pejabat penandatangan.
 
@@ -282,6 +289,7 @@ Nama-nama berikut **tidak boleh** dipakai lagi di kode. Semuanya ditolak rules.
 | `ulang_tahun`, `ucapan_ultah`            | `ultah_status`, `ultah_ucapan`                |
 | `master_pangkat`, `master_jabatan`       | `pegawai_pangkat`, `pegawai_jabatan`          |
 | `pegawai.status_khusus`                  | `pegawai_pejabat`                             |
+| daftar seksi tetap `src/data/seksi.js`   | `pegawai_unit` + `pegawai.unitId`/`seksi`     |
 | `inventory_items`, `inventory_transaksi` | —                                             |
 
 ## 7. Storage
@@ -339,6 +347,8 @@ Node 22, region sama dengan database, `maxInstances` kecil (mis. 5), _callable_ 
 | `surat_kode`             | utuh (kecil)                                                                                                                                                                                                      | 2.000           |
 | `pegawai_ringkas`        | utuh (kecil), satu provider untuk seluruh aplikasi; banner ulang tahun: `where ultahMd in [hari ini]` (limit 50)                                                                                                  | 500             |
 | `pegawai_pejabat`        | utuh `orderBy berlakuMulai desc`, satu provider (`@/context/usePejabat`)                                                                                                                                          | 200             |
+| `pegawai_unit`           | utuh `orderBy urutan`, satu provider (`@/context/useUnitKerja`)                                                                                                                                                   | 200             |
+| `pegawai_kontak`         | KEP: utuh (halaman Kepegawaian); pemilik: `getDoc` miliknya (Profil Saya)                                                                                                                                         | 500             |
 | `inventory_masuk/keluar` | `orderBy nomor desc` (riwayat terbaru, `startAfter` untuk halaman berikutnya); rentang `where tanggal >= dari, <= sampai orderBy tanggal desc`; per barang `where barangId ==` / `where barangIds array-contains` | 200 per halaman |
 | `inventory_saldo`        | utuh (satu dokumen per tahun)                                                                                                                                                                                     | 20              |
 | `ultah_ucapan`           | `where untukPegawaiId == saya` atau `where dariUid == uid`, + `where tahun` (dua kesetaraan, tanpa indeks komposit); KEP per penerima                                                                             | 200             |

@@ -233,6 +233,6 @@ Firebase CLI terbaru butuh **Java 21** untuk Emulator. Di komputer yang masih Ja
    - selama uji asap, buka Console browser: CSP masih mode laporan (`vercel.json`), jadi setiap pelanggaran tercatat tanpa memblokir. Bila bersih untuk login, App Check, kejutan ulang tahun (kamera), pratinjau/cetak PDF, Scanner, dan OCR, ganti header menjadi `Content-Security-Policy` (penegakan);
    - App Check ditegakkan untuk Firestore dan Storage, token debug dicabut, dan kunci reCAPTCHA _checkbox_ lama yang tidak terpakai dihapus di Console reCAPTCHA;
    - `localhost` dikeluarkan dari CORS dan Authorized domains, lalu referrer API key dibatasi (A6);
-   - Super Admin mengisi master (pangkat, jabatan, pejabat, kode surat, DIPA), Keuangan mengimpor MAK, dan Umum mengisi kategori/barang;
+   - Kepegawaian/Super Admin mengisi master: unit kerja ("Isi struktur awal"), pangkat ("Isi pangkat baku"), data pegawai (Impor CSV), jabatan, pejabat; Keuangan mengisi kode surat, DIPA, dan mengimpor MAK; Umum mengisi kategori/barang;
    - uji asap per peran (Super Admin, Keuangan, Kepegawaian, Umum, Pegawai) dengan akun uji, lalu akun uji dinonaktifkan;
    - PITR dan ekspor terjadwal Firestore diaktifkan sejak hari pertama ada data asli.

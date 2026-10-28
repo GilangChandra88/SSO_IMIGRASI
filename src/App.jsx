@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import SplashScreen from '@/components/SplashScreen';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
-import { Login, Portal, PopupUcapan, GantiSandi, AkunBelumTerdaftar } from '@/modules/sso';
+import { Login, Portal, PopupUcapan, GantiSandi, Profil, AkunBelumTerdaftar } from '@/modules/sso';
 import { EPersuratanApp } from '@/modules/e-persuratan';
 import { InventoryApp } from '@/modules/inventory';
 import { KepegawaianApp } from '@/modules/kepegawaian';
@@ -30,6 +30,15 @@ function AppContent() {
           element={
             <ProtectedRoute halamanGantiSandi>
               <GantiSandi />
+            </ProtectedRoute>
+          }
+        />
+
+        <Route
+          path="/profil"
+          element={
+            <ProtectedRoute>
+              <Profil />
             </ProtectedRoute>
           }
         />

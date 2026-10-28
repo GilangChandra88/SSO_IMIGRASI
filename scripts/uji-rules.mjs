@@ -157,10 +157,13 @@ await fetch(`http://127.0.0.1:8080/emulator/v1/projects/${P}/databases/(default)
 const pegawaiDasar = {
   nama: 'Budi Contoh',
   nip: '000000000000000000',
+  statusKepegawaian: 'pns',
   pangkatId: '',
   pangkatNama: '',
+  golongan: '',
   jabatanId: '',
   jabatanNama: '',
+  unitId: '',
   seksi: 'Tata Usaha',
   tanggalLahir: '1990-01-01',
   fotoPaths: [],
@@ -1469,6 +1472,261 @@ await cek(
   'foto lampiran lebih dari 1 MB',
   false,
   ubahBagian('lpj_berkas/BM3', 3, lampiranUji([metaLampiran('foto', 4, 1025 * 1024)], [])),
+);
+
+// ── Kelengkapan pegawai: unit kerja, kontak pribadi, field kepegawaian, master ──
+const unitUji = (kode, jenis, indukId, lain = {}) => ({
+  kode,
+  nama: `Unit Contoh ${kode}`,
+  singkatan: kode,
+  jenis,
+  indukId,
+  urutan: 10,
+  aktif: true,
+  ...lain,
+});
+const buatUnit = (t, id, data, uid = 'uKEP') =>
+  buat(t, `pegawai_unit/${id}`, { ...data, ...audit(uid) }, AUDIT);
+await cek(
+  'Kepegawaian membuat unit kantor',
+  true,
+  buatUnit(U.kep, 'UK0', unitUji('KANIM', 'kantor', '')),
+);
+await cek(
+  'Kepegawaian membuat seksi di bawah kantor',
+  true,
+  buatUnit(U.kep, 'UK1', unitUji('SEKSI-A', 'seksi', 'UK0')),
+);
+await cek(
+  'Kepegawaian membuat subseksi di bawah seksi',
+  true,
+  buatUnit(U.kep, 'UK2', unitUji('SUB-A', 'subseksi', 'UK1')),
+);
+await cek(
+  'subseksi langsung di bawah kantor',
+  false,
+  buatUnit(U.kep, 'UK9', unitUji('SUB-X', 'subseksi', 'UK0')),
+);
+await cek(
+  'kantor yang punya induk',
+  false,
+  buatUnit(U.kep, 'UK9', unitUji('KANIM-2', 'kantor', 'UK0')),
+);
+await cek(
+  'unit dengan induk yang tidak ada',
+  false,
+  buatUnit(U.kep, 'UK9', unitUji('SEKSI-X', 'seksi', 'UKTIDAKADA')),
+);
+await cek(
+  'kode unit huruf kecil',
+  false,
+  buatUnit(U.kep, 'UK9', unitUji('seksi-b', 'seksi', 'UK0')),
+);
+await cek(
+  'label pendek unit kosong',
+  false,
+  buatUnit(U.kep, 'UK9', unitUji('SEKSI-B', 'seksi', 'UK0', { singkatan: '' })),
+);
+await cek(
+  'pegawai biasa membuat unit',
+  false,
+  buatUnit(U.pg, 'UK9', unitUji('SEKSI-B', 'seksi', 'UK0'), 'uPG'),
+);
+await cek(
+  'Keuangan membuat unit',
+  false,
+  buatUnit(U.keu, 'UK9', unitUji('SEKSI-B', 'seksi', 'UK0'), 'uKEU'),
+);
+await buatUnit(U.owner, 'UK3', unitUji('SEKSI-C', 'seksi', 'UK0'));
+await cek(
+  'Kepegawaian memindah subseksi ke seksi lain & mengganti nama',
+  true,
+  ubah(
+    U.kep,
+    'pegawai_unit/UK2',
+    { indukId: 'UK3', nama: 'Subseksi Contoh Baru', diubahOleh: 'uKEP' },
+    ['diubahPada'],
+  ),
+);
+await cek(
+  'memindah subseksi ke bawah subseksi lain',
+  false,
+  ubah(U.kep, 'pegawai_unit/UK2', { indukId: 'UK2', diubahOleh: 'uKEP' }, ['diubahPada']),
+);
+await cek(
+  'mengubah jenis unit',
+  false,
+  ubah(U.kep, 'pegawai_unit/UK1', { jenis: 'subbagian', diubahOleh: 'uKEP' }, ['diubahPada']),
+);
+await cek(
+  'Kepegawaian menonaktifkan unit',
+  true,
+  ubah(U.kep, 'pegawai_unit/UK3', { aktif: false, diubahOleh: 'uKEP' }, ['diubahPada']),
+);
+await cek('menghapus unit', false, hapusDok(U.kep, 'pegawai_unit/UK1'));
+await cek(
+  'pegawai membaca daftar unit (limit 200)',
+  true,
+  daftar(U.pg, 'pegawai_unit', { limit: 200 }),
+);
+await cek('daftar unit tanpa limit', false, daftar(U.pg, 'pegawai_unit'));
+
+const kontakUji = {
+  alamat: 'Jl. Contoh No. 1',
+  emailPribadi: 'budi@contoh.test',
+  noWa: '6281200000000',
+};
+const buatKontak = (t, id, data, uid) =>
+  buat(t, `pegawai_kontak/${id}`, { ...data, ...audit(uid) }, AUDIT);
+await cek('pemilik membuat kontak pribadinya', true, buatKontak(U.pg, 'pPG', kontakUji, 'uPG'));
+await cek(
+  'pemilik memperbarui kontaknya',
+  true,
+  ubah(U.pg, 'pegawai_kontak/pPG', { noWa: '6281299999999', diubahOleh: 'uPG' }, ['diubahPada']),
+);
+await cek('pemilik membaca kontaknya', true, ambil(U.pg, 'pegawai_kontak/pPG'));
+await cek('pegawai lain membaca kontak', false, ambil(U.pg2, 'pegawai_kontak/pPG'));
+await cek(
+  'pegawai lain mengubah kontak orang lain',
+  false,
+  ubah(U.pg2, 'pegawai_kontak/pPG', { alamat: 'Palsu', diubahOleh: 'uPG2' }, ['diubahPada']),
+);
+await cek('pegawai membuat kontak orang lain', false, buatKontak(U.pg, 'pPG2', kontakUji, 'uPG'));
+await cek(
+  'Kepegawaian membuat kontak pegawai lain',
+  true,
+  buatKontak(U.kep, 'pPG2', kontakUji, 'uKEP'),
+);
+await cek(
+  'Kepegawaian membaca daftar kontak (limit 500)',
+  true,
+  daftar(U.kep, 'pegawai_kontak', { limit: 500 }),
+);
+await cek('pegawai membaca daftar kontak', false, daftar(U.pg, 'pegawai_kontak', { limit: 50 }));
+await cek(
+  'e-mail pribadi huruf besar / tidak baku',
+  false,
+  buatKontak(U.kep, 'pK1', { ...kontakUji, emailPribadi: 'Budi@Contoh.test' }, 'uKEP'),
+);
+await cek(
+  'nomor WA tidak berawalan 62',
+  false,
+  buatKontak(U.kep, 'pK1', { ...kontakUji, noWa: '081200000000' }, 'uKEP'),
+);
+await cek(
+  'alamat lebih dari 300 karakter',
+  false,
+  buatKontak(U.kep, 'pK1', { ...kontakUji, alamat: 'x'.repeat(301) }, 'uKEP'),
+);
+await cek('menghapus kontak', false, hapusDok(U.kep, 'pegawai_kontak/pPG'));
+
+const pegawaiP3 = {
+  ...pegawaiDasar,
+  statusKepegawaian: 'pppk',
+  golongan: 'IX',
+  unitId: 'UK2',
+  seksi: 'SEKSI-C',
+  ...audit('uKEP'),
+};
+await cek(
+  'Kepegawaian membuat pegawai PPPK lengkap',
+  true,
+  buat(U.kep, 'pegawai/pP3a', pegawaiP3, AUDIT),
+);
+await cek(
+  'golongan tidak sah',
+  false,
+  buat(U.kep, 'pegawai/pP3b', { ...pegawaiP3, golongan: 'III/z' }, AUDIT),
+);
+await cek(
+  'status kepegawaian tidak dikenal',
+  false,
+  buat(U.kep, 'pegawai/pP3b', { ...pegawaiP3, statusKepegawaian: 'honorer' }, AUDIT),
+);
+await cek(
+  'label seksi lebih dari 60 karakter',
+  false,
+  buat(U.kep, 'pegawai/pP3b', { ...pegawaiP3, seksi: 's'.repeat(61) }, AUDIT),
+);
+await cek(
+  'unitId tidak sah',
+  false,
+  buat(U.kep, 'pegawai/pP3b', { ...pegawaiP3, unitId: 'unit/salah' }, AUDIT),
+);
+// Dokumen bentuk sebelum field baru: tetap bisa diperbarui sebagian (mis. label seksi saja)
+await buat(
+  U.owner,
+  'pegawai/pLamaSeksi',
+  {
+    nama: 'Dewi Contoh',
+    nip: '',
+    pangkatId: '',
+    pangkatNama: '',
+    jabatanId: '',
+    jabatanNama: '',
+    seksi: 'Lalintalkim',
+    tanggalLahir: '',
+    fotoPaths: [],
+    ...audit('uKEP'),
+  },
+  AUDIT,
+);
+await cek(
+  'Kepegawaian memperbarui label seksi pada dokumen bentuk lama',
+  true,
+  ubah(U.kep, 'pegawai/pLamaSeksi', { seksi: 'Lantaskim', diubahOleh: 'uKEP' }, ['diubahPada']),
+);
+
+const masterUji = (lain) => ({ urutan: 1, aktif: true, ...lain, ...audit('uKEP') });
+await cek(
+  'Kepegawaian membuat pangkat PNS III/c',
+  true,
+  buat(
+    U.kep,
+    'pegawai_pangkat/PK1',
+    masterUji({ nama: 'Penata', golongan: 'III/c', jenis: 'pns' }),
+    AUDIT,
+  ),
+);
+await cek(
+  'pangkat PPPK bergolongan PNS',
+  false,
+  buat(
+    U.kep,
+    'pegawai_pangkat/PK2',
+    masterUji({ nama: 'PPPK X', golongan: 'III/c', jenis: 'pppk' }),
+    AUDIT,
+  ),
+);
+await cek(
+  'Kepegawaian membuat jabatan struktural eselon IV.b',
+  true,
+  buat(
+    U.kep,
+    'pegawai_jabatan/JB1',
+    masterUji({ nama: 'Kepala Subseksi Contoh', jenis: 'struktural', eselon: 'IV.b' }),
+    AUDIT,
+  ),
+);
+await cek(
+  'jabatan fungsional dengan eselon',
+  false,
+  buat(
+    U.kep,
+    'pegawai_jabatan/JB2',
+    masterUji({ nama: 'Analis Contoh', jenis: 'fungsional', eselon: 'IV.b' }),
+    AUDIT,
+  ),
+);
+await cek(
+  'pegawai biasa membuat jabatan',
+  false,
+  buat(
+    U.pg,
+    'pegawai_jabatan/JB3',
+    { ...masterUji({ nama: 'X', jenis: 'pelaksana', eselon: '' }), ...audit('uPG') },
+    AUDIT,
+  ),
 );
 
 console.log(`\n${lulus} lulus, ${gagal} gagal`);
