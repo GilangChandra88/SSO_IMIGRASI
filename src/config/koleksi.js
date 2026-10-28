@@ -16,6 +16,8 @@ export const KOLEKSI = Object.freeze({
   pegawaiJabatan: 'pegawai_jabatan',
   pegawaiUnit: 'pegawai_unit',
   pegawaiPejabat: 'pegawai_pejabat',
+  pegawaiKegiatan: 'pegawai_kegiatan',
+  pegawaiRekapHadir: 'pegawai_rekap_hadir',
   penggunaPreferensi: 'pengguna_preferensi',
   ultahStatus: 'ultah_status',
   ultahUcapan: 'ultah_ucapan',

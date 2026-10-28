@@ -5,7 +5,7 @@ import { FONT, T } from '@/utils/uiTokens';
 import { K } from '../ui/kelas';
 import { useEscape } from '../hooks/useEscape';
 import { CONTOH_IMPOR, KOLOM_IMPOR, periksaImpor } from '../utils/csvImpor';
-import { simpanBerkas } from '../utils/xlsx';
+import { simpanBerkas } from '@/utils/xlsx';
 
 /** Popup Impor CSV di Stok Barang: pilih berkas, periksa isinya, lalu tambahkan barang yang valid. */
 export default function ImporModal({ kategoriList, barang, onImpor, onTutup }) {

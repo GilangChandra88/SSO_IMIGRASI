@@ -36,7 +36,7 @@ import {
   LABEL_STATUS,
   statusStok,
 } from '../utils/stokLogic';
-import { buatXlsx, simpanBerkas, TIPE_XLSX } from '../utils/xlsx';
+import { buatXlsx, simpanBerkas, TIPE_XLSX } from '@/utils/xlsx';
 import KepalaHalaman from '../components/KepalaHalaman';
 import StatusBadge from '../components/StatusBadge';
 import { KotakCari, PilihCari } from '../components/Pilihan';

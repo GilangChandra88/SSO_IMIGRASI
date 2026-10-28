@@ -1729,5 +1729,140 @@ await cek(
   ),
 );
 
+// ── Kegiatan & kehadiran ──────────────────────────────────────────────────
+const kegiatanUji = (lain = {}) => ({
+  nama: 'Apel Contoh',
+  jenis: 'apel',
+  tanggal: `${TAHUN}-03-02`,
+  jam: '07:30',
+  tempat: 'Lapangan Contoh',
+  keterangan: '',
+  kehadiran: null,
+  kehadiranPada: null,
+  kehadiranOleh: null,
+  aktif: true,
+  alasanBatal: '',
+  ...lain,
+});
+const buatKegiatan = (t, id, lain, uid = 'uKEP', waktu = AUDIT) =>
+  buat(t, `pegawai_kegiatan/${id}`, { ...kegiatanUji(lain), ...audit(uid) }, waktu);
+const hadirUji = {
+  pPG: { status: 'hadir', keterangan: '' },
+  pPG2: { status: 'sakit', keterangan: 'Surat dokter' },
+};
+await cek('Kepegawaian membuat kegiatan', true, buatKegiatan(U.kep, 'KG1'));
+await cek('pegawai biasa membuat kegiatan', false, buatKegiatan(U.pg, 'KG2', {}, 'uPG'));
+await cek('Keuangan membuat kegiatan', false, buatKegiatan(U.keu, 'KG2', {}, 'uKEU'));
+await cek(
+  'kegiatan baru langsung berisi kehadiran',
+  false,
+  buatKegiatan(U.kep, 'KG2', { kehadiran: hadirUji, kehadiranOleh: 'uKEP' }, 'uKEP', [
+    ...AUDIT,
+    'kehadiranPada',
+  ]),
+);
+await cek('jenis kegiatan tidak dikenal', false, buatKegiatan(U.kep, 'KG2', { jenis: 'pesta' }));
+await cek('jam kegiatan tidak sah', false, buatKegiatan(U.kep, 'KG2', { jam: '25:00' }));
+await cek('kegiatan tanpa tempat', false, buatKegiatan(U.kep, 'KG2', { tempat: '' }));
+await cek(
+  'Kepegawaian menyimpan kehadiran',
+  true,
+  ubah(
+    U.kep,
+    'pegawai_kegiatan/KG1',
+    { kehadiran: hadirUji, kehadiranOleh: 'uKEP', diubahOleh: 'uKEP' },
+    ['kehadiranPada', 'diubahPada'],
+  ),
+);
+await cek(
+  'menyimpan kehadiran tanpa waktu simpan dari server',
+  false,
+  ubah(
+    U.kep,
+    'pegawai_kegiatan/KG1',
+    { kehadiran: hadirUji, kehadiranOleh: 'uKEP', kehadiranPada: new Date(), diubahOleh: 'uKEP' },
+    ['diubahPada'],
+  ),
+);
+await cek(
+  'menyimpan kehadiran atas nama orang lain',
+  false,
+  ubah(
+    U.kep,
+    'pegawai_kegiatan/KG1',
+    { kehadiran: hadirUji, kehadiranOleh: 'uLAIN', diubahOleh: 'uKEP' },
+    ['kehadiranPada', 'diubahPada'],
+  ),
+);
+await cek(
+  'mengosongkan kehadiran yang sudah disimpan',
+  false,
+  ubah(
+    U.kep,
+    'pegawai_kegiatan/KG1',
+    { kehadiran: null, kehadiranPada: null, kehadiranOleh: null, diubahOleh: 'uKEP' },
+    ['diubahPada'],
+  ),
+);
+await cek(
+  'Kepegawaian mengubah tempat kegiatan',
+  true,
+  ubah(U.kep, 'pegawai_kegiatan/KG1', { tempat: 'Aula Contoh', diubahOleh: 'uKEP' }, [
+    'diubahPada',
+  ]),
+);
+await cek(
+  'membatalkan kegiatan tanpa alasan',
+  false,
+  ubah(U.kep, 'pegawai_kegiatan/KG1', { aktif: false, alasanBatal: '', diubahOleh: 'uKEP' }, [
+    'diubahPada',
+  ]),
+);
+await cek(
+  'Kepegawaian membatalkan kegiatan dengan alasan',
+  true,
+  ubah(
+    U.kep,
+    'pegawai_kegiatan/KG1',
+    { aktif: false, alasanBatal: 'Hujan deras (uji)', diubahOleh: 'uKEP' },
+    ['diubahPada'],
+  ),
+);
+await cek(
+  'mengubah kegiatan yang sudah batal',
+  false,
+  ubah(U.kep, 'pegawai_kegiatan/KG1', { tempat: 'Lapangan Lain', diubahOleh: 'uKEP' }, [
+    'diubahPada',
+  ]),
+);
+await cek('menghapus kegiatan', false, hapusDok(U.kep, 'pegawai_kegiatan/KG1'));
+await cek(
+  'Kepegawaian membaca daftar kegiatan (limit 200)',
+  true,
+  daftar(U.kep, 'pegawai_kegiatan', { limit: 200 }),
+);
+await cek('daftar kegiatan tanpa limit', false, daftar(U.kep, 'pegawai_kegiatan'));
+await cek(
+  'pegawai biasa membaca daftar kegiatan',
+  false,
+  daftar(U.pg, 'pegawai_kegiatan', { limit: 10 }),
+);
+await cek('pegawai biasa membaca kegiatan', false, ambil(U.pg, 'pegawai_kegiatan/KG1'));
+await cek(
+  'Kepegawaian membaca rekap kehadiran (limit 10)',
+  true,
+  daftar(U.kep, 'pegawai_rekap_hadir', { limit: 10, filter: ['tahun', 'EQUAL', TAHUN] }),
+);
+await cek(
+  'pegawai biasa membaca rekap kehadiran',
+  false,
+  daftar(U.pg, 'pegawai_rekap_hadir', { limit: 10 }),
+);
+await cek(
+  'Kepegawaian menulis rekap kehadiran (hanya Function)',
+  false,
+  buat(U.kep, `pegawai_rekap_hadir/${TAHUN}-1`, { tahun: TAHUN, semester: 1 }),
+);
+
 console.log(`\n${lulus} lulus, ${gagal} gagal`);
 process.exit(gagal ? 1 : 0);

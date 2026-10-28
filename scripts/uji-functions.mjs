@@ -443,5 +443,122 @@ cek(
   aksi.join(','),
 );
 
+// 9. rekap kehadiran per semester (trigger diKegiatanDitulis)
+const nilaiLengkap = (v) =>
+  v === null
+    ? { nullValue: null }
+    : typeof v === 'boolean'
+      ? { booleanValue: v }
+      : typeof v === 'string'
+        ? { stringValue: v }
+        : { mapValue: { fields: medanLengkap(v) } };
+const medanLengkap = (o) =>
+  Object.fromEntries(Object.entries(o).map(([k, v]) => [k, nilaiLengkap(v)]));
+async function tulisKegiatan(id, data, waktu, baru = false) {
+  const x = await fetch(`${FS}:commit`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sa.token}` },
+    body: JSON.stringify({
+      writes: [
+        {
+          update: {
+            name: `projects/${P}/databases/(default)/documents/pegawai_kegiatan/${id}`,
+            fields: medanLengkap(data),
+          },
+          ...(baru ? {} : { updateMask: { fieldPaths: Object.keys(data) } }),
+          updateTransforms: waktu.map((f) => ({ fieldPath: f, setToServerValue: 'REQUEST_TIME' })),
+          currentDocument: { exists: !baru },
+        },
+      ],
+    }),
+  });
+  return x.ok || (await x.text());
+}
+const TH = new Date().getUTCFullYear();
+const uidSA = sa.klaim.user_id;
+const kegiatanBaru = (tanggal) => ({
+  nama: 'Apel Contoh',
+  jenis: 'apel',
+  tanggal,
+  jam: '07:30',
+  tempat: 'Lapangan Contoh',
+  keterangan: '',
+  kehadiran: null,
+  kehadiranPada: null,
+  kehadiranOleh: null,
+  aktif: true,
+  alasanBatal: '',
+  dibuatOleh: uidSA,
+  diubahOleh: uidSA,
+});
+const isiHadir = (peta) => ({ kehadiran: peta, kehadiranOleh: uidSA, diubahOleh: uidSA });
+const WAKTU_HADIR = ['kehadiranPada', 'diubahPada'];
+/** Tunggu rekap semester sampai syarat terpenuhi (trigger berjalan asinkron). */
+async function tungguRekap(id, syarat) {
+  let d;
+  for (let i = 0; i < 40; i++) {
+    const x = await fetch(`${FS}/pegawai_rekap_hadir/${id}`, {
+      headers: { Authorization: 'Bearer owner' },
+    });
+    d = x.ok ? (await x.json()).fields : null;
+    if (d && syarat(d)) return { ok: true, d };
+    await tunggu(400);
+  }
+  return { ok: false, d };
+}
+const angka = (f) => Number(f?.integerValue ?? -1);
+const hitungan = (d, pid, s) => angka(d?.pegawai?.mapValue?.fields?.[pid]?.mapValue?.fields?.[s]);
+
+cek(
+  'Super Admin membuat kegiatan (lolos rules)',
+  (await tulisKegiatan('KH1', kegiatanBaru(`${TH}-03-02`), ['dibuatPada', 'diubahPada'], true)) ===
+    true,
+);
+let rh = await tungguRekap(`${TH}-1`, (d) => angka(d.kegiatan) === 1);
+cek(
+  'rekap semester 1 menghitung kegiatan yang belum diisi',
+  rh.ok && angka(rh.d.kegiatanTerisi) === 0,
+  JSON.stringify(rh.d),
+);
+await tulisKegiatan(
+  'KH1',
+  isiHadir({
+    pSiti: { status: 'hadir', keterangan: '' },
+    pRudi: { status: 'sakit', keterangan: 'Surat dokter' },
+  }),
+  WAKTU_HADIR,
+);
+rh = await tungguRekap(`${TH}-1`, (d) => angka(d.kegiatanTerisi) === 1);
+cek(
+  'rekap menghitung status per pegawai setelah kehadiran disimpan',
+  rh.ok && hitungan(rh.d, 'pSiti', 'hadir') === 1 && hitungan(rh.d, 'pRudi', 'sakit') === 1,
+  JSON.stringify(rh.d),
+);
+await tulisKegiatan('KH2', kegiatanBaru(`${TH}-04-06`), ['dibuatPada', 'diubahPada'], true);
+await tulisKegiatan('KH2', isiHadir({ pSiti: { status: 'alpa', keterangan: '' } }), WAKTU_HADIR);
+rh = await tungguRekap(`${TH}-1`, (d) => hitungan(d, 'pSiti', 'alpa') === 1);
+cek(
+  'kegiatan kedua ikut terhitung (2 kegiatan, 2 terisi)',
+  rh.ok && angka(rh.d.kegiatan) === 2 && angka(rh.d.kegiatanTerisi) === 2,
+  JSON.stringify(rh.d),
+);
+await tulisKegiatan('KH2', { tanggal: `${TH}-08-03`, diubahOleh: uidSA }, ['diubahPada']);
+rh = await tungguRekap(`${TH}-1`, (d) => angka(d.kegiatan) === 1);
+const rh2 = await tungguRekap(`${TH}-2`, (d) => hitungan(d, 'pSiti', 'alpa') === 1);
+cek(
+  'kegiatan pindah semester: rekap lama berkurang, rekap baru bertambah',
+  rh.ok && hitungan(rh.d, 'pSiti', 'alpa') === 0 && rh2.ok && angka(rh2.d.kegiatan) === 1,
+  JSON.stringify([rh.d, rh2.d]),
+);
+await tulisKegiatan('KH1', { aktif: false, alasanBatal: 'Batal (uji)', diubahOleh: uidSA }, [
+  'diubahPada',
+]);
+rh = await tungguRekap(`${TH}-1`, (d) => angka(d.kegiatan) === 0);
+cek(
+  'kegiatan dibatalkan tidak dihitung lagi',
+  rh.ok && angka(rh.d.kegiatanTerisi) === 0 && hitungan(rh.d, 'pSiti', 'hadir') === -1,
+  JSON.stringify(rh.d),
+);
+
 console.log(`\n${lulus} lulus, ${gagal} gagal`);
 process.exit(gagal ? 1 : 0);
