@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { FaArrowDown, FaArrowUp, FaBan, FaEllipsisV } from 'react-icons/fa';
-import { SEKSI } from '@/data/seksi';
+import { useUnitKerja } from '@/context/useUnitKerja';
 import { T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
 import { PANJANG } from '@/utils/batas';
@@ -79,6 +79,7 @@ const keBaris = (masuk, keluar) => [
  */
 export default function RiwayatTransaksi() {
   const { siap, semuaBarang, namaKategori, izin, bukaTransaksi, bukaBukti } = useInventori();
+  const { pilihanSeksi } = useUnitKerja();
   const [menuId, setMenuId] = useState(null);
   const [cari, setCari] = useState('');
   const [kategori, setKategori] = useState('');
@@ -307,7 +308,7 @@ export default function RiwayatTransaksi() {
                 ariaLabel="Seksi"
                 placeholder="Seksi"
                 nilai={seksi}
-                opsi={SEKSI.map((x) => ({ nilai: x, label: x }))}
+                opsi={pilihanSeksi.map((x) => ({ nilai: x, label: x }))}
                 onPilih={setSeksi}
                 onHapus={() => setSeksi('')}
               />

@@ -72,9 +72,18 @@ service cloud.firestore {
     // PEGAWAI & AKUN
     // ════════════════════════════════════════════════════════════════════════
 
+    // unitId = unit kerja paling rinci (pegawai_unit); seksi = label bagiannya (seksi/subbagian/
+    // urusan; subseksi ikut seksinya), disalin klien dan dipakai modul lain lewat pegawai_ringkas.
     function kunciPegawaiKlien() {
-      return ['nama', 'nip', 'pangkatId', 'pangkatNama', 'jabatanId', 'jabatanNama', 'seksi',
-              'tanggalLahir', 'fotoPaths'].concat(kunciAudit());
+      return ['nama', 'nip', 'statusKepegawaian', 'pangkatId', 'pangkatNama', 'golongan',
+              'jabatanId', 'jabatanNama', 'unitId', 'seksi', 'tanggalLahir', 'fotoPaths']
+        .concat(kunciAudit());
+    }
+    // Golongan PNS (I/a–IV/e) dan PPPK (I–XVII).
+    function golonganPns(g) { return g is string && g.matches('^(I|II|III|IV)/[a-e]$'); }
+    function golonganPppk(g) {
+      return g is string
+        && g.matches('^(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV|XVI|XVII)$');
     }
     function kunciPegawaiFn() { return ['email', 'authUid', 'peran', 'aktif', 'ultahMd']; }
     // Foto ke-i (bila ada): path foto asli di folder pegawai itu sendiri (storage.rules).
@@ -88,12 +97,16 @@ service cloud.firestore {
         && fotoKe(id, l, 3) && fotoKe(id, l, 4) && fotoKe(id, l, 5)
         && fotoKe(id, l, 6) && fotoKe(id, l, 7) && fotoKe(id, l, 8);
     }
+    // Field data kepegawaian boleh kosong ('' = belum dilengkapi); get() bawaan '' supaya dokumen
+    // yang dibuat sebelum field ditambah tetap bisa diperbarui sebagian.
     function pegawaiSah(d, id) {
       return teksIsi(d.nama, 120)
         && (d.nip == '' || (d.nip is string && d.nip.matches('^[0-9]{18}$')))
+        && d.get('statusKepegawaian', '') in ['', 'pns', 'cpns', 'pppk', 'nonasn']
         && teks(d.pangkatId, 64) && teks(d.pangkatNama, 80)
+        && (d.get('golongan', '') == '' || golonganPns(d.golongan) || golonganPppk(d.golongan))
         && teks(d.jabatanId, 64) && teks(d.jabatanNama, 160)
-        && teks(d.seksi, 80)
+        && (d.get('unitId', '') == '' || idSah(d.unitId)) && teks(d.get('seksi', ''), 60)
         && (d.tanggalLahir == '' || tanggal(d.tanggalLahir))
         && fotoPathsSah(id, d.fotoPaths);
     }
@@ -119,29 +132,95 @@ service cloud.firestore {
       allow write: if false; // diturunkan Function dari pegawai
     }
 
-    function kunciMaster() { return ['nama', 'urutan', 'aktif'].concat(kunciAudit()); }
-    function masterSah(d) { return teksIsi(d.nama, 160) && bulat(d.urutan, 0, 9999) && d.aktif is bool; }
-    function bolehBuatMaster() {
-      return kepegawaian() && hanya(kunciMaster()) && wajib(kunciMaster()) && masterSah(baru()) && auditBuat();
+    // Kontak pribadi: hanya Kepegawaian dan pemiliknya (Profil Saya), tidak masuk pegawai_ringkas.
+    function kunciKontak() { return ['alamat', 'emailPribadi', 'noWa'].concat(kunciAudit()); }
+    function kontakSah(d) {
+      return teks(d.alamat, 300)
+        && (d.emailPribadi == '' || (teks(d.emailPribadi, 120)
+          && d.emailPribadi.matches('^[a-z0-9._%+-]+@[a-z0-9-]+([.][a-z0-9-]+)*[.][a-z]{2,}$')))
+        && (d.noWa == '' || (d.noWa is string && d.noWa.matches('^62[0-9]{8,13}$')));
     }
-    function bolehUbahMaster() {
-      return kepegawaian() && hanya(kunciMaster()) && masterSah(baru()) && auditUbah();
+    // ID = ID pegawai. Tanpa exists(): impor CSV menulis ratusan kontak per batch, sedangkan batas
+    // akses dokumen rules hanya 20 per permintaan. Pemilik hanya bisa menulis ID-nya sendiri.
+    function bolehTulisKontak(id) {
+      return (kepegawaian() && idSah(id)) || (masuk() && pegawaiSaya() == id);
+    }
+
+    match /pegawai_kontak/{id} {
+      allow get: if kepegawaian() || (masuk() && pegawaiSaya() == id);
+      allow list: if kepegawaian() && batasDaftar(500);
+      allow create: if bolehTulisKontak(id)
+        && hanya(kunciKontak()) && wajib(kunciKontak()) && kontakSah(baru()) && auditBuat();
+      allow update: if bolehTulisKontak(id)
+        && hanya(kunciKontak()) && kontakSah(baru()) && auditUbah();
+      allow delete: if false;
+    }
+
+    // Master Kepegawaian (pangkat/golongan, jabatan, unit kerja): ditulis Kepegawaian, tidak dihapus.
+    function masterSah(d) { return teksIsi(d.nama, 160) && bulat(d.urutan, 0, 9999) && d.aktif is bool; }
+    function bolehBuatMaster(kunci, sah) {
+      return kepegawaian() && hanya(kunci) && wajib(kunci) && sah && auditBuat();
+    }
+    function bolehUbahMaster(kunci, sah) {
+      return kepegawaian() && hanya(kunci) && sah && auditUbah();
+    }
+    function kunciPangkat() {
+      return ['nama', 'golongan', 'jenis', 'urutan', 'aktif'].concat(kunciAudit());
+    }
+    function pangkatSah(d) {
+      return masterSah(d)
+        && ((d.jenis == 'pns' && golonganPns(d.golongan)) || (d.jenis == 'pppk' && golonganPppk(d.golongan)));
+    }
+    function kunciJabatan() {
+      return ['nama', 'jenis', 'eselon', 'urutan', 'aktif'].concat(kunciAudit());
+    }
+    // Eselon hanya untuk jabatan struktural (eselon tidak disimpan per pegawai).
+    function jabatanSah(d) {
+      return masterSah(d) && d.jenis in ['struktural', 'fungsional', 'pelaksana']
+        && (d.eselon == ''
+          || (d.jenis == 'struktural' && d.eselon is string && d.eselon.matches('^(I|II|III|IV|V)([.][ab])?$')));
+    }
+    // Unit kerja bertingkat: kantor (0) → subbagian/seksi (1) → urusan/subseksi (2). Induk harus
+    // tepat satu tingkat di atasnya, jadi pohon tidak bisa berputar; jenis tidak bisa diubah.
+    function kunciUnit() {
+      return ['kode', 'nama', 'singkatan', 'jenis', 'indukId', 'urutan', 'aktif'].concat(kunciAudit());
+    }
+    function tingkatUnit(j) { return j == 'kantor' ? 0 : (j in ['subbagian', 'seksi'] ? 1 : 2); }
+    function jalurUnit(id) { return /databases/$(database)/documents/pegawai_unit/$(id); }
+    function unitSah(d, id) {
+      return masterSah(d)
+        && d.kode is string && d.kode.matches('^[A-Z0-9][A-Z0-9-]{0,19}$')
+        && teksIsi(d.singkatan, 30)
+        && d.jenis in ['kantor', 'subbagian', 'seksi', 'urusan', 'subseksi']
+        && ((d.jenis == 'kantor' && d.indukId == '')
+          || (d.jenis != 'kantor' && idSah(d.indukId) && d.indukId != id
+            && tingkatUnit(getAfter(jalurUnit(d.indukId)).data.jenis) == tingkatUnit(d.jenis) - 1));
     }
 
     match /pegawai_pangkat/{id} {
       allow get: if masuk();
       allow list: if masuk() && batasDaftar(200);
-      allow create: if bolehBuatMaster();
-      allow update: if bolehUbahMaster();
+      allow create: if bolehBuatMaster(kunciPangkat(), pangkatSah(baru()));
+      allow update: if bolehUbahMaster(kunciPangkat(), pangkatSah(baru()));
       allow delete: if false; // pakai aktif: false
     }
 
     match /pegawai_jabatan/{id} {
       allow get: if masuk();
       allow list: if masuk() && batasDaftar(200);
-      allow create: if bolehBuatMaster();
-      allow update: if bolehUbahMaster();
+      allow create: if bolehBuatMaster(kunciJabatan(), jabatanSah(baru()));
+      allow update: if bolehUbahMaster(kunciJabatan(), jabatanSah(baru()));
       allow delete: if false;
+    }
+
+    // Unit kerja (seksi/subbagian/urusan), dipakai semua modul lewat @/context/useUnitKerja.
+    match /pegawai_unit/{id} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(200);
+      allow create: if bolehBuatMaster(kunciUnit(), unitSah(baru(), id));
+      allow update: if bolehUbahMaster(kunciUnit(), unitSah(baru(), id))
+        && baru().jenis == lama().jenis;
+      allow delete: if false; // pakai aktif: false
     }
 
     function kunciPejabat() {

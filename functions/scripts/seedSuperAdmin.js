@@ -76,10 +76,13 @@ async function utama() {
     batch.create(ref, {
       nama,
       nip,
+      statusKepegawaian: '',
       pangkatId: '',
       pangkatNama: '',
+      golongan: '',
       jabatanId: '',
       jabatanNama: '',
+      unitId: '',
       seksi: '',
       tanggalLahir: '',
       fotoPaths: [],

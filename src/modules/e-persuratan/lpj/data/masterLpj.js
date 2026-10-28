@@ -1,7 +1,8 @@
 /**
  * Konstanta LPJ (dari masterData.js purwarupa, tanpa data pegawai/pejabat).
  * Data pegawai, pejabat, MAK, dan DIPA diambil dari Firestore (`pegawai_ringkas`, `mak_node`,
- * `mak_dipa`); batas panjang & ukuran dari `@/utils/batas`, daftar seksi dari `@/data/seksi`.
+ * `mak_dipa`); batas panjang & ukuran dari `@/utils/batas`, daftar seksi dari unit kerja
+ * (`@/context/useUnitKerja`).
  */
 
 export const PEJABAT_KATEGORI = [

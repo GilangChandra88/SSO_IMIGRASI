@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { SEKSI } from '@/data/seksi';
+import { useUnitKerja } from '@/context/useUnitKerja';
 import { T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
 import { K } from '../ui/kelas';
@@ -25,6 +25,7 @@ const TR = `${T.hoverSurface2} max-[820px]:grid max-[820px]:grid-cols-[minmax(0,
  */
 export default function CetakTerima() {
   const { siap, semuaBarang: barang, namaKategori, bukaBukti } = useInventori();
+  const { pilihanSeksi } = useUnitKerja();
   const [cari, setCari] = useState('');
   const [seksi, setSeksi] = useState('');
   const [kategori, setKategori] = useState('');
@@ -110,7 +111,7 @@ export default function CetakTerima() {
                 ariaLabel="Seksi"
                 placeholder="Seksi"
                 nilai={seksi}
-                opsi={SEKSI.map((x) => ({ nilai: x, label: x }))}
+                opsi={pilihanSeksi.map((x) => ({ nilai: x, label: x }))}
                 onPilih={setSeksi}
                 onHapus={() => setSeksi('')}
               />

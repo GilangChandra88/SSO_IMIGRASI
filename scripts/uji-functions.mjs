@@ -112,10 +112,13 @@ cek(
 const pegawai = {
   nama: 'Siti Contoh',
   nip: '000000000000000000',
+  statusKepegawaian: 'pns',
   pangkatId: '',
-  pangkatNama: '',
+  pangkatNama: 'Penata Muda',
+  golongan: 'III/a',
   jabatanId: '',
   jabatanNama: '',
+  unitId: 'uTIKIM',
   seksi: 'Tikim',
   tanggalLahir: '1991-03-15',
   fotoPaths: ['pegawai/pSiti/foto/1767225600001-siti.jpg'],
@@ -156,6 +159,14 @@ cek('trigger mengisi pegawai_ringkas', !!ringkas);
 cek(
   'ringkas berisi ultahMd 03-15 dan tanpa tanggalLahir',
   ringkas?.fields?.ultahMd?.stringValue === '03-15' && !ringkas?.fields?.tanggalLahir,
+  JSON.stringify(ringkas?.fields),
+);
+cek(
+  'ringkas berisi unitId, golongan & seksi (tanpa status/kontak)',
+  ringkas?.fields?.unitId?.stringValue === 'uTIKIM' &&
+    ringkas?.fields?.golongan?.stringValue === 'III/a' &&
+    ringkas?.fields?.seksi?.stringValue === 'Tikim' &&
+    !ringkas?.fields?.statusKepegawaian,
   JSON.stringify(ringkas?.fields),
 );
 cek(

@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { STATUS, T } from '@/utils/uiTokens';
 import { hapusBaris } from '@/utils/animasi';
-import { SEKSI } from '@/data/seksi';
+import { useUnitKerja } from '@/context/useUnitKerja';
 import { K } from '../ui/kelas';
 import { useInventori } from '../hooks/useInventori';
 import { pesanGalat } from '@/utils/pesanGalat';
@@ -21,6 +21,7 @@ const barisBaru = (barangId = '', jumlah = '') => ({ kunci: ++kunciBaris, barang
  */
 export default function FormKeluar({ edit, onSelesai, onTutup }) {
   const { barang, pegawai: daftarPegawaiDb, sisa, izin } = useInventori();
+  const { pilihanSeksi } = useUnitKerja();
   const [pegawaiId, setPegawaiId] = useState(() => (edit ? edit.pegawaiId || '' : ''));
   // Pengambil lama yang sudah nonaktif tetap bisa dipilih saat mengubah transaksinya
   const daftarPegawai = useMemo(() => {
@@ -190,7 +191,7 @@ export default function FormKeluar({ edit, onSelesai, onTutup }) {
               id="k-seksi"
               placeholder="Pilih seksi..."
               nilai={seksiManual}
-              opsi={SEKSI.map((x) => ({ nilai: x, label: x }))}
+              opsi={pilihanSeksi.map((x) => ({ nilai: x, label: x }))}
               onPilih={(v) => {
                 setGalat(null);
                 setSeksiManual(v);

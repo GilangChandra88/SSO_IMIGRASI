@@ -2,11 +2,11 @@ import React, { useState } from 'react';
 import { FaHashtag, FaTimes } from 'react-icons/fa';
 import Modal from '@/components/Modal';
 import { useAuth } from '@/context/AuthContext';
+import { opsiSeksiDengan, useUnitKerja } from '@/context/useUnitKerja';
 import { PANJANG } from '@/utils/batas';
 import { pesanGalat } from '@/utils/pesanGalat';
 import { showToast } from '@/utils/toastStore';
 import { ADMIN } from '@/utils/uiTokens';
-import { SEKSI_OPTIONS } from '../../data/nomorSuratConfig';
 import { ubahKeteranganNomor } from '../../services/nomorSurat';
 
 /**
@@ -14,6 +14,7 @@ import { ubahKeteranganNomor } from '../../services/nomorSurat';
  * Nomor, kode, dan tahun tetap (ditegakkan rules).
  */
 export default function EditNomorSuratModal({ row, onClose }) {
+  const { pilihanSeksi } = useUnitKerja();
   const { currentUser } = useAuth();
   const [form, setForm] = useState({
     tanggal: row.tanggal || '',
@@ -115,7 +116,7 @@ export default function EditNomorSuratModal({ row, onClose }) {
               <option value="" disabled={register}>
                 {register ? 'Pilih seksi/bagian' : '—'}
               </option>
-              {SEKSI_OPTIONS.map((s) => (
+              {opsiSeksiDengan(pilihanSeksi, form.seksi).map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
