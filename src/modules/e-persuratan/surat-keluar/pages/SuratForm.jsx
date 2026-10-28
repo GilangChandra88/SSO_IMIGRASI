@@ -1,42 +1,37 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import {
-  FaChevronLeft,
   FaSave,
   FaPrint,
   FaCheckCircle,
   FaSpinner,
   FaSearch,
   FaTimes,
-  FaEye,
-  FaEyeSlash,
   FaTrashAlt,
-  FaLock,
-  FaList,
-  FaRegFileAlt,
 } from 'react-icons/fa';
 import { SURAT_REGISTRY } from '@/data/surat';
-import { db } from '@/config/firebase';
-import {
-  collection,
-  addDoc,
-  serverTimestamp,
-  getDocs,
-  doc,
-  updateDoc,
-  getDoc,
-  runTransaction,
-  query,
-  where,
-  deleteDoc,
-} from 'firebase/firestore';
-import { useAuth } from '@/context/AuthContext';
-import { syncSPDItems, syncOtherSPDsData } from '@/modules/e-persuratan/lpj';
-import SuratPreviewModal from '@/components/SuratPreview/SuratPreviewModal';
-import SuratPreviewCanvas from '@/components/SuratPreview/SuratPreviewCanvas';
+import { usePegawaiRingkas } from '@/context/usePegawaiRingkas';
+import { usePejabat } from '@/context/usePejabat';
+import { PANJANG } from '@/utils/batas';
+import { tahunIni, tanggalIso } from '@/utils/nilai';
+import { pesanGalat } from '@/utils/pesanGalat';
+import { showToast } from '@/utils/toastStore';
 import { ANIM } from '@/utils/animasi';
 import { useMekarDariTombol } from '@/components/animasi';
 import { gulirKeGalat } from '../../gulirPintar';
+import {
+  LABEL_TINGKAT,
+  TINGKAT_PILIHAN,
+  itemDiAkun,
+  kodeMakDari,
+  makDariAkun,
+  pilihanTingkat,
+} from '../../makPohon';
+import { daftarTahun } from '../../tahunAnggaran';
+import { useMakTahun } from '../../useMakTahun';
+import { HIERARKI_KODE } from '../data/nomorSuratConfig';
+import { useKodeSurat } from '../hooks/useNomorSurat';
+import { terbitkanNomorSurat } from '../services/nomorSurat';
 
 const nilaiKosong = (x) => !x || (Array.isArray(x) && x.length === 0);
 
@@ -45,406 +40,103 @@ export default function SuratForm() {
   const mekarRef = useMekarDariTombol();
   const { suratId } = useParams();
   const navigate = useNavigate();
-  const location = useLocation();
-  const { currentUser } = useAuth();
-
-  const queryParams = new URLSearchParams(location.search);
-  const packId = queryParams.get('packId');
-  const itemId = queryParams.get('itemId');
 
   const found = SURAT_REGISTRY.find((s) => s.id === suratId);
 
-  const isSpbyHub = suratId === 'spby';
-  const isPhase2Child = [
-    'nota-dinas',
-    'surat-perintah-bayar',
-    'rincian-spby',
-    'rincian-perjalanan-tugas',
-    'sptjm-pelaksana',
-    'nominatif',
-    'kwitansi',
-  ].includes(suratId);
+  const butuh = (tipe) => !!found?.variables?.some((v) => tipe.includes(v.type));
 
   const [surat, setSurat] = useState(found || null);
   const [formData, setFormData] = useState({});
-  const [pegawaiDB, setPegawaiDB] = useState([]);
-  const [makDB, setMakDB] = useState([]);
-  const [nomorSuratDB, setNomorSuratDB] = useState([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
-  const [showPreview, setShowPreview] = useState(!isSpbyHub);
   const [savedInstance, setSavedInstance] = useState(null);
   const [missingFieldInfo, setMissingFieldInfo] = useState(null);
   // Setelah "Lanjutkan Isi Form": isian wajib yang kosong ditandai merah dan layar menuju ke sana
   const [tandaiKosong, setTandaiKosong] = useState(false);
 
-  // Init Surat & Load DB
+  // Data pendukung dari Firestore (listener bersama): pegawai ringkas, MAK satu tahun anggaran,
+  // dan kode surat aktif. MAK & kode surat hanya dimuat bila definisi surat memakainya.
+  const { pegawai } = usePegawaiRingkas();
+  const pegawaiDB = useMemo(
+    () =>
+      pegawai.map((p) => ({
+        uid: p.id,
+        nama: p.nama,
+        nip: p.nip,
+        pangkat: p.pangkatNama,
+        jabatan: p.jabatanNama,
+      })),
+    [pegawai],
+  );
+  const [tahunMak, setTahunMak] = useState(tahunIni);
+  const mak = useMakTahun(butuh(['mak', 'detail_transaksi']) ? tahunMak : null);
+  const kodeSurat = useKodeSurat({ aktif: butuh(['nomor_surat']) });
+
+  // Init Surat & isian awal. Isian tidak disimpan ke database.
   useEffect(() => {
     const found = SURAT_REGISTRY.find((s) => s.id === suratId);
     if (!found) {
-      alert('Surat tidak ditemukan!');
+      showToast('Surat tidak ditemukan.', 'error');
       navigate('/e-persuratan/persuratan');
       return;
     }
     setSurat(found);
-
-    async function loadData() {
-      const initial = {};
-      found.variables?.forEach((v) => {
-        if (v.source !== 'auto') {
-          if (v.type === 'pegawai_multi' || v.type === 'detail_transaksi') {
-            initial[v.key] = [];
-          } else if (v.type === 'dynamic_list') {
-            initial[v.key] = ['']; // Array string kosong pertama
-          } else if (v.key === 'tempat_terbit') {
-            initial[v.key] = 'Singaraja';
-          } else if (v.type === 'date') {
-            initial[v.key] = new Date().toISOString().split('T')[0];
-          } else {
-            initial[v.key] = v.default !== undefined ? v.default : '';
-          }
-        }
-      });
-      // Load formData from server
-      let savedData = null;
-      let assignedName = null;
-
-      if (packId && itemId) {
-        try {
-          const itemRef = doc(db, 'lpj_packs', packId, 'surat_items', itemId);
-          const docSnap = await getDoc(itemRef);
-          if (docSnap.exists()) {
-            savedData = docSnap.data().data || {};
-            assignedName = docSnap.data().assigned_name;
-          }
-
-          // Bulletproof sync: If this is an SPD, always inherit the latest nomor_sp from SP
-          if (found.id === 'surat-perjalanan-dinas') {
-            const itemsRef = collection(db, 'lpj_packs', packId, 'surat_items');
-            const spQuery = query(itemsRef, where('kode', '==', 'SP'));
-            const spSnap = await getDocs(spQuery);
-            if (!spSnap.empty) {
-              const spData = spSnap.docs[0].data();
-              if (spData.data && spData.data.nomor_sp) {
-                if (!savedData) savedData = {};
-                savedData.nomor_spd = spData.data.nomor_sp;
-              }
-            }
-          }
-
-          // SPBY sync: Inherit MAK from SPD, and pegawai_list from SP
-          if (found.id === 'spby') {
-            const itemsRef = collection(db, 'lpj_packs', packId, 'surat_items');
-
-            // 1. Dapatkan daftar pegawai dari SP
-            const spQuery = query(itemsRef, where('kode', '==', 'SP'));
-            const spSnap = await getDocs(spQuery);
-            if (!spSnap.empty) {
-              const spData = spSnap.docs[0].data();
-              if (spData.data) {
-                if (!savedData) savedData = {};
-                savedData.pegawai_list = spData.data.pegawai_list || [];
-              }
-            }
-
-            // 2. Dapatkan Pembebanan Anggaran (MAK/Akun) dari SPD
-            const spdQuery = query(itemsRef, where('kode', '==', 'SPD'));
-            const spdSnap = await getDocs(spdQuery);
-            if (!spdSnap.empty) {
-              const spdData = spdSnap.docs[0].data();
-              if (spdData.data && spdData.data.akun) {
-                if (!savedData) savedData = {};
-                if (!savedData.mak) savedData.mak = spdData.data.akun;
-              }
-            }
-          }
-
-          // Phase 2 Child sync: Inherit all fields from SPBY dynamically
-          if (
-            [
-              'nota-dinas',
-              'surat-perintah-bayar',
-              'rincian-spby',
-              'rincian-perjalanan-tugas',
-              'sptjm-pelaksana',
-              'nominatif',
-              'kwitansi',
-            ].includes(found.id)
-          ) {
-            const itemsRef = collection(db, 'lpj_packs', packId, 'surat_items');
-            const spbyQuery = query(itemsRef, where('kode', '==', 'SPBY'));
-            const spbySnap = await getDocs(spbyQuery);
-            if (!spbySnap.empty) {
-              const spbyData = spbySnap.docs[0].data();
-              if (spbyData.data) {
-                if (!savedData) savedData = {};
-                Object.assign(savedData, spbyData.data);
-              }
-            }
-          }
-        } catch (err) {
-          console.error('Gagal memuat data sebelumnya:', err);
+    const initial = {};
+    found.variables?.forEach((v) => {
+      if (v.source !== 'auto') {
+        if (v.type === 'pegawai_multi' || v.type === 'detail_transaksi') {
+          initial[v.key] = [];
+        } else if (v.type === 'dynamic_list') {
+          initial[v.key] = ['']; // Array string kosong pertama
+        } else if (v.key === 'tempat_terbit') {
+          initial[v.key] = 'Singaraja';
+        } else if (v.type === 'date') {
+          initial[v.key] = tanggalIso();
+        } else {
+          initial[v.key] = v.default !== undefined ? v.default : '';
         }
       }
+    });
+    setFormData(initial);
+  }, [suratId, navigate]);
 
-      // Merge savedData over initial
-      let finalData = { ...initial, ...(savedData || {}) };
-
-      // --- Enforce DIPA in 'dasar' untuk LPJ ---
-      if (packId && found.variables?.some((v) => v.key === 'dasar')) {
-        const DIPA_STRING =
-          'DIPA Kantor Imigrasi Kelas II TPI Buleleng, nomor: SP DIPA-137.03.2.692951/2026 tanggal 29 Desember 2025.';
-        let arr = Array.isArray(finalData.dasar) ? finalData.dasar : [];
-        if (!arr.includes(DIPA_STRING)) {
-          if (arr.length === 1 && arr[0] === '') {
-            arr = [DIPA_STRING];
-          } else {
-            arr.push(DIPA_STRING);
-          }
-        }
-        finalData.dasar = arr;
-      }
-
-      // Load Pegawai DB if needed
-      const hasPegawaiVar = found.variables?.some(
-        (v) => v.type === 'pegawai' || v.type === 'pegawai_multi',
-      );
-      if (hasPegawaiVar) {
-        try {
-          const snap = await getDocs(collection(db, 'pegawai'));
-          const pDB = snap.docs.map((d) => ({ uid: d.id, ...d.data() }));
-          setPegawaiDB(pDB);
-
-          const formatPegawai = (p) =>
-            `${p.nama}\nNIP. ${p.nip || '-'}\nPangkat: ${p.pangkat || '-'}\nJabatan: ${p.jabatan || '-'}`;
-
-          // Autofill PPK (Pejabat Pembuat Komitmen) if key exists and is empty
-          if ('ppk' in finalData && !finalData.ppk) {
-            const ppk = pDB.find((p) => p.status_khusus === 'PPK');
-            if (ppk) finalData.ppk = formatPegawai(ppk);
-          }
-          if ('pejabat_ppk' in finalData && !finalData.pejabat_ppk) {
-            const ppk = pDB.find((p) => p.status_khusus === 'PPK');
-            if (ppk) finalData.pejabat_ppk = formatPegawai(ppk);
-          }
-
-          // Autofill Bendahara
-          if ('bendahara' in finalData && !finalData.bendahara) {
-            const bendahara = pDB.find(
-              (p) =>
-                p.status_khusus === 'Bendahara Pengeluaran' ||
-                (p.status_khusus || '').toLowerCase().includes('bendahara'),
-            );
-            if (bendahara) finalData.bendahara = formatPegawai(bendahara);
-          }
-
-          // Autofill assigned employee for this SPD if key exists and is empty
-          if ('pegawai' in finalData && !finalData.pegawai && assignedName) {
-            const assignedPegawai = pDB.find((p) => p.nama === assignedName);
-            if (assignedPegawai) finalData.pegawai = formatPegawai(assignedPegawai);
-          }
-        } catch (err) {
-          console.error('Gagal load pegawai', err);
-        }
-      }
-
-      // Load MAK DB if needed
-      const hasMakVar = found.variables?.some((v) => v.type === 'mak');
-      if (hasMakVar) {
-        try {
-          const makSnap = await getDocs(collection(db, 'MAK'));
-          const mDB = makSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          setMakDB(mDB);
-        } catch (err) {
-          console.error('Gagal load MAK', err);
-        }
-      }
-
-      // Load Nomor Surat DB if needed
-      const hasNomorVar = found.variables?.some((v) => v.type === 'nomor_surat');
-      if (hasNomorVar) {
-        try {
-          const nomSnap = await getDocs(collection(db, 'nomor surat kanim'));
-          const nDB = nomSnap.docs.map((d) => ({ id: d.id, ...d.data() }));
-          setNomorSuratDB(nDB);
-        } catch (err) {
-          console.error('Gagal load Nomor Surat', err);
-        }
-      }
-
-      setFormData(finalData);
-    }
-
-    loadData();
-  }, [suratId, navigate, packId, itemId]);
-
-  // Auto-Save Effect (Debounced 1.5 detik)
+  // PPK & Bendahara diisi otomatis (sekali per jenis surat) dari pejabat yang berlaku hari ini
+  // (`pegawai_pejabat`, ditetapkan di Kepegawaian); isian yang sudah terisi tidak ditimpa.
+  const { pejabatPada, memuat: memuatPejabat } = usePejabat();
+  const pejabatTerisi = useRef('');
   useEffect(() => {
-    if (!packId || !itemId || !surat) return;
-    if (Object.keys(formData).length === 0) return;
-
-    setIsSaving(true);
-    const timer = setTimeout(() => {
-      const isComplete = !surat.variables
-        ?.filter((v) => v.required && v.source !== 'auto')
-        .some(
-          (v) =>
-            !formData[v.key] || (Array.isArray(formData[v.key]) && formData[v.key].length === 0),
-        );
-
-      const itemRef = doc(db, 'lpj_packs', packId, 'surat_items', itemId);
-      updateDoc(itemRef, {
-        data: formData,
-        is_data_complete: isComplete,
-        updated_at: serverTimestamp(),
-      })
-        .then(async () => {
-          setIsSaving(false);
-          // Sync SPD dinamik jika ini form SP (surat-perintah)
-          if (surat.id === 'surat-perintah' && formData.pegawai_list) {
-            syncSPDItems(packId, formData).catch((err) => console.error('Gagal sync SPD:', err));
-          } else if (surat.id === 'surat-perjalanan-dinas') {
-            syncOtherSPDsData(packId, itemId, formData, isComplete).catch((err) =>
-              console.error('Gagal sync data SPD lain:', err),
-            );
-          }
-
-          // Record MAK_History when SPBY is saved
-          if (surat.id === 'spby' && Array.isArray(formData.detail_transaksi)) {
-            try {
-              const historyCollection = collection(db, 'MAK_History');
-
-              // Clear previous history entries for this surat item
-              const prevQuery = query(
-                historyCollection,
-                where('suratRef.packId', '==', packId),
-                where('suratRef.suratItemId', '==', itemId),
-              );
-              const prevSnap = await getDocs(prevQuery);
-              for (const prevDoc of prevSnap.docs) {
-                await deleteDoc(prevDoc.ref);
-              }
-
-              // Record each detail_transaksi row that has an itemNodeId
-              for (const row of formData.detail_transaksi) {
-                if (row.itemNodeId && row.jumlah) {
-                  const jumlah = Number(String(row.jumlah).replace(/[^0-9]/g, '')) || 0;
-                  if (jumlah <= 0) continue;
-
-                  const tanggal = formData.tanggal_spby || new Date().toISOString().split('T')[0];
-                  const dateObj = new Date(tanggal);
-
-                  await addDoc(historyCollection, {
-                    makNodeId: row.itemNodeId,
-                    akunNodeId: row.akunNodeId || '',
-                    tahunNodeId: row.tahunNodeId || '',
-                    makString: formData.mak || '',
-                    itemKode: row.itemKode || '',
-                    itemName: row.itemName || row.detail || '',
-                    jumlah: jumlah,
-                    tanggal: tanggal,
-                    bulan: dateObj.getMonth() + 1,
-                    tahun: dateObj.getFullYear(),
-                    suratRef: {
-                      packId: packId,
-                      suratItemId: itemId,
-                      kode: 'SPBY',
-                      pegawai: row.pegawai || '',
-                    },
-                    uraian: row.uraian || '',
-                    createdAt: new Date().toISOString(),
-                    createdBy: currentUser?.uid || '',
-                    status: 'active',
-                  });
-                }
-              }
-            } catch (err) {
-              console.error('Gagal record MAK_History:', err);
-            }
-          }
-        })
-        .catch((err) => {
-          console.error('Autosave gagal', err);
-          setIsSaving(false);
-        });
-    }, 1500);
-
-    return () => clearTimeout(timer);
-  }, [formData, packId, itemId, surat]);
+    if (memuatPejabat || pejabatTerisi.current === suratId) return;
+    pejabatTerisi.current = suratId;
+    const ppk = pejabatPada('ppk');
+    const bendahara = pejabatPada('bendahara');
+    const isi = { ppk, pejabat_ppk: ppk, bendahara };
+    setFormData((f) => {
+      const tambahan = Object.entries(isi)
+        .filter(([k, orang]) => orang && k in f && !f[k])
+        .map(([k, orang]) => [k, formatPegawai(orang)]);
+      return tambahan.length ? { ...f, ...Object.fromEntries(tambahan) } : f;
+    });
+  }, [suratId, memuatPejabat, pejabatPada]);
 
   if (!surat) return <div className="p-8">Loading...</div>;
 
-  const handleSave = async (force = false) => {
-    if (!force) {
-      const missing = surat.variables
-        ?.filter((v) => v.required && v.source !== 'auto')
-        .find(
-          (v) =>
-            !formData[v.key] || (Array.isArray(formData[v.key]) && formData[v.key].length === 0),
-        );
-
-      if (missing) {
-        setMissingFieldInfo(missing);
-        return;
-      }
+  // Isian surat tidak disimpan ke database (draf lama `surat_instances` tidak pernah dibaca dan
+  // sudah dihapus, lihat docs/skema-database.md §6). "Selesai Mengisi" hanya memeriksa isian
+  // wajib, lalu membuka langkah berikutnya (nomor surat & cetak).
+  const handleSave = (keluar = false) => {
+    if (keluar) {
+      navigate('/e-persuratan/persuratan');
+      return;
     }
-
+    const missing = surat.variables
+      ?.filter((v) => v.required && v.source !== 'auto')
+      .find(
+        (v) => !formData[v.key] || (Array.isArray(formData[v.key]) && formData[v.key].length === 0),
+      );
+    if (missing) {
+      setMissingFieldInfo(missing);
+      return;
+    }
     setMissingFieldInfo(null);
-    setIsSubmitting(true);
-    try {
-      let instanceId;
-      const instanceData = {
-        surat_id: surat.id,
-        surat_kode: surat.kode,
-        surat_nama: surat.nama,
-        data: formData,
-        status: 'draft',
-        created_by: currentUser?.uid,
-        created_by_nama: currentUser?.displayName || currentUser?.email || 'User',
-        created_at: serverTimestamp(),
-        updated_at: serverTimestamp(),
-      };
-
-      const docRef = await addDoc(collection(db, 'surat_instances'), instanceData);
-      instanceId = docRef.id;
-
-      if (packId && itemId) {
-        const isComplete = !surat.variables
-          ?.filter((v) => v.required && v.source !== 'auto')
-          .some(
-            (v) =>
-              !formData[v.key] || (Array.isArray(formData[v.key]) && formData[v.key].length === 0),
-          );
-
-        const itemRef = doc(db, 'lpj_packs', packId, 'surat_items', itemId);
-        await updateDoc(itemRef, {
-          data: formData,
-          instance_id: instanceId,
-          is_data_complete: isComplete,
-          updated_at: serverTimestamp(),
-        });
-
-        if (surat.id === 'surat-perintah' && formData.pegawai_list) {
-          await syncSPDItems(packId, formData);
-        } else if (surat.id === 'surat-perjalanan-dinas') {
-          await syncOtherSPDsData(packId, itemId, formData, isComplete);
-        }
-      }
-
-      setIsSubmitting(false);
-
-      if (force && packId) {
-        navigate(`/e-persuratan/lpj/${packId}`);
-      } else if (force) {
-        navigate('/e-persuratan/persuratan');
-      } else {
-        setSavedInstance({ id: instanceId, ...formData });
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Gagal menyimpan surat!');
-      setIsSubmitting(false);
-    }
+    setSavedInstance({ ...formData });
   };
 
   return (
@@ -496,8 +188,8 @@ export default function SuratForm() {
                 Pilih{' '}
                 <strong className="text-slate-800 dark:text-slate-100">Lanjutkan Isi Form</strong>{' '}
                 untuk melengkapinya, atau{' '}
-                <strong className="text-slate-800 dark:text-slate-100">Simpan & Kembali</strong>{' '}
-                untuk menyimpan apa adanya dan kembali ke halaman LPJ.
+                <strong className="text-slate-800 dark:text-slate-100">Keluar</strong> untuk kembali
+                ke daftar surat. Isian tidak disimpan.
               </p>
             </div>
 
@@ -514,11 +206,9 @@ export default function SuratForm() {
               </button>
               <button
                 onClick={() => handleSave(true)}
-                disabled={isSubmitting}
-                className="px-6 py-2.5 flex items-center gap-2 text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-xl shadow-md hover:shadow-lg transition-all disabled:opacity-50"
+                className="px-6 py-2.5 flex items-center gap-2 text-sm font-bold text-white bg-amber-500 hover:bg-amber-600 rounded-xl shadow-md hover:shadow-lg transition-all"
               >
-                {isSubmitting ? <FaSpinner className="animate-spin" /> : null}
-                Simpan & Kembali
+                Keluar
               </button>
             </div>
           </div>
@@ -531,650 +221,256 @@ export default function SuratForm() {
           <div className="flex items-center justify-between pb-6 border-b border-slate-200 dark:border-slate-800">
             <div>
               <div className="flex items-center gap-4">
-                <h1 className="text-2xl font-bold text-slate-800 dark:text-white">
-                  {packId
-                    ? surat.id === 'spby'
-                      ? 'Buat LPJ & SPBy'
-                      : 'Buat LPJ Perjadin'
-                    : surat.nama}
-                </h1>
+                <h1 className="text-2xl font-bold text-slate-800 dark:text-white">{surat.nama}</h1>
                 <span className="bg-amber-100 text-amber-800 font-bold px-3 py-1 rounded-full text-[10px] tracking-wider uppercase">
                   Draft
                 </span>
               </div>
-              {packId && (
-                <p className="text-sm text-slate-400 mt-1">
-                  Laporan Pertanggungjawaban Perjalanan Dinas
-                </p>
-              )}
             </div>
 
             <div className="flex items-center gap-3">
-              {isSaving && (
-                <span className="flex items-center gap-2 text-sm font-semibold text-slate-500 mr-2 animate-pulse">
-                  <FaSpinner className="animate-spin" /> Menyimpan...
-                </span>
-              )}
-
               {!savedInstance ? (
                 <button
                   onClick={() => handleSave(false)}
-                  disabled={isSubmitting}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-indigo-900/20 disabled:opacity-50"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold rounded-xl transition-all shadow-md shadow-indigo-900/20"
                 >
-                  {isSubmitting ? <FaSpinner className="animate-spin" /> : <FaSave />}
-                  Simpan Draft
+                  <FaSave />
+                  Selesai Mengisi
                 </button>
               ) : (
                 <button
-                  onClick={() =>
-                    packId
-                      ? navigate(`/e-persuratan/lpj/${packId}`)
-                      : navigate('/e-persuratan/persuratan')
-                  }
+                  onClick={() => navigate('/e-persuratan/persuratan')}
                   className="flex items-center gap-2 px-4 py-2.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-500 hover:bg-emerald-100 dark:hover:bg-emerald-500 hover:text-emerald-700 dark:hover:text-white border border-emerald-200 dark:border-emerald-500/20 text-sm font-bold rounded-xl transition-all"
                 >
-                  <FaCheckCircle /> {packId ? 'Kembali ke LPJ' : 'Selesai'}
+                  <FaCheckCircle /> Selesai
                 </button>
               )}
               <button
-                onClick={() =>
-                  packId
-                    ? navigate(`/e-persuratan/lpj/${packId}`)
-                    : navigate('/e-persuratan/persuratan')
-                }
+                onClick={() => navigate('/e-persuratan/persuratan')}
                 className="flex items-center gap-2 px-4 py-2.5 bg-rose-50 dark:bg-rose-500/10 border border-rose-200 dark:border-rose-500/20 text-rose-600 dark:text-rose-500 hover:bg-rose-100 dark:hover:bg-rose-500 hover:text-rose-700 dark:hover:text-white text-sm font-bold rounded-xl transition-colors"
               >
                 <FaTimes /> Batal
               </button>
             </div>
           </div>
-
-          {/* Stepper (Only in LPJ mode) */}
-          {packId && (
-            <div className="flex items-center gap-2 mt-6">
-              <div className="flex items-center gap-3 bg-indigo-50 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20 px-4 py-2 rounded-xl">
-                <div className="w-6 h-6 bg-indigo-500 rounded-full flex items-center justify-center text-[11px] font-bold text-white">
-                  1
-                </div>
-                <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">
-                  Isi Form
-                </span>
-              </div>
-              <div className="w-8 h-px bg-slate-300 dark:bg-slate-700"></div>
-              <div className="flex items-center gap-3 px-4 py-2">
-                <div className="w-6 h-6 bg-slate-100 dark:bg-slate-800 rounded-full flex items-center justify-center text-[11px] font-bold text-slate-500 border border-slate-300 dark:border-slate-700">
-                  2
-                </div>
-                <span className="text-sm font-bold text-slate-500">Pratinjau PDF</span>
-              </div>
-            </div>
-          )}
         </div>
       </div>
 
       <div className="flex-1 flex overflow-hidden bg-slate-50 dark:bg-[#0f172a] relative">
         <div className="flex-1 p-8 overflow-y-auto custom-scrollbar">
           <div className="max-w-4xl mx-auto">
-            {packId ? (
-              <div className="space-y-8">
-                {(() => {
-                  // 1. Group variables
-                  const groups = [];
-                  let currentGroup = { title: 'Surat Perintah', fields: [] };
+            <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-8 shadow-sm">
+              <div className="flex items-center gap-3 mb-8 border-b border-slate-100 dark:border-slate-700/50 pb-6">
+                <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center font-bold">
+                  {surat.kode}
+                </div>
+                <div>
+                  <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                    {surat.nama}
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                    Lengkapi form di bawah untuk membuat draf surat
+                  </p>
+                </div>
+              </div>
 
-                  surat.variables.forEach((v) => {
-                    if (v.source === 'auto') return;
-                    if (packId && v.label.includes('Nomor Surat Perintah')) return;
+              <div className="space-y-5">
+                {surat.variables?.map((v) => {
+                  if (v.source === 'auto') return null;
+                  const kosong = tandaiKosong && v.required && nilaiKosong(formData[v.key]);
 
-                    if (v.label.includes('Kepada') || v.label.includes('Pegawai yang Ditugaskan')) {
-                      if (currentGroup.fields.length > 0) groups.push(currentGroup);
-                      currentGroup = { title: 'Pegawai yang Ditugaskan', fields: [] };
-                    } else if (
-                      v.label.includes('Pejabat') ||
-                      v.label.includes('Tanggal') ||
-                      v.label.includes('Tempat')
-                    ) {
-                      if (currentGroup.title !== 'Penandatangan Dokumen') {
-                        if (currentGroup.fields.length > 0) groups.push(currentGroup);
-                        currentGroup = { title: 'Penandatangan Dokumen', fields: [] };
+                  return (
+                    <div
+                      key={v.key}
+                      data-galat={kosong ? '' : undefined}
+                      className={
+                        kosong
+                          ? 'rounded-lg ring-2 ring-rose-400 ring-offset-4 ring-offset-white dark:ring-rose-500 dark:ring-offset-slate-800'
+                          : undefined
                       }
-                    }
-                    currentGroup.fields.push(v);
-                  });
-                  if (currentGroup.fields.length > 0) groups.push(currentGroup);
+                    >
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
+                        {v.label} {v.required && <span className="text-rose-500">*</span>}
+                      </label>
+                      {kosong && (
+                        <p
+                          className={`-mt-1 mb-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 ${ANIM.muncul}`}
+                        >
+                          Wajib diisi
+                        </p>
+                      )}
 
-                  // 2. renderField helper
-                  const renderField = (v) => {
-                    return (
-                      <div
-                        key={v.key}
-                        className="mb-6 last:mb-0 p-5 bg-slate-50/50 dark:bg-slate-800/20 border border-slate-100 dark:border-slate-700/50 rounded-2xl"
-                      >
-                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-                          {packId
-                            ? v.label === 'Pejabat Penandatangan'
-                              ? 'Pejabat Penandatangan (KPA/PLt/PLh)'
-                              : v.label.split(' (')[0]
-                            : v.label}{' '}
-                          {v.required && <span className="text-rose-500">*</span>}
-                        </label>
+                      {v.type === 'text' && (
+                        <input
+                          type="text"
+                          value={formData[v.key] || ''}
+                          onChange={(e) => setFormData({ ...formData, [v.key]: e.target.value })}
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-slate-800 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                          placeholder={`Masukkan ${v.label.toLowerCase()}...`}
+                        />
+                      )}
 
-                        {packId && v.label.includes('Penandatangan') && (
-                          <div className="flex items-center gap-3 mb-4">
-                            {['Kepala', 'Kepala PLT', 'Kepala PLH'].map((t) => (
-                              <button
-                                key={t}
-                                type="button"
-                                onClick={() => {
-                                  setFormData({ ...formData, _kpaToggle: t });
+                      {v.type === 'select' && (
+                        <select
+                          value={formData[v.key] || ''}
+                          onChange={(e) => setFormData({ ...formData, [v.key]: e.target.value })}
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-slate-800 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                        >
+                          <option value="">-- Pilih {v.label} --</option>
+                          {v.options?.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      )}
+
+                      {v.type === 'textarea' && (
+                        <textarea
+                          rows={3}
+                          value={formData[v.key] || ''}
+                          onChange={(e) => setFormData({ ...formData, [v.key]: e.target.value })}
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-slate-800 focus:bg-white dark:focus:bg-slate-900 transition-colors resize-y"
+                          placeholder={`Masukkan ${v.label.toLowerCase()}...`}
+                        />
+                      )}
+
+                      {v.type === 'dynamic_list' && (
+                        <div className="space-y-2">
+                          {(Array.isArray(formData[v.key])
+                            ? formData[v.key]
+                            : [formData[v.key] || '']
+                          ).map((item, index) => (
+                            <div key={index} className="flex gap-2">
+                              <input
+                                type="text"
+                                value={item}
+                                onChange={(e) => {
+                                  const newArr = Array.isArray(formData[v.key])
+                                    ? [...formData[v.key]]
+                                    : [formData[v.key] || ''];
+                                  newArr[index] = e.target.value;
+                                  setFormData({ ...formData, [v.key]: newArr });
                                 }}
-                                className={`px-5 py-2 rounded-xl text-xs font-bold transition-colors border ${
-                                  formData._kpaToggle === t
-                                    ? 'bg-indigo-50 dark:bg-[#172554]/80 text-indigo-700 dark:text-blue-100 border-indigo-200 dark:border-blue-900 shadow-sm dark:shadow-inner'
-                                    : 'bg-white dark:bg-transparent text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 shadow-sm dark:shadow-none'
-                                }`}
-                              >
-                                {t}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-
-                        {v.type === 'text' && (
-                          <input
-                            type="text"
-                            value={formData[v.key] || ''}
-                            onChange={(e) => setFormData({ ...formData, [v.key]: e.target.value })}
-                            className={`w-full px-4 py-3 rounded-xl text-sm focus:outline-none transition-colors ${packId ? 'bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700/80 text-slate-800 dark:text-slate-200 focus:border-indigo-500/50 dark:focus:border-indigo-500/50 hover:border-slate-300 dark:hover:border-slate-600/80 shadow-sm dark:shadow-inner focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-0' : 'bg-slate-50 border border-slate-200 text-slate-800 focus:ring-2 focus:ring-slate-800'}`}
-                            placeholder={`Masukkan ${v.label.toLowerCase()}...`}
-                          />
-                        )}
-
-                        {v.type === 'select' && (
-                          <select
-                            value={formData[v.key] || ''}
-                            onChange={(e) => setFormData({ ...formData, [v.key]: e.target.value })}
-                            className={`w-full px-4 py-3 rounded-xl text-sm focus:outline-none transition-colors ${packId ? 'bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700/80 text-slate-800 dark:text-slate-200 focus:border-indigo-500/50 dark:focus:border-indigo-500/50 hover:border-slate-300 dark:hover:border-slate-600/80 shadow-sm dark:shadow-inner focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-0' : 'bg-slate-50 border border-slate-200 text-slate-800 focus:ring-2 focus:ring-slate-800'}`}
-                          >
-                            <option value="">-- Pilih {v.label} --</option>
-                            {v.options?.map((opt) => (
-                              <option key={opt} value={opt}>
-                                {opt}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-
-                        {v.type === 'textarea' && (
-                          <div>
-                            {packId && (v.label.includes('Untuk') || v.label.includes('Maksud')) ? (
-                              <div className="space-y-3 mt-2">
-                                {/* Poin 1 (Editable) */}
-                                <div className="flex gap-3 items-start">
-                                  <div className="w-8 h-8 mt-1 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/50 shadow-sm dark:shadow-inner">
-                                    1
-                                  </div>
-                                  <textarea
-                                    rows={2}
-                                    value={formData[v.key] || ''}
-                                    onChange={(e) =>
-                                      setFormData({ ...formData, [v.key]: e.target.value })
-                                    }
-                                    className="flex-1 px-4 py-2.5 rounded-xl text-sm focus:outline-none transition-colors resize-y overflow-hidden leading-relaxed min-h-[44px] bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700/80 text-slate-800 dark:text-slate-200 focus:border-indigo-500/50 dark:focus:border-indigo-500/50 hover:border-slate-300 dark:hover:border-slate-600/80 shadow-sm dark:shadow-inner focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-0"
-                                    placeholder="Masukkan detail kegiatan poin 1..."
-                                    onInput={(e) => {
-                                      e.target.style.height = 'auto';
-                                      e.target.style.height = e.target.scrollHeight + 'px';
-                                    }}
-                                  />
-                                </div>
-
-                                {/* Poin 2-4 (Visual/Mock only) */}
-                                {[
-                                  'Selama Melaksanakan kegiatan tersebut, yang bersangkutan dibebaskan dari tugas dinas sehari-hari;',
-                                  'Surat tugas ini berlaku sampai dengan selesainya kegiatan; dan',
-                                  'Melaporkan hasil kegiatan tesebut kepada Kepala Kantor Imigrasi Kelas II TPI Buleleng.',
-                                ].map((txt, i) => (
-                                  <div key={i} className="flex gap-3 items-start">
-                                    <div className="w-8 h-8 mt-1 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/50 shadow-sm dark:shadow-inner">
-                                      {i + 2}
-                                    </div>
-                                    <div className="flex-1 px-4 py-3 rounded-xl text-sm leading-relaxed bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/80 text-slate-500 cursor-not-allowed select-none">
-                                      {txt}
-                                    </div>
-                                  </div>
-                                ))}
-
-                                <p className="text-[11px] text-slate-500 mt-4 ml-1 font-medium">
-                                  Poin 2—4 sudah baku, cukup isi poin 1
-                                </p>
-                              </div>
-                            ) : (
-                              <textarea
-                                rows={3}
-                                value={formData[v.key] || ''}
-                                onChange={(e) =>
-                                  setFormData({ ...formData, [v.key]: e.target.value })
-                                }
-                                className={`w-full px-4 py-3 rounded-xl text-sm focus:outline-none transition-colors resize-y ${packId ? 'bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700/80 text-slate-800 dark:text-slate-200 focus:border-indigo-500/50 dark:focus:border-indigo-500/50 hover:border-slate-300 dark:hover:border-slate-600/80 shadow-sm dark:shadow-inner focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-0' : 'bg-slate-50 border border-slate-200 text-slate-800 focus:ring-2 focus:ring-slate-800'}`}
-                                placeholder={`Masukkan ${v.label.toLowerCase()}...`}
+                                className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-slate-800 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                                placeholder={`Item ${index + 1}`}
                               />
-                            )}
-                          </div>
-                        )}
-
-                        {v.type === 'dynamic_list' && (
-                          <div className="space-y-3">
-                            {(Array.isArray(formData[v.key])
-                              ? formData[v.key]
-                              : [formData[v.key] || '']
-                            ).map((item, index, arr) => {
-                              const isLockedDasar =
-                                packId &&
-                                v.key === 'dasar' &&
-                                (item.includes('DIPA') ||
-                                  (index === arr.length - 1 &&
-                                    arr.length > 0 &&
-                                    arr[arr.length - 1].includes('DIPA')));
-                              return (
-                                <div key={index} className="flex gap-3 items-start">
-                                  <div
-                                    className={`w-8 h-8 mt-1 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors ${packId ? 'bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700/50 shadow-sm dark:shadow-inner' : 'bg-slate-200 text-slate-500'}`}
-                                  >
-                                    {index + 1}
-                                  </div>
-                                  <textarea
-                                    value={item}
-                                    disabled={isLockedDasar}
-                                    onChange={(e) => {
-                                      const newArr = Array.isArray(formData[v.key])
-                                        ? [...formData[v.key]]
-                                        : [formData[v.key] || ''];
-                                      newArr[index] = e.target.value;
-                                      setFormData({ ...formData, [v.key]: newArr });
-                                    }}
-                                    className={`flex-1 px-4 py-2.5 rounded-xl text-sm focus:outline-none transition-colors resize-y overflow-hidden leading-relaxed min-h-[44px] ${
-                                      packId
-                                        ? isLockedDasar
-                                          ? 'bg-slate-100 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800/80 text-slate-500 cursor-not-allowed'
-                                          : 'bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700/80 text-slate-800 dark:text-slate-200 focus:border-indigo-500/50 dark:focus:border-indigo-500/50 hover:border-slate-300 dark:hover:border-slate-600/80 shadow-sm dark:shadow-inner focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-0'
-                                        : 'bg-slate-50 border border-slate-200 text-slate-800 focus:ring-2 focus:ring-slate-800'
-                                    }`}
-                                    placeholder={`Poin ${index + 1}...`}
-                                    onInput={(e) => {
-                                      e.target.style.height = 'auto';
-                                      e.target.style.height = e.target.scrollHeight + 'px';
-                                    }}
-                                  />
-                                  {isLockedDasar ? (
-                                    <div
-                                      className={`p-2.5 mt-1 shrink-0 rounded-xl border flex items-center justify-center w-11 h-11 ${packId ? 'border-slate-200 dark:border-slate-800/80 text-slate-400 dark:text-slate-600 bg-slate-50 dark:bg-slate-900/30' : 'border-slate-200 text-slate-400'}`}
-                                    >
-                                      <FaLock className="text-sm" />
-                                    </div>
-                                  ) : (
-                                    <button
-                                      onClick={() => {
-                                        const newArr = Array.isArray(formData[v.key])
-                                          ? [...formData[v.key]]
-                                          : [formData[v.key] || ''];
-                                        newArr.splice(index, 1);
-                                        setFormData({ ...formData, [v.key]: newArr });
-                                      }}
-                                      className={`p-2.5 mt-1 shrink-0 rounded-xl transition-all border flex items-center justify-center w-11 h-11 ${
-                                        packId
-                                          ? 'border-rose-200 dark:border-rose-900/30 text-rose-500 dark:text-rose-500/70 hover:bg-rose-50 dark:hover:bg-rose-500/15 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-500/40'
-                                          : 'border-rose-200 text-rose-500 hover:bg-rose-50'
-                                      }`}
-                                      title="Hapus Poin"
-                                    >
-                                      <FaTrashAlt className="text-sm" />
-                                    </button>
-                                  )}
-                                </div>
-                              );
-                            })}
-                            <div>
                               <button
                                 onClick={() => {
                                   const newArr = Array.isArray(formData[v.key])
                                     ? [...formData[v.key]]
                                     : [formData[v.key] || ''];
-
-                                  if (
-                                    packId &&
-                                    v.key === 'dasar' &&
-                                    newArr.length > 0 &&
-                                    newArr[newArr.length - 1].includes('DIPA')
-                                  ) {
-                                    newArr.splice(newArr.length - 1, 0, ''); // Sisipkan SEBELUM DIPA
-                                  } else {
-                                    newArr.push('');
-                                  }
-
+                                  newArr.splice(index, 1);
                                   setFormData({ ...formData, [v.key]: newArr });
                                 }}
-                                className={`px-4 py-2 text-xs font-bold rounded-lg transition-colors flex items-center gap-2 border w-max mt-2 ${
-                                  packId
-                                    ? 'bg-white dark:bg-slate-800/40 border-slate-200 dark:border-slate-700/60 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/60 hover:text-slate-800 dark:hover:text-slate-200 shadow-sm dark:shadow-none'
-                                    : 'bg-indigo-50 border-indigo-200 text-indigo-600 hover:bg-indigo-100'
-                                }`}
+                                className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors"
                               >
-                                + Tambah Baris
+                                <FaTimes />
                               </button>
-                              {packId && v.key === 'dasar' && (
-                                <p className="text-[11px] text-slate-500 mt-3 font-medium">
-                                  Tambah baris sesuai kebutuhan — DIPA otomatis menjadi dasar
-                                  terakhir
-                                </p>
-                              )}
                             </div>
-                          </div>
-                        )}
+                          ))}
+                          <button
+                            onClick={() => {
+                              const newArr = Array.isArray(formData[v.key])
+                                ? [...formData[v.key]]
+                                : [formData[v.key] || ''];
+                              newArr.push('');
+                              setFormData({ ...formData, [v.key]: newArr });
+                            }}
+                            className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1"
+                          >
+                            + Tambah Item
+                          </button>
+                        </div>
+                      )}
 
-                        {v.type === 'date' && (
-                          <input
-                            type="date"
-                            value={formData[v.key] || ''}
-                            onChange={(e) => setFormData({ ...formData, [v.key]: e.target.value })}
-                            className={`w-full px-4 py-3 rounded-xl text-sm focus:outline-none transition-colors ${packId ? 'bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700/80 text-slate-800 dark:text-slate-200 focus:border-indigo-500/50 dark:focus:border-indigo-500/50 hover:border-slate-300 dark:hover:border-slate-600/80 shadow-sm dark:shadow-inner focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-0' : 'bg-slate-50 border border-slate-200 text-slate-800 focus:ring-2 focus:ring-slate-800'}`}
-                          />
-                        )}
+                      {v.type === 'date' && (
+                        <input
+                          type="date"
+                          value={formData[v.key] || ''}
+                          onChange={(e) => setFormData({ ...formData, [v.key]: e.target.value })}
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-slate-800 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                        />
+                      )}
 
-                        {v.type === 'number' && (
-                          <input
-                            type="number"
-                            value={formData[v.key] || ''}
-                            onChange={(e) => setFormData({ ...formData, [v.key]: e.target.value })}
-                            className={`w-full px-4 py-3 rounded-xl text-sm focus:outline-none transition-colors ${packId ? 'bg-white dark:bg-slate-900/80 border border-slate-200 dark:border-slate-700/80 text-slate-800 dark:text-slate-200 focus:border-indigo-500/50 dark:focus:border-indigo-500/50 hover:border-slate-300 dark:hover:border-slate-600/80 shadow-sm dark:shadow-inner focus:ring-2 focus:ring-indigo-500/10 dark:focus:ring-0' : 'bg-slate-50 border border-slate-200 text-slate-800 focus:ring-2 focus:ring-slate-800'}`}
-                            placeholder="0"
-                          />
-                        )}
+                      {v.type === 'number' && (
+                        <input
+                          type="number"
+                          value={formData[v.key] || ''}
+                          onChange={(e) => setFormData({ ...formData, [v.key]: e.target.value })}
+                          className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-slate-800 focus:bg-white dark:focus:bg-slate-900 transition-colors"
+                          placeholder="0"
+                        />
+                      )}
 
-                        {v.type === 'pegawai' && (
-                          <PegawaiSearch
-                            pegawaiDB={pegawaiDB}
-                            multi={false}
-                            value={formData[v.key]}
-                            onChange={(val) => setFormData({ ...formData, [v.key]: val })}
-                            placeholder={`Cari nama ${v.label.toLowerCase()}...`}
-                            disabled={v.readonly}
-                          />
-                        )}
+                      {v.type === 'pegawai' && (
+                        <PegawaiSearch
+                          pegawaiDB={pegawaiDB}
+                          multi={false}
+                          value={formData[v.key]}
+                          onChange={(val) => setFormData({ ...formData, [v.key]: val })}
+                          placeholder={`Cari ${v.label.toLowerCase()}...`}
+                          disabled={v.readonly}
+                        />
+                      )}
 
-                        {v.type === 'pegawai_multi' && (
-                          <PegawaiSearch
-                            pegawaiDB={pegawaiDB}
-                            multi={true}
-                            value={formData[v.key] || []}
-                            onChange={(val) => setFormData({ ...formData, [v.key]: val })}
-                            placeholder={`Cari dan tambah ${v.label.toLowerCase()}...`}
-                            disabled={v.readonly}
-                          />
-                        )}
+                      {v.type === 'pegawai_multi' && (
+                        <PegawaiSearch
+                          pegawaiDB={pegawaiDB}
+                          multi={true}
+                          value={formData[v.key] || []}
+                          onChange={(val) => setFormData({ ...formData, [v.key]: val })}
+                          placeholder={`Cari ${v.label.toLowerCase()}...`}
+                          disabled={v.readonly}
+                        />
+                      )}
 
-                        {v.type === 'mak' && (
-                          <MakSearch
-                            makDB={makDB}
-                            value={formData[v.key]}
-                            onChange={(val, meta) =>
-                              setFormData({ ...formData, [v.key]: val, ...(meta || {}) })
-                            }
-                            placeholder={`Cari ${v.label.toLowerCase()}...`}
-                            disabled={v.readonly}
-                          />
-                        )}
+                      {v.type === 'mak' && (
+                        <MakSearch
+                          nodes={mak.nodes}
+                          byId={mak.byId}
+                          memuat={mak.memuat}
+                          tahun={tahunMak}
+                          onTahun={setTahunMak}
+                          value={formData[v.key]}
+                          onChange={(val, meta) =>
+                            setFormData({ ...formData, [v.key]: val, ...(meta || {}) })
+                          }
+                          disabled={v.readonly}
+                        />
+                      )}
 
-                        {v.type === 'detail_transaksi' && (
-                          <DetailTransaksi
-                            value={formData[v.key]}
-                            onChange={(val) => setFormData({ ...formData, [v.key]: val })}
-                            pegawaiList={formData.pegawai_list || []}
-                            disabled={v.readonly}
-                            isSaved={!!savedInstance}
-                            makDB={makDB}
-                            akunNodeId={formData._akunNodeId || ''}
-                            tahunNodeId={formData._tahunNodeId || ''}
-                            makString={formData.mak || ''}
-                          />
-                        )}
+                      {v.type === 'detail_transaksi' && (
+                        <DetailTransaksi
+                          value={formData[v.key]}
+                          onChange={(val) => setFormData({ ...formData, [v.key]: val })}
+                          pegawaiList={formData.pegawai_list || []}
+                          disabled={v.readonly}
+                          isSaved={!!savedInstance}
+                          nodes={mak.nodes}
+                          byId={mak.byId}
+                          akunNodeId={formData._akunNodeId || ''}
+                          tahunNodeId={formData._tahunNodeId || ''}
+                          makString={formData.mak || ''}
+                        />
+                      )}
 
-                        {v.type === 'nomor_surat' && (
-                          <NomorSuratSearch
-                            nomorSuratDB={nomorSuratDB}
-                            value={formData[v.key]}
-                            onChange={(val) => setFormData({ ...formData, [v.key]: val })}
-                            disabled={v.readonly}
-                            formData={formData}
-                          />
-                        )}
-                      </div>
-                    );
-                  };
-
-                  return groups.map((g, i) => (
-                    <div
-                      key={i}
-                      className="bg-white dark:bg-slate-800/40 border border-slate-200 dark:border-slate-600/70 shadow-sm dark:shadow-lg rounded-3xl p-8 backdrop-blur-xl mb-8 last:mb-0"
-                    >
-                      <h2 className="text-lg font-black text-slate-800 dark:text-white mb-6 uppercase tracking-wider flex items-center gap-3">
-                        <span className="w-2 h-6 bg-indigo-500 rounded-full"></span>
-                        {g.title}
-                      </h2>
-                      <div>{g.fields.map((v) => renderField(v))}</div>
+                      {v.type === 'nomor_surat' && (
+                        <NomorSuratSearch
+                          indeks={kodeSurat.indeksAktif}
+                          memuat={kodeSurat.memuat}
+                          value={formData[v.key]}
+                          onChange={(val) => setFormData({ ...formData, [v.key]: val })}
+                          disabled={v.readonly}
+                          formData={formData}
+                          surat={surat}
+                        />
+                      )}
                     </div>
-                  ));
-                })()}
+                  );
+                })}
               </div>
-            ) : (
-              <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl p-8 shadow-sm">
-                <div className="flex items-center gap-3 mb-8 border-b border-slate-100 dark:border-slate-700/50 pb-6">
-                  <div className="w-10 h-10 bg-indigo-100 dark:bg-indigo-900/50 text-indigo-600 dark:text-indigo-400 rounded-xl flex items-center justify-center font-bold">
-                    {surat.kode}
-                  </div>
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                      {surat.nama}
-                    </h2>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      Lengkapi form di bawah untuk membuat draf surat
-                    </p>
-                  </div>
-                </div>
-
-                <div className="space-y-5">
-                  {surat.variables?.map((v) => {
-                    if (v.source === 'auto') return null;
-                    const kosong = tandaiKosong && v.required && nilaiKosong(formData[v.key]);
-
-                    return (
-                      <div
-                        key={v.key}
-                        data-galat={kosong ? '' : undefined}
-                        className={
-                          kosong
-                            ? 'rounded-lg ring-2 ring-rose-400 ring-offset-4 ring-offset-white dark:ring-rose-500 dark:ring-offset-slate-800'
-                            : undefined
-                        }
-                      >
-                        <label className="block text-xs font-bold text-slate-700 dark:text-slate-200 mb-1.5 uppercase tracking-wide">
-                          {v.label} {v.required && <span className="text-rose-500">*</span>}
-                        </label>
-                        {kosong && (
-                          <p
-                            className={`-mt-1 mb-1.5 text-xs font-semibold text-rose-600 dark:text-rose-400 ${ANIM.muncul}`}
-                          >
-                            Wajib diisi
-                          </p>
-                        )}
-
-                        {v.type === 'text' && (
-                          <input
-                            type="text"
-                            value={formData[v.key] || ''}
-                            onChange={(e) => setFormData({ ...formData, [v.key]: e.target.value })}
-                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-slate-800 focus:bg-white dark:focus:bg-slate-900 transition-colors"
-                            placeholder={`Masukkan ${v.label.toLowerCase()}...`}
-                          />
-                        )}
-
-                        {v.type === 'select' && (
-                          <select
-                            value={formData[v.key] || ''}
-                            onChange={(e) => setFormData({ ...formData, [v.key]: e.target.value })}
-                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-slate-800 focus:bg-white dark:focus:bg-slate-900 transition-colors"
-                          >
-                            <option value="">-- Pilih {v.label} --</option>
-                            {v.options?.map((opt) => (
-                              <option key={opt} value={opt}>
-                                {opt}
-                              </option>
-                            ))}
-                          </select>
-                        )}
-
-                        {v.type === 'textarea' && (
-                          <textarea
-                            rows={3}
-                            value={formData[v.key] || ''}
-                            onChange={(e) => setFormData({ ...formData, [v.key]: e.target.value })}
-                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-slate-800 focus:bg-white dark:focus:bg-slate-900 transition-colors resize-y"
-                            placeholder={`Masukkan ${v.label.toLowerCase()}...`}
-                          />
-                        )}
-
-                        {v.type === 'dynamic_list' && (
-                          <div className="space-y-2">
-                            {(Array.isArray(formData[v.key])
-                              ? formData[v.key]
-                              : [formData[v.key] || '']
-                            ).map((item, index) => (
-                              <div key={index} className="flex gap-2">
-                                <input
-                                  type="text"
-                                  value={item}
-                                  onChange={(e) => {
-                                    const newArr = Array.isArray(formData[v.key])
-                                      ? [...formData[v.key]]
-                                      : [formData[v.key] || ''];
-                                    newArr[index] = e.target.value;
-                                    setFormData({ ...formData, [v.key]: newArr });
-                                  }}
-                                  className="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-slate-800 focus:bg-white dark:focus:bg-slate-900 transition-colors"
-                                  placeholder={`Item ${index + 1}`}
-                                />
-                                <button
-                                  onClick={() => {
-                                    const newArr = Array.isArray(formData[v.key])
-                                      ? [...formData[v.key]]
-                                      : [formData[v.key] || ''];
-                                    newArr.splice(index, 1);
-                                    setFormData({ ...formData, [v.key]: newArr });
-                                  }}
-                                  className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 rounded-lg transition-colors"
-                                >
-                                  <FaTimes />
-                                </button>
-                              </div>
-                            ))}
-                            <button
-                              onClick={() => {
-                                const newArr = Array.isArray(formData[v.key])
-                                  ? [...formData[v.key]]
-                                  : [formData[v.key] || ''];
-                                newArr.push('');
-                                setFormData({ ...formData, [v.key]: newArr });
-                              }}
-                              className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 flex items-center gap-1"
-                            >
-                              + Tambah Item
-                            </button>
-                          </div>
-                        )}
-
-                        {v.type === 'date' && (
-                          <input
-                            type="date"
-                            value={formData[v.key] || ''}
-                            onChange={(e) => setFormData({ ...formData, [v.key]: e.target.value })}
-                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-slate-800 focus:bg-white dark:focus:bg-slate-900 transition-colors"
-                          />
-                        )}
-
-                        {v.type === 'number' && (
-                          <input
-                            type="number"
-                            value={formData[v.key] || ''}
-                            onChange={(e) => setFormData({ ...formData, [v.key]: e.target.value })}
-                            className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-slate-800 focus:bg-white dark:focus:bg-slate-900 transition-colors"
-                            placeholder="0"
-                          />
-                        )}
-
-                        {v.type === 'pegawai' && (
-                          <PegawaiSearch
-                            pegawaiDB={pegawaiDB}
-                            multi={false}
-                            value={formData[v.key]}
-                            onChange={(val) => setFormData({ ...formData, [v.key]: val })}
-                            placeholder={`Cari ${v.label.toLowerCase()}...`}
-                            disabled={v.readonly}
-                          />
-                        )}
-
-                        {v.type === 'pegawai_multi' && (
-                          <PegawaiSearch
-                            pegawaiDB={pegawaiDB}
-                            multi={true}
-                            value={formData[v.key] || []}
-                            onChange={(val) => setFormData({ ...formData, [v.key]: val })}
-                            placeholder={`Cari ${v.label.toLowerCase()}...`}
-                            disabled={v.readonly}
-                          />
-                        )}
-
-                        {v.type === 'mak' && (
-                          <MakSearch
-                            makDB={makDB}
-                            value={formData[v.key]}
-                            onChange={(val, meta) =>
-                              setFormData({ ...formData, [v.key]: val, ...(meta || {}) })
-                            }
-                            placeholder={`Cari ${v.label.toLowerCase()}...`}
-                            disabled={v.readonly}
-                          />
-                        )}
-
-                        {v.type === 'detail_transaksi' && (
-                          <DetailTransaksi
-                            value={formData[v.key]}
-                            onChange={(val) => setFormData({ ...formData, [v.key]: val })}
-                            pegawaiList={formData.pegawai_list || []}
-                            disabled={v.readonly}
-                            isSaved={!!savedInstance}
-                            makDB={makDB}
-                            akunNodeId={formData._akunNodeId || ''}
-                            tahunNodeId={formData._tahunNodeId || ''}
-                            makString={formData.mak || ''}
-                          />
-                        )}
-
-                        {v.type === 'nomor_surat' && (
-                          <NomorSuratSearch
-                            nomorSuratDB={nomorSuratDB}
-                            value={formData[v.key]}
-                            onChange={(val) => setFormData({ ...formData, [v.key]: val })}
-                            disabled={v.readonly}
-                            formData={formData}
-                          />
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
       </div>
@@ -1184,13 +480,13 @@ export default function SuratForm() {
 
 // ─── Sub Komponen: Search Pegawai ──────────────────────────────────────────
 
+// Format baku penyimpanan string pegawai ({ nama, nip, pangkat, jabatan }, juga salinan Orang)
+const formatPegawai = (p) =>
+  `${p.nama}\nNIP. ${p.nip || '-'}\nPangkat: ${p.pangkat || '-'}\nJabatan: ${p.jabatan || '-'}`;
+
 function PegawaiSearch({ pegawaiDB, multi, value, onChange, placeholder, disabled }) {
   const [query, setQuery] = useState('');
   const [isOpen, setIsOpen] = useState(false);
-
-  // Format baku penyimpanan string pegawai:
-  const formatPegawai = (p) =>
-    `${p.nama}\nNIP. ${p.nip || '-'}\nPangkat: ${p.pangkat || '-'}\nJabatan: ${p.jabatan || '-'}`;
 
   // Mem-parsing kembali nama untuk ditampilkan di badge
   const extractNama = (str) => str.split('\n')[0];
@@ -1352,49 +648,31 @@ function PegawaiSearch({ pegawaiDB, multi, value, onChange, placeholder, disable
   );
 }
 
-function MakSearch({ makDB, value, onChange, placeholder, disabled }) {
-  const hierarchy = [
-    'Tahun',
-    'Program',
-    'Kegiatan',
-    'KRO',
-    'Output',
-    'Komponen',
-    'Sub Komponen',
-    'Akun',
-  ];
+/**
+ * Pilihan MAK bertingkat dari `mak_node` satu tahun anggaran: Tahun → Program → … → Akun.
+ * Memilih Akun menyimpan kode MAK (teks) + `_akunNodeId`/`_tahunNodeId` untuk Detail Transaksi.
+ */
+function MakSearch({ nodes, byId, memuat, tahun, onTahun, value, onChange, disabled }) {
+  // { [indeks tingkat]: nodeId } untuk Program (1) sampai Akun (7); Tahun dipilih lewat `tahun`
   const [selections, setSelections] = useState({});
+  const akar = pilihanTingkat(nodes, 0)[0] || null; // node Tahun tahun anggaran terpilih
+  const terakhir = TINGKAT_PILIHAN.length - 1;
 
   const handleClear = () => {
     if (disabled) return;
-    onChange('');
+    onChange('', { _akunNodeId: '', _tahunNodeId: '' });
     setSelections({});
   };
 
   const handleSelectChange = (levelIndex, nodeId) => {
-    const newSelections = { ...selections };
-    newSelections[levelIndex] = nodeId;
-    // Clear all subsequent levels
-    for (let i = levelIndex + 1; i < hierarchy.length; i++) {
-      delete newSelections[i];
-    }
-    setSelections(newSelections);
-
-    // If this is the final level (Akun) and a valid node is selected
-    if (levelIndex === hierarchy.length - 1 && nodeId) {
-      const akunNode = makDB.find((n) => n.id === nodeId);
-      if (akunNode) {
-        // Build full string
-        const parts = [];
-        let curr = akunNode;
-        while (curr) {
-          if (curr.kode) parts.unshift(curr.kode);
-          curr = makDB.find((n) => n.id === curr.parentId);
-        }
-        // Find tahun node (root)
-        const tahunNodeId = newSelections[0] || null;
-        onChange(parts.join(' '), { _akunNodeId: nodeId, _tahunNodeId: tahunNodeId });
-      }
+    // Tingkat di bawah tingkat yang diganti dikosongkan
+    const next = {};
+    for (let i = 1; i < levelIndex; i++) if (selections[i]) next[i] = selections[i];
+    if (nodeId) next[levelIndex] = nodeId;
+    setSelections(next);
+    if (levelIndex === terakhir && nodeId) {
+      const m = makDariAkun(byId, nodeId);
+      onChange(m.kode, { _akunNodeId: nodeId, _tahunNodeId: m.tahunNodeId });
     }
   };
 
@@ -1417,65 +695,114 @@ function MakSearch({ makDB, value, onChange, placeholder, disabled }) {
     );
   }
 
+  const SELECT =
+    'w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 transition-colors shadow-sm disabled:opacity-50';
+  const LABEL =
+    'text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 ml-1';
+
   return (
     <div className="flex flex-col gap-3 p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
       <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1">
         Silakan pilih secara berurutan sesuai struktur MAK:
       </div>
-      {hierarchy.map((type, idx) => {
-        // Only show this level if the previous level is selected (or if it's the first level)
-        if (idx > 0 && !selections[idx - 1]) return null;
-
-        const parentId = idx === 0 ? null : selections[idx - 1];
-        // Filter nodes for this level. For idx > 0, just get children of parentId.
-        const options = makDB.filter((n) => {
-          if (idx === 0)
+      <div className="flex flex-col">
+        <label className={LABEL}>1. {LABEL_TINGKAT.tahun}</label>
+        <select
+          value={tahun}
+          onChange={(e) => {
+            onTahun(Number(e.target.value));
+            setSelections({});
+          }}
+          disabled={disabled}
+          className={SELECT}
+        >
+          {daftarTahun().map((t) => (
+            <option key={t} value={t}>
+              {t}
+            </option>
+          ))}
+        </select>
+      </div>
+      {memuat ? (
+        <div className="text-xs text-slate-500 dark:text-slate-400 italic">Memuat data MAK…</div>
+      ) : !akar ? (
+        <div className="text-xs text-rose-500 italic">
+          Data MAK tahun {tahun} belum diisi. Minta Keuangan mengisinya di menu MAK Setup.
+        </div>
+      ) : (
+        TINGKAT_PILIHAN.slice(1).map((tingkat, j) => {
+          const idx = j + 1;
+          // Hanya tampil bila tingkat sebelumnya sudah dipilih
+          if (idx > 1 && !selections[idx - 1]) return null;
+          const indukId = idx === 1 ? akar.id : selections[idx - 1];
+          const options = pilihanTingkat(nodes, idx, indukId);
+          if (options.length === 0) {
             return (
-              n.parentId === null &&
-              (n.type === type || n.type?.toUpperCase() === type.toUpperCase())
+              <div key={tingkat} className="text-xs text-rose-500 italic">
+                Data {LABEL_TINGKAT[tingkat]} tidak tersedia untuk hirarki ini.
+              </div>
             );
-          return n.parentId === parentId;
-        });
-
-        if (options.length === 0 && parentId) {
+          }
           return (
-            <div key={type} className="text-xs text-rose-500 italic">
-              Data {type} tidak tersedia untuk hirarki ini.
+            <div key={tingkat} className="flex flex-col">
+              <label className={LABEL}>
+                {idx + 1}. {LABEL_TINGKAT[tingkat]}
+              </label>
+              <select
+                value={selections[idx] || ''}
+                onChange={(e) => handleSelectChange(idx, e.target.value)}
+                disabled={disabled}
+                className={SELECT}
+              >
+                <option value="">-- Pilih {LABEL_TINGKAT[tingkat]} --</option>
+                {options.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.kode ? `${opt.kode} - ` : ''}
+                    {opt.nama}
+                  </option>
+                ))}
+              </select>
             </div>
           );
-        }
-
-        return (
-          <div key={type} className="flex flex-col">
-            <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 ml-1">
-              {idx + 1}. {type}
-            </label>
-            <select
-              value={selections[idx] || ''}
-              onChange={(e) => handleSelectChange(idx, e.target.value)}
-              disabled={disabled}
-              className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 transition-colors shadow-sm disabled:opacity-50"
-            >
-              <option value="">-- Pilih {type} --</option>
-              {options.map((opt) => (
-                <option key={opt.id} value={opt.id}>
-                  {opt.kode ? `${opt.kode} - ` : ''}
-                  {opt.name}
-                </option>
-              ))}
-            </select>
-          </div>
-        );
-      })}
+        })
+      )}
     </div>
   );
 }
 
 // --- Sub Komponen: Search Nomor Surat ----------------------------------
 
-function NomorSuratSearch({ nomorSuratDB, value, onChange, disabled, formData }) {
-  const hierarchy = ['KOP', 'Kode surat 1', 'Kode surat 2', 'Kode surat 3'];
-  const [selections, setSelections] = useState({});
+/** Data register nomor dari isian form (tanggal, perihal, tujuan, seksi untuk Riwayat Surat). */
+function dataRegisterDari(formData, surat) {
+  const tanggal =
+    [formData.tanggal_sp, formData.tanggal_surat, formData.tanggal].find((t) =>
+      /^\d{4}-\d{2}-\d{2}$/.test(t || ''),
+    ) || tanggalIso();
+  const daftar = Array.isArray(formData.pegawai_list)
+    ? formData.pegawai_list
+    : [formData.pegawai_list];
+  const kepada = daftar.filter(Boolean).map((s) => String(s).split('\n')[0]);
+  const tujuan =
+    kepada.length > 1
+      ? `${kepada[0]} dkk. (${kepada.length} orang)`
+      : kepada[0] || String(formData.tujuan || '');
+  const perihal = String(
+    formData.perihal || formData.kegiatan_poin_1 || formData.maksud || surat.nama,
+  ).trim();
+  return {
+    tanggal,
+    perihal: perihal.slice(0, PANJANG.perihalSurat),
+    tujuan: tujuan.trim().slice(0, PANJANG.tujuanSurat),
+    seksi: String(formData.seksi || '').slice(0, 60),
+  };
+}
+
+/**
+ * Nomor surat: ketik manual, atau pilih kode surat aktif (KOP → … sampai tingkat terakhir) lalu
+ * "Generate" — nomor terbit lewat Function dan tercatat di Riwayat Surat (sumber form).
+ */
+function NomorSuratSearch({ indeks, memuat, value, onChange, disabled, formData, surat }) {
+  const [kodeIds, setKodeIds] = useState([]);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generateSuccess, setGenerateSuccess] = useState(false);
   const [customValue, setCustomValue] = useState(value || '');
@@ -1485,91 +812,33 @@ function NomorSuratSearch({ nomorSuratDB, value, onChange, disabled, formData })
     setCustomValue(value || '');
   }, [value]);
 
-  const handleClear = () => {
-    if (disabled) return;
-    onChange('');
-    setCustomValue('');
-    setSelections({});
-  };
-
-  const handleSelectChange = (levelIndex, nodeId) => {
-    const newSelections = { ...selections };
-    newSelections[levelIndex] = nodeId;
-    for (let i = levelIndex + 1; i < hierarchy.length; i++) {
-      delete newSelections[i];
-    }
-    setSelections(newSelections);
-  };
+  const ujung = indeks.byId.get(kodeIds[kodeIds.length - 1]);
+  const kodeLengkap = !!ujung && indeks.anakDari(ujung.id).length === 0;
 
   const handleGenerate = async () => {
     if (disabled || isGenerating) return;
-
-    // Ensure all levels are selected
-    if (Object.keys(selections).length !== hierarchy.length) {
-      alert('Harap pilih semua tingkatan kode surat terlebih dahulu.');
+    if (!kodeLengkap) {
+      showToast('Pilih kode surat sampai tingkat terakhir terlebih dahulu.', 'error');
       return;
     }
-
     setIsGenerating(true);
     try {
-      // 1. Build prefix
-      const parts = [];
-      for (let i = 0; i < hierarchy.length; i++) {
-        const nodeId = selections[i];
-        const node = nomorSuratDB.find((n) => n.id === nodeId);
-        if (node && node.kode) parts.push(node.kode);
-      }
-      const prefix = parts.join('.');
-
-      // 2. Transaction to get and increment lastNumber
-      const settingsRef = doc(db, 'settings', 'nomor_surat');
-      let newNumber = 1;
-
-      await runTransaction(db, async (transaction) => {
-        const settingsDoc = await transaction.get(settingsRef);
-        if (!settingsDoc.exists()) {
-          transaction.set(settingsRef, { lastNumber: 1 });
-        } else {
-          newNumber = (settingsDoc.data().lastNumber || 0) + 1;
-          transaction.update(settingsRef, { lastNumber: newNumber });
-        }
+      const { nomor } = await terbitkanNomorSurat({
+        sumber: 'form',
+        jenisSurat: surat.nama,
+        kodeIds,
+        ...dataRegisterDari(formData, surat),
       });
-
-      // 3. Format final string
-      const formattedNumber = `${prefix}-${String(newNumber).padStart(4, '0')}`;
-
-      // 4. Save to history (surat_dokumen)
-      let kepadaName = '-';
-      if (Array.isArray(formData.pegawai_list) && formData.pegawai_list.length > 0) {
-        kepadaName = formData.pegawai_list[0].split('\n')[0];
-      } else if (typeof formData.pegawai_list === 'string' && formData.pegawai_list) {
-        kepadaName = formData.pegawai_list.split('\n')[0];
-      }
-
-      await addDoc(collection(db, 'surat_dokumen'), {
-        nomor: formattedNumber,
-        tanggal: new Date().toISOString(),
-        createdAt: new Date().toISOString(),
-        templateNama: 'Surat Perintah (LPJ)',
-        untuk: [formData.maksud || formData.kegiatan_poin_1 || 'Perjalanan Dinas'],
-        kepada: [{ nama: kepadaName }],
-      });
-
-      // 5. Update form state
-      onChange(formattedNumber);
-      setCustomValue(formattedNumber);
-      // alert(`Nomor surat berhasil di-generate: ${formattedNumber}`);
+      onChange(nomor);
+      setCustomValue(nomor);
       setGenerateSuccess(true);
       setTimeout(() => setGenerateSuccess(false), 3000);
     } catch (err) {
-      console.error('Error generating nomor surat', err);
-      alert('Gagal meng-generate nomor surat.');
+      showToast(pesanGalat(err, 'Gagal membuat nomor surat.'), 'error');
     } finally {
       setIsGenerating(false);
     }
   };
-
-  const isAllSelected = Object.keys(selections).length === hierarchy.length;
 
   return (
     <div className="flex flex-col gap-3 p-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl">
@@ -1604,39 +873,35 @@ function NomorSuratSearch({ nomorSuratDB, value, onChange, disabled, formData })
           <div className="text-[11px] text-slate-500 dark:text-slate-400 italic mb-1">
             Buat otomatis (Pilih struktur):
           </div>
-          {hierarchy.map((type, idx) => {
-            if (idx > 0 && !selections[idx - 1]) return null;
-
-            const parentId = idx === 0 ? null : selections[idx - 1];
-            const options = nomorSuratDB.filter((n) => {
-              if (idx === 0)
-                return (
-                  n.parentId === null &&
-                  (n.type === type || n.type?.toUpperCase() === type.toUpperCase())
-                );
-              return n.parentId === parentId;
-            });
-
-            if (options.length === 0 && parentId) {
-              return (
-                <div key={type} className="text-xs text-rose-500 italic">
-                  Data {type} tidak tersedia.
-                </div>
-              );
-            }
+          {memuat && (
+            <div className="text-xs text-slate-500 dark:text-slate-400 italic">
+              Memuat kode surat…
+            </div>
+          )}
+          {!memuat && indeks.anakDari(null).length === 0 && (
+            <div className="text-xs text-rose-500 italic">
+              Kode surat belum diisi. Minta Keuangan mengisinya di menu Nomor Surat.
+            </div>
+          )}
+          {HIERARKI_KODE.map((tingkat, idx) => {
+            if (idx > 0 && !kodeIds[idx - 1]) return null;
+            const options = indeks.anakDari(idx === 0 ? null : kodeIds[idx - 1]);
+            if (options.length === 0) return null; // tingkat sebelumnya sudah tingkat terakhir
 
             return (
-              <div key={type} className="flex flex-col">
+              <div key={tingkat} className="flex flex-col">
                 <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 ml-1">
-                  {idx + 1}. {type}
+                  {idx + 1}. {tingkat}
                 </label>
                 <select
-                  value={selections[idx] || ''}
-                  onChange={(e) => handleSelectChange(idx, e.target.value)}
+                  value={kodeIds[idx] || ''}
+                  onChange={(e) =>
+                    setKodeIds([...kodeIds.slice(0, idx), e.target.value].filter(Boolean))
+                  }
                   disabled={disabled || isGenerating}
                   className="w-full px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-sm focus:outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500 transition-colors shadow-sm disabled:opacity-50"
                 >
-                  <option value="">-- Pilih {type} --</option>
+                  <option value="">-- Pilih {tingkat} --</option>
                   {options.map((opt) => (
                     <option key={opt.id} value={opt.id}>
                       {opt.kode ? `${opt.kode} - ` : ''}
@@ -1651,7 +916,7 @@ function NomorSuratSearch({ nomorSuratDB, value, onChange, disabled, formData })
           <button
             type="button"
             onClick={handleGenerate}
-            disabled={disabled || !isAllSelected || isGenerating}
+            disabled={disabled || !kodeLengkap || isGenerating}
             className="mt-2 w-full flex items-center justify-center gap-2 bg-indigo-600 text-white px-4 py-2.5 rounded-lg text-sm font-bold hover:bg-indigo-700 transition-colors disabled:opacity-50"
           >
             {isGenerating ? <FaSpinner className="animate-spin" /> : <FaPrint />}
@@ -1670,7 +935,8 @@ function DetailTransaksi({
   pegawaiList,
   disabled,
   isSaved,
-  makDB,
+  nodes,
+  byId,
   akunNodeId,
   tahunNodeId,
   makString,
@@ -1678,31 +944,16 @@ function DetailTransaksi({
   const [rows, setRows] = useState(Array.isArray(value) && value.length > 0 ? value : []);
   const [hasInitialized, setHasInitialized] = useState(false);
 
-  // Auto-resolve akunNodeId from makString if missing (because SPBY inherits mak as string from SPD)
+  // Akun dari teks kode MAK bila id Akun belum ada (mis. kode MAK diketik/diwarisi sebagai teks)
   const resolvedAkunNodeId = useMemo(() => {
     if (akunNodeId) return akunNodeId;
-    if (makString && makDB && makDB.length > 0) {
-      const akunNodes = makDB.filter((n) => n.type?.toUpperCase() === 'AKUN');
-      for (const node of akunNodes) {
-        const parts = [];
-        let curr = node;
-        while (curr) {
-          if (curr.kode) parts.unshift(curr.kode);
-          curr = makDB.find((n) => n.id === curr.parentId);
-        }
-        if (parts.join(' ') === makString) {
-          return node.id;
-        }
-      }
-    }
-    return '';
-  }, [akunNodeId, makString, makDB]);
+    if (!makString) return '';
+    const akun = nodes.find((n) => n.tingkat === 'akun' && kodeMakDari(byId, n.id) === makString);
+    return akun?.id || '';
+  }, [akunNodeId, makString, nodes, byId]);
 
-  // Get Item nodes from MAK (children of the selected Akun)
-  const itemOptions =
-    makDB && resolvedAkunNodeId
-      ? makDB.filter((n) => n.parentId === resolvedAkunNodeId && n.type?.toUpperCase() === 'ITEM')
-      : [];
+  // Item MAK aktif di bawah Akun terpilih
+  const itemOptions = itemDiAkun(nodes, resolvedAkunNodeId);
 
   useEffect(() => {
     // Jika form sudah pernah disimpan (isSaved = true), jangan auto-generate ulang
@@ -1784,19 +1035,19 @@ function DetailTransaksi({
     // Check if it's a MAK Item (starts with "mak:") or a static option
     if (selectedValue.startsWith('mak:')) {
       const itemId = selectedValue.replace('mak:', '');
-      const itemNode = makDB?.find((n) => n.id === itemId);
+      const itemNode = byId[itemId];
       if (itemNode) {
         updateParent(
           rows.map((r) =>
             r.id === id
               ? {
                   ...r,
-                  detail: `${itemNode.kode || ''} - ${itemNode.name}`.trim().replace(/^- /, ''),
+                  detail: `${itemNode.kode || ''} - ${itemNode.nama}`.trim().replace(/^- /, ''),
                   itemNodeId: itemId,
                   akunNodeId: resolvedAkunNodeId || '',
                   tahunNodeId: tahunNodeId || '',
                   itemKode: itemNode.kode || '',
-                  itemName: itemNode.name || '',
+                  itemName: itemNode.nama || '',
                 }
               : r,
           ),
@@ -1876,9 +1127,7 @@ function DetailTransaksi({
           </thead>
           <tbody>
             {rows.map((row) => {
-              const selectedItem = row.itemNodeId
-                ? makDB?.find((n) => n.id === row.itemNodeId)
-                : null;
+              const selectedItem = row.itemNodeId ? byId[row.itemNodeId] : null;
               const itemPagu = selectedItem ? Number(selectedItem.pagu) || 0 : 0;
 
               return (
@@ -1922,7 +1171,7 @@ function DetailTransaksi({
                           {itemOptions.map((item) => (
                             <option key={item.id} value={`mak:${item.id}`}>
                               {item.kode ? `${item.kode} - ` : ''}
-                              {item.name}
+                              {item.nama}
                             </option>
                           ))}
                         </optgroup>

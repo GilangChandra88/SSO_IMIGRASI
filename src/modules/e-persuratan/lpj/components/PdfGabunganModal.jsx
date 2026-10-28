@@ -7,9 +7,15 @@ import { ANIM } from '@/utils/animasi';
 /**
  * Popup "Cetak Semua": PDF gabungan satu fase ditampilkan di penampil PDF browser (tanpa panel
  * daftar halaman), dengan tombol Cetak & Unduh. Selama `url` belum ada, tampil "Menyiapkan…".
+ *
+ * Bingkai hanya memuat URL `blob:` PDF yang disusun aplikasi sendiri dengan @react-pdf (berkas
+ * unggahan digambar ulang sebagai gambar halaman), tidak pernah URL Storage atau situs luar.
+ * `sandbox` sengaja tidak dipasang karena memblokir penampil PDF browser dan cetak (keputusan K26,
+ * CLAUDE.md 7.1); URL selain `blob:` ditolak.
  */
-export default function PdfGabunganModal({ label, url, namaBerkas, onClose }) {
+export default function PdfGabunganModal({ label, url: urlMasuk, namaBerkas, onClose }) {
   const bingkaiRef = useRef(null);
+  const url = typeof urlMasuk === 'string' && urlMasuk.startsWith('blob:') ? urlMasuk : null;
 
   function cetak() {
     try {

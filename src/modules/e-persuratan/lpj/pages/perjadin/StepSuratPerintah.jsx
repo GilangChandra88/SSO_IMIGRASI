@@ -1,7 +1,7 @@
 import React from 'react';
 import { FaCheck, FaChevronLeft, FaLock, FaPlus, FaRegTrashAlt } from 'react-icons/fa';
-import { DIPA_DASAR_TEXT, UNTUK_FIXED } from '../../data/masterLpj';
-import { hariIniISO } from '../../utils/formatTanggal';
+import { teksDipa, useDipa } from '../../../useDipa';
+import { UNTUK_FIXED } from '../../data/masterLpj';
 import PegawaiPicker from '../../components/PegawaiPicker';
 import PejabatPicker from '../../components/PejabatPicker';
 import PegawaiCards from '../../components/PegawaiCards';
@@ -23,6 +23,7 @@ export default function StepSuratPerintah({ ctx }) {
   const { pf, setPf, errors, tandaiGalat, persist, askConfirm, closeConfirm } = ctx;
   const sp = pf.sp;
   const setSp = (patch) => setPf((prev) => ({ ...prev, sp: { ...prev.sp, ...patch } }));
+  const { dipa } = useDipa(ctx.pack.tahunAnggaran);
 
   function handleSelesai() {
     const e = validateSp(sp);
@@ -30,14 +31,13 @@ export default function StepSuratPerintah({ ctx }) {
     askConfirm({
       label: 'Surat Perintah',
       onYes: async () => {
-        const ok = await persist(
-          (prev) => ({
-            ...prev,
-            sp: { ...prev.sp, locked: true, tanggal: prev.sp.tanggal || hariIniISO() },
-          }),
+        // Final: isi terakhir + kunci ditulis bersama (tanggal resmi SP datang dari TTE)
+        const ok = await persist(ctx.pfRef.current, {
+          quiet: true,
+          kunci: 'sp',
           // tahanLangkah: tetap di form ini sampai pindah ke Detail
-          { quiet: true, teks: 'menandai Surat Perintah selesai', tahanLangkah: true },
-        );
+          tahanLangkah: true,
+        });
         closeConfirm();
         if (ok) {
           // Upload SP ber-TTE dilanjutkan dari Fase 2 di Detail LPJ
@@ -69,7 +69,11 @@ export default function StepSuratPerintah({ ctx }) {
           label="Dasar"
           hint="Tambah baris sesuai kebutuhan — DIPA otomatis menjadi dasar terakhir"
         >
-          <DasarList items={sp.dasar} onChange={(dasar) => setSp({ dasar })} />
+          <DasarList
+            items={sp.dasar}
+            dipaTeks={teksDipa(dipa)}
+            onChange={(dasar) => setSp({ dasar })}
+          />
         </Field>
       </div>
 
@@ -96,7 +100,10 @@ export default function StepSuratPerintah({ ctx }) {
               onHapus={(p) =>
                 setPf((prev) => ({
                   ...prev,
-                  sp: { ...prev.sp, kepada: prev.sp.kepada.filter((s) => s.id !== p.id) },
+                  sp: {
+                    ...prev.sp,
+                    kepada: prev.sp.kepada.filter((s) => s.pegawaiId !== p.pegawaiId),
+                  },
                 }))
               }
             />
@@ -105,7 +112,7 @@ export default function StepSuratPerintah({ ctx }) {
       </div>
 
       <div className={FORM.card}>
-        <h3 className={`${FORM.cardTitle} mb-4`}>Isi Perintah &amp; Penandatangan</h3>
+        <h3 className={`${FORM.cardTitle} mb-4`}>Isi Perintah</h3>
         <Field
           label="Untuk"
           required
@@ -114,6 +121,10 @@ export default function StepSuratPerintah({ ctx }) {
         >
           <UntukList items={sp.untuk} err={errors.untuk} onChange={(untuk) => setSp({ untuk })} />
         </Field>
+      </div>
+
+      <div className={FORM.card}>
+        <h3 className={`${FORM.cardTitle} mb-4`}>Penandatangan</h3>
         <Field label="Pejabat Penandatangan (KPA/PLt/PLh)" required err={errors.pejabat}>
           <PejabatPicker
             pegawai={ctx.pegawai}
@@ -137,8 +148,8 @@ export default function StepSuratPerintah({ ctx }) {
   );
 }
 
-/** Baris dinamis "Dasar" + DIPA baku yang terkunci di akhir. */
-function DasarList({ items, onChange }) {
+/** Baris dinamis "Dasar" + DIPA baku (dari MAK Setup) yang terkunci di akhir. */
+function DasarList({ items, dipaTeks, onChange }) {
   const nomor = `w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold ${T.surface2}`;
   return (
     <div>
@@ -175,8 +186,8 @@ function DasarList({ items, onChange }) {
         <div
           className={`flex-1 min-w-0 flex items-center h-[38px] px-3 rounded-lg border text-[13px] ${T.surface2} ${T.border} ${T.ink2}`}
         >
-          <span className="truncate" title={DIPA_DASAR_TEXT}>
-            {DIPA_DASAR_TEXT}
+          <span className="truncate" title={dipaTeks}>
+            {dipaTeks}
           </span>
         </div>
         <div

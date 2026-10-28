@@ -1,29 +1,18 @@
 /**
  * Logika Berkas Verifikasi (BerkasVerifikasi.js purwarupa admin) — fungsi murni.
  *
- * Data (diisi Admin/Keuangan):
- *   lpj_packs/{id}.verifikasi = { docStatus: { [kunci]: 'lengkap' }, docPrinted: { [kunci]: true },
- *                                 nominal: { lines, codes, poks }, selesai, selesaiAt, oleh }
- *   lpj_packs/{id}.arsip.kwitansi   nomor kwitansi SAKTI (sama dengan Arsip Keuangan)
- *   lpj_packs/{id}.pembayaran       bukti transfer (kartu "Status Pembayaran" di Detail LPJ)
- *   lpj_packs/{id}.arsip.scan       pindaian berkas; setelah ada, berkas pindah ke menu Arsip
+ * Data tahap Keuangan ada di `lpj_berkas/{id}/keuangan/status` (docs/skema-database.md §5.2):
+ *   verifikasi = { statusDokumen: { [kunci]: 'lengkap' }, dicetak: { [kunci]: true },
+ *                  koreksi: { [itemNodeId asli]: { jumlah?, itemNodeId?, pok? } },
+ *                  selesai, selesaiPada, selesaiOleh }
+ *   sakti = { selesai, nomorKwitansi, berkas } · transfer = { selesai, tanggal, berkas }
+ *   arsip = { selesai, tanggalArsip, berkas, drppId } · pokBeku · pejabatBeku
  *
- * Tahap berkas berurutan dan dihitung dari data (satu berkas hanya berada di satu tab):
- *   Draft → Verifikasi → Upload SAKTI → Transfer → Arsip
- * Draft = belum punya ID LPJ (nomor terbit saat SPBy selesai); yang sudah ber-ID masuk Verifikasi.
+ * Tahap berkas dihitung Function (`lpj_ringkas.tahap`): Draft → Verifikasi → Upload SAKTI →
+ * Transfer → Arsip; setelah arsip selesai berkas pindah ke menu Arsip (DRPP).
  */
 
-import {
-  isPerjadin,
-  isSkemaBaru,
-  lpjIdOf,
-  makOf,
-  parseNum,
-  pelaksanaOf,
-  tanggalRingkas,
-  transaksiOf,
-  uraianOf,
-} from './lpjLogic';
+import { isPerjadin, lpjIdOf, makOf, pelaksanaOf, transaksiOf, uraianOf } from './lpjLogic';
 
 export const TAHAP = [
   { key: 'draft', label: 'Draft', kosong: 'Belum ada berkas yang belum memiliki ID LPJ.' },
@@ -39,31 +28,32 @@ export const TAHAP = [
 export const TAHAP_KEYS = TAHAP.map((t) => t.key);
 export const labelTahap = (key) => TAHAP.find((t) => t.key === key)?.label || key;
 
-export const verifOf = (pack) => pack?.verifikasi || {};
+/** Bagian verifikasi dari dokumen keuangan/status (kosong bila belum dimulai). */
+export const verifOf = (keuangan) => keuangan?.verifikasi || {};
 
-/**
- * Tahap berkas: draft | verif | sakti | transfer | arsip, atau null bila sudah diarsipkan
- * (sudah dipindai → tampil di menu Arsip) atau berkas format lama.
- */
-export function tahapBerkas(pack) {
-  if (!isSkemaBaru(pack)) return null;
-  if (pack.arsip?.scan) return null;
-  // Masuk Verifikasi begitu ID LPJ terbit (SPBy selesai); sebelum itu masih Draft
-  if (!lpjIdOf(pack)) return 'draft';
-  if (!verifOf(pack).selesai) return 'verif';
-  if (!pack.arsip?.kwitansi) return 'sakti';
-  if (!pack.pembayaran?.buktiTransfer) return 'transfer';
-  return 'arsip';
+/** Tahap Keuangan berkas bernomor dari dokumen keuangan/status (null bila arsip selesai). */
+export function tahapDariKeuangan(k) {
+  if (!k?.verifikasi?.selesai) return 'verif';
+  if (!k.sakti?.selesai) return 'sakti';
+  if (!k.transfer?.selesai) return 'transfer';
+  if (!k.arsip?.selesai) return 'arsip';
+  return null;
 }
 
-/** Cocok dengan ID LPJ, pelaksana, uraian, atau no. kwitansi SAKTI. */
-export function cocokCari(pack, q) {
+/**
+ * Tahap Berkas Verifikasi dari dokumen ringkas: draft | verif | sakti | transfer | arsip, atau
+ * null bila sudah diarsipkan (menunggu/masuk DRPP → tampil di menu Arsip).
+ */
+export const tahapBerkas = (r) => (TAHAP_KEYS.includes(r?.tahap) ? r.tahap : null);
+
+/** Cocok dengan ID LPJ, pelaksana, uraian, atau no. kwitansi SAKTI (dokumen ringkas). */
+export function cocokCari(r, q) {
   if (!q) return true;
   const isi = [
-    lpjIdOf(pack),
-    uraianOf(pack),
-    pack.arsip?.kwitansi,
-    ...pelaksanaOf(pack).map((p) => p?.nama),
+    lpjIdOf(r),
+    uraianOf(r),
+    r.keuangan?.nomorKwitansi,
+    ...pelaksanaOf(r).map((p) => p?.nama),
   ];
   return isi.some((v) =>
     String(v || '')
@@ -73,8 +63,8 @@ export function cocokCari(pack, q) {
 }
 
 /** Tanggal acuan urutan Daftar (tanggal SPBy, lalu waktu dibuat). */
-export function tanggalUrut(pack) {
-  return tanggalRingkas(pack).tanggalLPJ || pack.created_at?.toDate?.().toISOString() || '';
+export function tanggalUrut(r) {
+  return r?.tanggalLpj || r?.dibuatPada?.toDate?.().toISOString() || '';
 }
 
 /** Nama pelaksana ringkas: banyak orang → "Nama pertama, dkk (n orang)". */
@@ -105,11 +95,16 @@ function dokTunggal(key, nama, code) {
 /** Dokumen per pelaksana; jadi kelompok yang bisa dibuka bila pelaksananya lebih dari satu. */
 function perOrang(pelaksana, docKey, nama, code) {
   const docs = pelaksana.map((p) => ({
-    key: `${docKey}_${p.id}`,
+    key: `${docKey}_${p.pegawaiId}`,
     nama: `${nama} — ${p.nama}`,
     singkat: p.nama,
     code,
-    cetak: pdf({ key: `${docKey}_${p.id}`, docKey, pegawai: p, label: `${nama} — ${p.nama}` }),
+    cetak: pdf({
+      key: `${docKey}_${p.pegawaiId}`,
+      docKey,
+      pegawai: p,
+      label: `${nama} — ${p.nama}`,
+    }),
   }));
   if (docs.length > 1) return { label: nama, code, kelompok: true, satuan: 'pelaksana', docs };
   if (docs.length === 1) {
@@ -121,7 +116,7 @@ function perOrang(pelaksana, docKey, nama, code) {
   return { label: null, docs: [{ key: docKey, nama, singkat: nama, code, cetak: null }] };
 }
 
-/** Lampiran unggahan pelaksana: kelompok berisi satu baris per berkas. */
+/** Lampiran unggahan pelaksana: kelompok berisi satu baris per berkas (Meta). */
 function kelompokLampiran(files, code) {
   if (!files.length) {
     return {
@@ -145,8 +140,8 @@ function kelompokLampiran(files, code) {
     satuan: 'berkas',
     docs: files.map(({ key, judul, file }) => ({
       key,
-      nama: `Lampiran — ${file.name || judul}`,
-      singkat: judul ? `${judul} · ${file.name || ''}` : file.name || 'Berkas',
+      nama: `Lampiran — ${file.nama || judul}`,
+      singkat: judul ? `${judul} · ${file.nama || ''}` : file.nama || 'Berkas',
       code,
       cetak: { jenis: 'files', files: [file] },
     })),
@@ -156,19 +151,19 @@ function kelompokLampiran(files, code) {
 /**
  * Kelompok dokumen Pemeriksaan Dokumen (pegawai2DocGroups purwarupa, dipetakan ke dokumen
  * berkas): { label, code, kelompok, satuan, docs }[], urut seperti Detail LPJ.
- * Kunci dokumen aman dipakai sebagai nama field Firestore.
+ * Kunci dokumen hanya huruf/angka/garis bawah, aman sebagai nama field Firestore.
  */
-export function kelompokDokumen(pack) {
-  const pelaksana = pelaksanaOf(pack);
-  if (!isPerjadin(pack)) {
-    const lamp = pack.np?.lampiran || {};
+export function kelompokDokumen(berkas) {
+  const pelaksana = pelaksanaOf(berkas);
+  if (!isPerjadin(berkas)) {
+    const lamp = berkas.lampiran || {};
     const files = [
-      ...(lamp.foto_bukti || []).map((file, i) => ({
+      ...(lamp.foto || []).map((file, i) => ({
         key: `foto_bukti_${i}`,
         judul: 'Foto Bukti/Produk',
         file,
       })),
-      ...(lamp.nota_pembayaran || []).map((file, i) => ({
+      ...(lamp.nota || []).map((file, i) => ({
         key: `nota_pembayaran_${i}`,
         judul: 'Nota Pembayaran',
         file,
@@ -185,7 +180,7 @@ export function kelompokDokumen(pack) {
     ];
   }
 
-  const fotos = (pack.lap?.fotos || []).map((file, i) => ({
+  const fotos = (berkas.laporan?.foto || []).map((file, i) => ({
     key: `foto_laporan_${i}`,
     judul: 'Foto Kegiatan',
     file,
@@ -225,58 +220,82 @@ export function kelompokDokumen(pack) {
 
 export const semuaDokumen = (kelompok) => kelompok.flatMap((g) => g.docs);
 
-export const dokLengkap = (verif, key) => verif.docStatus?.[key] === 'lengkap';
-export const dokDicetak = (verif, key) => !!verif.docPrinted?.[key];
+export const dokLengkap = (verif, key) => verif.statusDokumen?.[key] === 'lengkap';
+export const dokDicetak = (verif, key) => !!verif.dicetak?.[key];
 
 // ─── Nominal (Detail Transaksi & Lembar Verifikasi) ──────────────────────────
 
 /**
- * Konteks MAK untuk POK Terakhir: `byId` = node MAK, `realisasiLain` = realisasi MAK_History
- * aktif per Item dari berkas LAIN. POK Terakhir = pagu Item − realisasiLain (sisa pagu sebelum
- * tagihan ini); null bila Item tidak ditemukan.
+ * POK Terakhir (sisa pagu Item sebelum tagihan ini). Konteks `mak`:
+ *   - sebelum verifikasi selesai: { byId (node MAK), rekap (mak_rekap tahun itu),
+ *     milikSendiri: { [itemNodeId]: realisasi berkas ini } } → pagu − (total − milikSendiri);
+ *   - sesudahnya: { pok } (= pokBeku, dibekukan saat verifikasi).
+ * null bila Item tidak ditemukan.
  */
 export function pokItem(mak, nodeId) {
+  if (mak?.pok) return mak.pok[nodeId] ?? null;
   const node = mak?.byId?.[nodeId];
   if (!node) return null;
-  return (Number(node.pagu) || 0) - (mak.realisasiLain?.[nodeId] || 0);
+  const total = Number(mak.rekap?.item?.[nodeId]?.total) || 0;
+  return (Number(node.pagu) || 0) - (total - (mak.milikSendiri?.[nodeId] || 0));
 }
 
-/** Kode & nama Item dari node MAK (cadangan: data baris transaksi). */
+/** Kode & nama Item dari node MAK (cadangan: salinan di baris transaksi). */
 function infoItem(mak, nodeId, cadangan) {
   const node = mak?.byId?.[nodeId];
   return {
     kode: node?.kode || cadangan.kode || '',
-    label: node?.name || cadangan.label || '',
+    label: node?.nama || cadangan.label || '',
   };
+}
+
+/** Realisasi berkas ini per Item (jumlah transaksi asli = yang dicatat saat SPBy selesai). */
+export function realisasiPerItem(berkas) {
+  const hasil = {};
+  transaksiOf(berkas).forEach((t) => {
+    if (t.itemNodeId && Number.isInteger(t.jumlah)) {
+      hasil[t.itemNodeId] = (hasil[t.itemNodeId] || 0) + t.jumlah;
+    }
+  });
+  return hasil;
 }
 
 /**
  * Nominal tiap Item berkas (pegawai2Nominal purwarupa). Transaksi dengan Item yang sama
- * dijumlahkan. `verif.nominal` hanya menyimpan yang DIUBAH admin (kunci = Item asli):
- *   lines: { [itemAsli]: nominal }, codes: { [itemAsli]: itemBaru }, poks: { [itemAsli]: pok }
+ * dijumlahkan. `verif.koreksi` hanya menyimpan yang DIUBAH Keuangan, berkunci Item asli:
+ *   { [itemAsli]: { jumlah?, itemNodeId?, itemKode?, itemNama? (Item pengganti), pok? (POK manual) } }
  * Perjadin: Jumlah/POK/Sisa dibaca per Item; Non-Perjadin: satu Jumlah, POK, & Sisa untuk berkas.
  */
-export function nominalBerkas(pack, verif, mak) {
-  const nm = verif?.nominal || {};
+export function nominalBerkas(berkas, verif, mak) {
+  const koreksi = verif?.koreksi || {};
   const urut = [];
   const asliByKey = {};
-  transaksiOf(pack).forEach((t) => {
-    if (!t.itemNodeId && !parseNum(t.jumlah)) return;
+  transaksiOf(berkas).forEach((t) => {
+    if (!t.itemNodeId && !t.jumlah) return;
     const key = t.itemNodeId || 'tanpa_item';
     if (!asliByKey[key]) {
-      asliByKey[key] = { kode: t.itemKode || '', label: t.itemName || '', total: 0 };
+      asliByKey[key] = {
+        kode: t.salinan?.itemKode || '',
+        label: t.salinan?.itemNama || '',
+        total: 0,
+      };
       urut.push(key);
     }
-    asliByKey[key].total += parseNum(t.jumlah);
+    asliByKey[key].total += Number.isInteger(t.jumlah) ? t.jumlah : 0;
   });
 
   const lines = urut.map((key) => {
     const asli = asliByKey[key];
-    const itemId = nm.codes?.[key] || key;
-    const info = itemId === key ? infoItem(mak, key, asli) : infoItem(mak, itemId, {});
-    const nilai = nm.lines?.[key] ?? asli.total;
+    const k = koreksi[key] || {};
+    const itemId = k.itemNodeId || key;
+    // Item pengganti membawa salinan kode/nama sendiri (dipakai setelah pohon MAK tidak dimuat)
+    const info =
+      itemId === key
+        ? infoItem(mak, key, asli)
+        : infoItem(mak, itemId, { kode: k.itemKode, label: k.itemNama });
+    const nilai = k.jumlah ?? asli.total;
     const pokDef = pokItem(mak, itemId);
-    const pok = nm.poks?.[key] ?? pokDef;
+    const pok = k.pok ?? pokDef;
     return {
       key,
       itemId,
@@ -291,7 +310,7 @@ export function nominalBerkas(pack, verif, mak) {
     };
   });
 
-  const perItem = isPerjadin(pack);
+  const perItem = isPerjadin(berkas);
   const total = lines.reduce((a, l) => a + l.nilai, 0);
   const jumlahAsli = lines.reduce((a, l) => a + l.asli, 0);
   const multi = perItem && lines.length > 1;
@@ -302,7 +321,7 @@ export function nominalBerkas(pack, verif, mak) {
   }
   const edited =
     total !== jumlahAsli ||
-    lines.some((l) => l.nilai !== l.asli || l.itemId !== l.codeAsli || nm.poks?.[l.key] != null);
+    lines.some((l) => l.nilai !== l.asli || l.itemId !== l.codeAsli || koreksi[l.key]?.pok != null);
   return {
     lines,
     total,
@@ -314,6 +333,15 @@ export function nominalBerkas(pack, verif, mak) {
     sisa: pok == null ? null : pok - total,
     edited,
   };
+}
+
+/** POK per Item yang dibekukan saat verifikasi selesai (`keuangan/status.pokBeku`). */
+export function pokUntukDibekukan(berkas, verif, mak) {
+  const hasil = {};
+  nominalBerkas(berkas, verif, mak).lines.forEach((l) => {
+    if (l.pok != null) hasil[l.itemId] = Math.round(l.pok);
+  });
+  return hasil;
 }
 
 // ─── Lembar Verifikasi ───────────────────────────────────────────────────────
@@ -350,40 +378,32 @@ export function catatanLembar(docs, verif) {
   );
 }
 
-function namaBendahara(pegawaiList) {
-  const b = (pegawaiList || []).find((p) =>
-    String(p.status_khusus || '')
-      .toLowerCase()
-      .includes('bendahara'),
-  );
-  return b?.nama || '';
-}
-
 /**
  * Data lengkap Lembar Verifikasi untuk template PDF `lembar-verifikasi` di
  * src/components/SuratPreview/SuratPreviewCanvas.jsx (lewat resolveDokumen → `data.lembar`).
+ * @param {{ mak?, pejabat?, verifikasi? }} konteks  verifikasi = bagian verifikasi keuangan/status
  */
-export function dataLembar(pack, mak, pegawaiList) {
-  const verif = verifOf(pack);
-  const kelompok = kelompokDokumen(pack);
-  const nom = nominalBerkas(pack, verif, mak);
-  const pelaksana = pelaksanaOf(pack).map((p) => p.nama);
+export function dataLembar(berkas, { mak, pejabat, verifikasi } = {}) {
+  const verif = verifikasi || {};
+  const kelompok = kelompokDokumen(berkas);
+  const nom = nominalBerkas(berkas, verif, mak);
+  const pelaksana = pelaksanaOf(berkas).map((p) => p.nama);
   return {
-    id: lpjIdOf(pack),
-    jenisTeks: isPerjadin(pack) ? 'PERJALANAN DINAS' : 'KEGIATAN NON-PERJADIN',
+    id: lpjIdOf(berkas),
+    jenisTeks: isPerjadin(berkas) ? 'PERJALANAN DINAS' : 'KEGIATAN NON-PERJADIN',
     meta: [
       [
         ['Biro/ Divisi', 'Sub Bagian Tata Usaha'],
-        ['Bagian', (isPerjadin(pack) ? pack.spd?.seksi : '') || ''],
-        ['Kegiatan', uraianOf(pack)],
+        ['Bagian', (isPerjadin(berkas) ? berkas.spd?.seksi : '') || ''],
+        ['Kegiatan', uraianOf(berkas)],
       ],
       [
-        ['MAK', makOf(pack)?.kode || ''],
+        ['MAK', makOf(berkas)?.kode || ''],
         ['Jumlah', nom.multi ? null : rpTitik(nom.jumlah)],
       ],
       [
         ['Nama Pelaksana', pelaksana.length > 3 ? `${pelaksana[0]}, dkk` : pelaksana.join(', ')],
-        ['Nama BPP / Bendahara', namaBendahara(pegawaiList)],
+        ['Nama BPP / Bendahara', pejabat?.bendahara?.nama || ''],
       ],
     ],
     nom,

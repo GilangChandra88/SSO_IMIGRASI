@@ -98,7 +98,7 @@ export function TabelPelaksana({ pelaksana }) {
           )}
           {tampil.map((p, i) => (
             <div
-              key={p.id || i}
+              key={p.pegawaiId || i}
               className={`${KOLOM} border-t text-[13.5px] max-sm:first:border-t-0 ${T.border} ${
                 i >= TAMPIL_AWAL ? `${ANIM.muncul} ${jedaKe(i - TAMPIL_AWAL)}` : ''
               }`}

@@ -1,41 +1,40 @@
 import React, { useState } from 'react';
 import { FaArrowLeft, FaExclamationTriangle, FaHashtag } from 'react-icons/fa';
-import { useAuth } from '@/context/AuthContext';
-import { namaPengguna } from '@/modules/e-persuratan/lpj';
+import { PANJANG } from '@/utils/batas';
+import { tanggalIso } from '@/utils/nilai';
+import { pesanGalat } from '@/utils/pesanGalat';
 import { showToast } from '@/utils/toastStore';
 import { ADMIN } from '@/utils/uiTokens';
 import { useMekarDariTombol } from '@/components/animasi';
 import { gulirKeGalat } from '../../../gulirPintar';
 import { SEKSI_OPTIONS, formatNomorSurat, prefixKode } from '../../data/nomorSuratConfig';
-import { buatNomorRegister } from '../../services/nomorSurat';
+import { useNomorTerakhir } from '../../hooks/useNomorSurat';
+import { terbitkanNomorSurat } from '../../services/nomorSurat';
 import PilihKodeSurat from './PilihKodeSurat';
 
-const hariIni = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
-
 /**
- * Form "Tambah Nomor Surat" (purwarupa admin) dengan kode dari hierarki kode surat.
+ * Form "Tambah Nomor Surat" (purwarupa admin) dengan kode dari hierarki kode surat (node aktif).
+ * Nomor terbit lewat Function (semua pegawai aktif); nomor urut mulai ulang tiap tahun surat.
  * `onKembali(nomor?)`: nomor terisi bila nomor baru berhasil dibuat.
  */
-export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
+export default function TambahNomorSurat({ indeks, onKembali }) {
   // Dibuka dari "Tambah Nomor Surat": form mekar dari tombol itu
   const mekarRef = useMekarDariTombol();
-  const { currentUser, userData } = useAuth();
-  const [form, setForm] = useState({ tanggal: hariIni(), seksi: '', perihal: '', tujuan: '' });
+  const [form, setForm] = useState({ tanggal: tanggalIso(), seksi: '', perihal: '', tujuan: '' });
   const [kodeIds, setKodeIds] = useState([]);
   const [error, setError] = useState(null);
   const [cekKosong, setCekKosong] = useState(false);
   const [sibuk, setSibuk] = useState(false);
+  const tahun = Number(form.tanggal.slice(0, 4)) || null;
+  const { nilai: terakhir } = useNomorTerakhir(tahun);
 
   const ubah = (patch) => setForm((f) => ({ ...f, ...patch }));
   const kodeList = kodeIds.map((id) => indeks.byId.get(id)).filter(Boolean);
-  const terakhir = kodeList[kodeList.length - 1];
-  const kodeLengkap = !!terakhir && indeks.anakDari(terakhir.id).length === 0;
+  const ujung = kodeList[kodeList.length - 1];
+  const kodeLengkap = !!ujung && indeks.anakDari(ujung.id).length === 0;
   const pratinjau = kodeList.length
     ? kodeLengkap
-      ? formatNomorSurat(kodeList, lastNumber + 1)
+      ? formatNomorSurat(kodeList, terakhir + 1)
       : `${prefixKode(kodeList)}-…`
     : 'Pilih kode surat';
 
@@ -58,19 +57,18 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
     setError(null);
     setSibuk(true);
     try {
-      const nomor = await buatNomorRegister({
+      const { nomor } = await terbitkanNomorSurat({
+        sumber: 'register',
         tanggal: form.tanggal,
+        kodeIds,
         seksi: form.seksi,
         perihal: form.perihal.trim(),
         tujuan: form.tujuan.trim(),
-        kode: kodeList.map((n) => ({ type: n.type, kode: n.kode || '', name: n.name || '' })),
-        uid: currentUser?.uid,
-        nama: namaPengguna(currentUser, userData),
       });
       showToast(`Nomor surat ${nomor} berhasil ditambahkan.`);
       onKembali(nomor); // Daftar menggulir ke baris nomor baru
-    } catch {
-      showToast('Gagal membuat nomor surat.', 'error');
+    } catch (err) {
+      showToast(pesanGalat(err, 'Gagal membuat nomor surat.'), 'error');
       setSibuk(false);
     }
   };
@@ -142,8 +140,8 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
             error={cekKosong && !kodeLengkap}
           />
           <p className={ADMIN.hint}>
-            Nomor urut memakai penghitung yang sama dengan pembuatan surat, jadi tidak ada nomor
-            ganda. Nomor pasti muncul setelah data disimpan.
+            Nomor urut memakai penghitung yang sama dengan pembuatan surat dan mulai lagi dari 0001
+            setiap tahun. Nomor pasti muncul setelah data disimpan.
           </p>
         </div>
         <div>
@@ -153,6 +151,7 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
           <input
             id="nsPerihal"
             type="text"
+            maxLength={PANJANG.perihalSurat}
             className={kelasIsian(form.perihal)}
             aria-invalid={kosong(form.perihal) || undefined}
             placeholder="Perihal surat"
@@ -167,6 +166,7 @@ export default function TambahNomorSurat({ indeks, lastNumber, onKembali }) {
           <input
             id="nsTujuan"
             type="text"
+            maxLength={PANJANG.tujuanSurat}
             className={kelasIsian(form.tujuan)}
             aria-invalid={kosong(form.tujuan) || undefined}
             placeholder="Tujuan surat"

@@ -1,9 +1,12 @@
 import React from 'react';
-import { Routes, Route, Link } from 'react-router-dom';
-import { FaBox, FaExchangeAlt, FaArrowLeft } from 'react-icons/fa';
+import { Routes, Route, Link, Navigate } from 'react-router-dom';
+import { FaArrowLeft, FaBoxes, FaExchangeAlt, FaThLarge } from 'react-icons/fa';
 import AppLayout from '@/layouts/AppLayout';
+import InventoriProvider from './konteks/InventoriProvider';
+import Dashboard from './pages/Dashboard';
 import StokBarang from './pages/StokBarang';
-import Transaksi from './pages/Transaksi';
+import RiwayatTransaksi from './pages/RiwayatTransaksi';
+import CetakTerima from './pages/CetakTerima';
 
 const BRAND = {
   code: 'INV',
@@ -12,7 +15,29 @@ const BRAND = {
   mobileTitle: 'Inventory Umum',
 };
 
-const renderNav = ({ isCollapsed, navItemClass, isActive, path }) => (
+// Menu purwarupa inventory-ui: Dashboard, Stok Barang, Transaksi (Barang Masuk & Cetak Terima Barang)
+const MENU = [
+  {
+    to: '/inventory',
+    label: 'Dashboard',
+    Ikon: FaThLarge,
+    aktif: (p) => p === '/inventory' || p === '/inventory/',
+  },
+  {
+    to: '/inventory/stok',
+    label: 'Stok Barang',
+    Ikon: FaBoxes,
+    aktif: (p) => p.startsWith('/inventory/stok'),
+  },
+  {
+    to: '/inventory/transaksi',
+    label: 'Transaksi',
+    Ikon: FaExchangeAlt,
+    aktif: (p) => p.startsWith('/inventory/transaksi'),
+  },
+];
+
+const renderNav = ({ isCollapsed, navItemClass, path }) => (
   <>
     {/* Menu Portal SSO */}
     <div>
@@ -32,26 +57,16 @@ const renderNav = ({ isCollapsed, navItemClass, isActive, path }) => (
         <p
           className={`px-4 text-[10px] font-bold text-slate-500 mb-2 uppercase tracking-widest ${isCollapsed ? 'md:hidden' : ''}`}
         >
-          Utama
+          Menu
         </p>
       )}
       <div className="space-y-1">
-        <Link
-          to="/inventory"
-          title="Stok Barang"
-          className={navItemClass(path === '/inventory' || path === '/inventory/')}
-        >
-          <FaBox size={16} className="shrink-0" />
-          <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Stok Barang</span>
-        </Link>
-        <Link
-          to="/inventory/transaksi"
-          title="Transaksi"
-          className={navItemClass(isActive('/inventory/transaksi'))}
-        >
-          <FaExchangeAlt size={16} className="shrink-0" />
-          <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Transaksi</span>
-        </Link>
+        {MENU.map(({ to, label, Ikon, aktif }) => (
+          <Link key={to} to={to} title={label} className={navItemClass(aktif(path))}>
+            <Ikon size={16} className="shrink-0" />
+            <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>{label}</span>
+          </Link>
+        ))}
       </div>
     </div>
   </>
@@ -68,10 +83,15 @@ export default function AppModule() {
         renderNav,
       }}
     >
-      <Routes>
-        <Route path="/" element={<StokBarang />} />
-        <Route path="/transaksi" element={<Transaksi />} />
-      </Routes>
+      <InventoriProvider>
+        <Routes>
+          <Route path="/" element={<Dashboard />} />
+          <Route path="/stok" element={<StokBarang />} />
+          <Route path="/transaksi" element={<RiwayatTransaksi />} />
+          <Route path="/transaksi/cetak" element={<CetakTerima />} />
+          <Route path="*" element={<Navigate to="/inventory" replace />} />
+        </Routes>
+      </InventoriProvider>
     </AppLayout>
   );
 }

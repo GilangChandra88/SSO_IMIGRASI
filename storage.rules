@@ -1,28 +1,117 @@
 rules_version = '2';
 
-// Aturan Firebase Storage. Deploy: firebase deploy --only storage
+// Aturan keamanan Firebase Storage — Imigrasi Super Web.
+// Acuan path & batas: docs/skema-database.md bagian Storage.
+//
+// Prinsip:
+// - Tolak kecuali diizinkan. Tidak ada daftar isi folder (list) untuk klien.
+// - Peran dari custom claims; kepemilikan & status kunci fase dibaca dari Firestore database (default).
+// - Tipe tertutup (JPEG, PNG, PDF; tanpa SVG), batas ukuran per folder, nama berkas berpola tetap.
+// - Berkas tidak bisa ditimpa (update ditolak); arsip & bukti transfer tidak bisa dihapus.
+
 service firebase.storage {
   match /b/{bucket}/o {
-    // Berkas LPJ: scan Surat Perintah ber-TTE, foto Laporan Kegiatan, lampiran Non-Perjadin.
-    // Hanya pengguna yang login; maks. 5 MB; gambar atau PDF.
-    match /lpj/{packId}/{allPaths=**} {
-      allow read, delete: if request.auth != null;
-      allow create, update: if request.auth != null
-        && request.resource.size < 5 * 1024 * 1024
-        && (request.resource.contentType.matches('image/.*')
-          || request.resource.contentType == 'application/pdf');
+
+    function masuk() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password'
+        && request.auth.token.aktif == true
+        && request.auth.token.peran is list
+        && request.auth.token.pegawaiId is string;
+    }
+    function punya(p) { return masuk() && (p in request.auth.token.peran || 'superadmin' in request.auth.token.peran); }
+    function keuangan() { return punya('keuangan'); }
+    function kepegawaian() { return punya('kepegawaian'); }
+
+    function berkas(id) { return firestore.get(/databases/(default)/documents/lpj_berkas/$(id)).data; }
+    function anggota(id) { return masuk() && request.auth.uid in berkas(id).anggotaUids; }
+    function terkunci(d, b) { return d.get(b, {}).get('terkunci', false) == true; }
+    // Fase sedang berjalan: fase sebelumnya sudah terkunci, fase ini belum.
+    function faseAktif(id, b, sebelumnya) {
+      return terkunci(berkas(id), sebelumnya) && !terkunci(berkas(id), b);
+    }
+    function jalurKeuangan(id) { return /databases/(default)/documents/lpj_berkas/$(id)/keuangan/status; }
+    function tahapSelesai(id, t) {
+      return firestore.exists(jalurKeuangan(id))
+        && firestore.get(jalurKeuangan(id)).data.get(t, {}).get('selesai', false) == true;
     }
 
-    // Foto pegawai untuk captcha kejutan ulang tahun (diunggah admin di Kepegawaian).
-    // Hanya pengguna yang login; maks. 2 MB; gambar saja.
-    match /pegawai/{pegawaiId}/{fileName} {
-      allow read, delete: if request.auth != null;
-      allow create, update: if request.auth != null
-        && request.resource.size < 2 * 1024 * 1024
-        && request.resource.contentType.matches('image/.*');
+    // Nama berkas: {epoch ms 13 digit}-{nama aman}, mis. 1767225600000-scan_sp.pdf
+    function namaSah(n) { return n.matches('^[0-9]{13}-[A-Za-z0-9._-]{1,80}$'); }
+    function gambar() { return request.resource.contentType in ['image/jpeg', 'image/png']; }
+    function gambarAtauPdf() { return request.resource.contentType in ['image/jpeg', 'image/png', 'application/pdf']; }
+    function maksKB(kb) { return request.resource.size <= kb * 1024; }
+    // Unggah ulang ke path yang sama dinilai sebagai create; resource == null mencegah penimpaan.
+    function unggahSah(n) { return namaSah(n) && request.resource.size > 0 && resource == null; }
+
+    // ─── LPJ ────────────────────────────────────────────────────────────────
+
+    // Scan Surat Perintah ber-TTE: diunggah anggota selama tahap TTE belum terkunci.
+    match /lpj/{berkasId}/tte/{nama} {
+      allow get: if keuangan() || anggota(berkasId);
+      allow create: if anggota(berkasId) && faseAktif(berkasId, 'tte', 'sp')
+        && unggahSah(nama) && gambarAtauPdf() && maksKB(5120);
+      allow delete: if anggota(berkasId) && faseAktif(berkasId, 'tte', 'sp');
     }
 
-    // Selain itu ditolak.
+    // Foto Laporan Kegiatan: gambar ≤ 300 KB (dikompres di browser).
+    match /lpj/{berkasId}/laporan/{nama} {
+      allow get: if keuangan() || anggota(berkasId);
+      allow create: if anggota(berkasId) && faseAktif(berkasId, 'laporan', 'lpj')
+        && unggahSah(nama) && gambar() && maksKB(300);
+      allow delete: if anggota(berkasId) && faseAktif(berkasId, 'laporan', 'lpj');
+    }
+
+    // Lampiran Non-Perjadin: foto bukti/produk & nota pembayaran, gambar ≤ 1 MB.
+    match /lpj/{berkasId}/lampiran/{jenis}/{nama} {
+      allow get: if keuangan() || anggota(berkasId);
+      allow create: if anggota(berkasId) && jenis in ['foto', 'nota'] && faseAktif(berkasId, 'lampiran', 'spby')
+        && unggahSah(nama) && gambar() && maksKB(1024);
+      allow delete: if anggota(berkasId) && faseAktif(berkasId, 'lampiran', 'spby');
+    }
+
+    // Bukti pengeluaran per pelaksana: boleh setelah berkas final, selama verifikasi belum selesai.
+    match /lpj/{berkasId}/bukti/{pegawaiId}/{nama} {
+      allow get: if keuangan() || anggota(berkasId);
+      allow create: if anggota(berkasId) && !tahapSelesai(berkasId, 'verifikasi')
+        && unggahSah(nama) && gambarAtauPdf() && maksKB(5120);
+      allow delete: if (anggota(berkasId) && !tahapSelesai(berkasId, 'verifikasi')) || keuangan();
+    }
+
+    // Berkas Keuangan: kwitansi SAKTI, bukti transfer, scan arsip. Hanya Keuangan.
+    match /lpj/{berkasId}/keuangan/{tahap}/{nama} {
+      allow get: if keuangan() || anggota(berkasId);
+      allow create: if keuangan() && tahap in ['sakti', 'transfer', 'arsip']
+        && !tahapSelesai(berkasId, 'arsip')
+        && unggahSah(nama) && gambarAtauPdf() && maksKB(10240);
+      // Kwitansi SAKTI boleh diganti sebelum tahap SAKTI selesai; transfer & arsip tidak pernah dihapus.
+      allow delete: if keuangan() && tahap == 'sakti' && !tahapSelesai(berkasId, 'sakti');
+    }
+
+    // ─── DRPP ───────────────────────────────────────────────────────────────
+    match /drpp/{drppId}/{jenis}/{nama} {
+      allow get: if keuangan()
+        || (masuk() && request.auth.uid in firestore.get(/databases/(default)/documents/lpj_drpp/$(drppId)).data.anggotaUids);
+      allow create: if keuangan() && jenis in ['drpp', 'spm', 'sp2d']
+        && firestore.exists(/databases/(default)/documents/lpj_drpp/$(drppId))
+        && unggahSah(nama) && gambarAtauPdf() && maksKB(10240);
+      allow delete: if false;
+    }
+
+    // ─── Foto pegawai (kejutan ulang tahun) ─────────────────────────────────
+    // Thumbnail dilihat semua pegawai (banner); foto asli hanya pemilik & Kepegawaian (captcha).
+    match /pegawai/{pegawaiId}/thumb/{nama} {
+      allow get: if masuk();
+      allow create: if kepegawaian() && unggahSah(nama) && request.resource.contentType == 'image/jpeg' && maksKB(60);
+      allow delete: if kepegawaian();
+    }
+    match /pegawai/{pegawaiId}/foto/{nama} {
+      allow get: if kepegawaian() || (masuk() && request.auth.token.pegawaiId == pegawaiId);
+      allow create: if kepegawaian() && unggahSah(nama) && request.resource.contentType == 'image/jpeg' && maksKB(300);
+      allow delete: if kepegawaian();
+    }
+
+    // Semua path lain ditolak (termasuk list dan update di path mana pun).
     match /{allPaths=**} {
       allow read, write: if false;
     }

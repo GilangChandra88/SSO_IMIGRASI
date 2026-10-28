@@ -1,17 +1,16 @@
 /**
  * Form LPJ Perjadin (PerjadinFormPage purwarupa): Surat Perintah → TTE → SPD → Cetak SPD →
- * LPJ & SPBy → Laporan Kegiatan. Sub-langkah dibaca dari URL (?isi=) dan dibatasi status
- * kunci tiap fase, sehingga aman saat halaman di-refresh.
+ * LPJ & SPBy → Laporan Kegiatan. Sub-langkah dibaca dari URL (?isi=) dan dibatasi status kunci
+ * tiap bagian berkas live, sehingga aman saat halaman di-refresh.
  */
 
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { saveLPJ } from '../../hooks/useLPJ';
-import { useSimpanOtomatis } from '../../hooks/useSimpanOtomatis';
-import { usePegawaiList } from '../../hooks/usePegawaiList';
-import { useMakTree } from '../../hooks/useMakTree';
+import { usePegawaiRingkas } from '@/context/usePegawaiRingkas';
+import { useMakTahun } from '../../../useMakTahun';
+import { useFormBerkas } from '../../hooks/useFormBerkas';
 import { useDokumenLpj } from '../../hooks/useDokumenLpj';
-import { lpjIdLabel } from '../../utils/lpjLogic';
+import { lpjIdLabel, terkunci } from '../../utils/lpjLogic';
 import { InfoSimpan, PeringatanSimpan } from '../../components/StatusSimpan';
 import ConfirmPopup from '../../ui/ConfirmPopup';
 import LinkBack from '../../ui/LinkBack';
@@ -27,41 +26,26 @@ import StepCetakSPD from './StepCetakSPD';
 import StepLPJ from './StepLPJ';
 import StepLaporan from './StepLaporan';
 
-const salin = (obj) => JSON.parse(JSON.stringify(obj ?? null));
-
-const ambilBagian = (pack) => ({
-  sp: salin(pack.sp),
-  spd: salin(pack.spd),
-  // Keterangan SPBy mengikuti uraian kegiatan yang diisi saat Buat LPJ (bila belum diisi)
-  lpj: { ...salin(pack.lpj), keterangan: pack.lpj?.keterangan || pack.uraian || '' },
-  lap: salin(pack.lap),
-  selesai: salin(pack.selesai) || { sp: false, lpjDocs: {}, laporan: false },
-});
-
 /** Sub-langkah yang sedang harus dikerjakan (null bila semua fase sudah final). */
-function langkahAktif(pf) {
-  if (!pf.sp.locked) return 'sp';
-  if (!pf.selesai.sp) return 'tte';
-  if (!pf.spd.locked) return 'spd';
-  if (!pf.lpj.locked) return 'lpj';
-  if (!pf.lap.locked) return 'laporan';
-  return null;
+function langkahAktif(pack) {
+  return ['sp', 'tte', 'spd', 'lpj', 'laporan'].find((b) => !terkunci(pack, b)) || null;
 }
 
-function bolehMasuk(pf, step) {
+function bolehMasuk(pack, step) {
+  const k = (b) => terkunci(pack, b);
   switch (step) {
     case 'sp':
-      return !pf.sp.locked;
+      return !k('sp');
     case 'tte':
-      return pf.sp.locked && !pf.selesai.sp;
+      return k('sp') && !k('tte');
     case 'spd':
-      return pf.selesai.sp && !pf.spd.locked;
+      return k('tte') && !k('spd');
     case 'cetak-spd':
-      return pf.spd.locked;
+      return k('spd');
     case 'lpj':
-      return pf.spd.locked && !pf.lpj.locked;
+      return k('spd') && !k('lpj');
     case 'laporan':
-      return pf.lpj.locked && !pf.lap.locked;
+      return k('lpj') && !k('laporan');
     default:
       return false;
   }
@@ -80,84 +64,48 @@ const JUDUL_LANGKAH = {
   laporan: { judul: 'Laporan Kegiatan', fase: 4 },
 };
 
+// Keterangan SPBy mengikuti uraian kegiatan yang diisi saat Buat LPJ (bila belum diisi)
+const isiAwal = (pack, pf) => ({
+  ...pf,
+  lpj: { ...pf.lpj, keterangan: pf.lpj.keterangan || pack.uraian || '' },
+});
+
 export default function PerjadinFormPage({ pack, isi, user }) {
   const navigate = useNavigate();
   const [, setSearchParams] = useSearchParams();
   const showToast = useToast();
-  const { pegawai, loading: loadingPeg } = usePegawaiList();
-  const mak = useMakTree();
+  const { pegawai, memuat: loadingPeg } = usePegawaiRingkas();
+  const mak = useMakTahun(pack.tahunAnggaran);
   const topRef = useRef(null);
   // Form selalu dibuka dari atas (Detail sebelumnya bisa tergulir jauh), sebelum kartu mekar
   useLayoutEffect(() => gulirKeAtas(topRef.current), []);
   // Dibuka dari "Buat Sekarang/Edit/Upload": kartu form mekar dari tombol itu
   const kartuRef = useMekarDariTombol();
 
-  const [pf, setPfState] = useState(() => ambilBagian(pack));
-  const pfRef = useRef(pf);
-  const setPf = (fn) =>
-    setPfState((prev) => {
-      const next = typeof fn === 'function' ? fn(prev) : fn;
-      pfRef.current = next;
-      return next;
-    });
-
-  // Setiap perubahan isian (lewat ctx.setPf) disimpan otomatis setelah pengguna berhenti mengetik
-  const otomatis = useSimpanOtomatis(() => persist(pfRef.current, { quiet: true, auto: true }));
-  const ubahPf = (fn) => {
-    setPf(fn);
-    otomatis.tandai();
-  };
+  const form = useFormBerkas(pack, user, { showToast, isiAwal });
+  const { pf, pfRef, otomatis, lastSaved, packView } = form;
 
   const [errors, setErrors] = useState({});
   const [confirm, setConfirm] = useState(null);
   const [confirmBusy, setConfirmBusy] = useState(false);
-  const [lastSaved, setLastSaved] = useState(() => pack.updated_at?.toDate?.() || null);
 
   const detailUrl = `/e-persuratan/lpj/${pack.id}`;
-  const packView = { ...pack, ...pf };
-  const dok = useDokumenLpj({ pack: packView, pegawai, showToast });
+  const dok = useDokumenLpj({ pack: packView, showToast });
 
   // Langkah yang ditahan selama fase diselesaikan lalu kembali ke Detail: tanpa ini, begitu fase
   // terkunci (sebelum simpan selesai) form melompat sebentar ke langkah berikutnya.
   const [langkahDitahan, setLangkahDitahan] = useState(null);
-  const step = langkahDitahan || (bolehMasuk(pf, isi) ? isi : langkahAktif(pf));
+  const step = langkahDitahan || (bolehMasuk(pack, isi) ? isi : langkahAktif(pack));
 
   /**
-   * Simpan bagian berkas ke Firestore. Terima objek pf baru atau fungsi (pf lama → pf baru).
-   * `tahanLangkah`: tetap tampilkan langkah ini (pemanggil akan pindah ke Detail setelahnya).
+   * Simpan isian (lihat useFormBerkas.persist). `tahanLangkah`: tetap tampilkan langkah ini
+   * (pemanggil akan pindah ke Detail setelahnya).
    */
   async function persist(nextOrFn, opts = {}) {
-    const prev = pfRef.current;
-    const next = typeof nextOrFn === 'function' ? nextOrFn(prev) : nextOrFn;
     if (opts.tahanLangkah) setLangkahDitahan(step);
-    setPf(next);
-    if (!opts.auto) otomatis.bersih(); // simpanan ini sudah memuat isian terbaru
-    try {
-      await saveLPJ(
-        pack,
-        {
-          sp: next.sp,
-          spd: next.spd,
-          lpj: next.lpj,
-          lap: next.lap,
-          selesai: next.selesai,
-          ...(opts.extra || {}),
-        },
-        { teks: opts.teks, uid: user.uid, nama: user.nama },
-        { beriNomor: !!opts.beriNomor },
-      );
-      setLastSaved(new Date());
-      if (!opts.quiet) showToast('Draft tersimpan.');
-      return true;
-    } catch (err) {
-      console.error('saveLPJ error:', err);
-      // SPBy selesai + nomor LPJ: kembalikan isian agar fase tidak tampak terkunci tanpa nomor
-      if (opts.beriNomor) setPf(prev);
-      if (opts.tahanLangkah) setLangkahDitahan(null);
-      // Simpan otomatis yang gagal cukup ditandai lewat peringatan di atas form
-      if (!opts.auto) showToast('Gagal menyimpan. Periksa koneksi lalu coba lagi.', 'error');
-      return false;
-    }
+    const hasil = await form.persist(nextOrFn, opts);
+    if (!hasil && opts.tahanLangkah) setLangkahDitahan(null);
+    return hasil;
   }
 
   function goStep(s) {
@@ -204,7 +152,7 @@ export default function PerjadinFormPage({ pack, isi, user }) {
     pack,
     packView,
     pf,
-    setPf: ubahPf,
+    setPf: form.ubahPf,
     pfRef,
     errors,
     setErrors,

@@ -2,30 +2,32 @@ import React from 'react';
 import { FaArchive, FaCheck, FaChevronRight, FaClock, FaPlus, FaSearch } from 'react-icons/fa';
 import {
   DOC_KEYS,
-  barisLpj,
   docsOf,
-  drppMembers,
+  drppMasukIds,
+  drppMatches,
   drppProgress,
   drppStatus,
-  lpjMatches,
+  drppTotal,
 } from '../../../utils/drppLogic';
 import { rupiah } from '../../../utils/lpjLogic';
 import { formatTanggalPendek } from '../../../utils/formatTanggal';
 import { DrppStatusPill } from '../../../components/arsip/ArsipPill';
+import { usePegawaiRingkas } from '@/context/usePegawaiRingkas';
 import { FONT, NAVY, STATUS, T } from '@/utils/uiTokens';
 import { useMunculBerurutan } from '@/components/animasi';
 
-/** Tab "Daftar DRPP" (DrppTab purwarupa): kartu per DRPP, klik → halaman detail. */
-export default function DrppTab({ drpps, packs, packsById, search, setSearch, onOpen, onCreate }) {
+/**
+ * Tab "Daftar DRPP" (DrppTab purwarupa): kartu per DRPP, klik → halaman detail. Jumlah, total, dan
+ * progres dari `masuk` DRPP (tanpa memuat berkasnya); `packsById` (ringkas termuat) hanya untuk
+ * pencarian isi berkas.
+ */
+export default function DrppTab({ drpps, packsById, search, setSearch, onOpen, onCreate }) {
+  const { semua: pegawai } = usePegawaiRingkas();
+  const namaAkun = (uid) => (uid && pegawai.find((p) => p.authUid === uid)?.nama) || '';
   // Kartu DRPP muncul berurutan (diulang saat pencarian berganti)
   const daftarRef = useMunculBerurutan(`${search}|${drpps.length > 0}`);
   const q = search.trim().toLowerCase();
-  const list = drpps.filter(
-    (d) =>
-      !q ||
-      d.id.toLowerCase().includes(q) ||
-      drppMembers(packs, d).some((p) => lpjMatches(barisLpj(p), q)),
-  );
+  const list = drpps.filter((d) => drppMatches(d, q, packsById));
 
   return (
     <>
@@ -54,10 +56,10 @@ export default function DrppTab({ drpps, packs, packsById, search, setSearch, on
 
       <div ref={daftarRef} className="flex flex-col gap-3">
         {list.map((d) => {
-          const rows = drppMembers(packs, d).map(barisLpj);
-          const total = rows.reduce((s, r) => s + r.total, 0);
-          const prog = drppProgress(packsById, packs, d);
+          const nMasuk = drppMasukIds(d).length;
+          const prog = drppProgress(d);
           const docs = docsOf(d);
+          const oleh = namaAkun(d.dibuatOleh);
           return (
             <button
               type="button"
@@ -74,8 +76,8 @@ export default function DrppTab({ drpps, packs, packsById, search, setSearch, on
               <span className="flex-1 min-w-0">
                 <span className={`block ${FONT.head} font-bold text-[15px] ${T.ink}`}>{d.id}</span>
                 <span className={`block text-xs mt-0.5 ${T.inkMuted}`}>
-                  Dibuat {formatTanggalPendek(d.tanggalDibuat)}
-                  {d.dibuatOleh ? ` oleh ${d.dibuatOleh.split(',')[0]}` : ''}
+                  Dibuat {formatTanggalPendek(d.tanggal)}
+                  {oleh ? ` oleh ${oleh}` : ''}
                 </span>
                 <span className="flex flex-wrap items-center gap-1.5 mt-2">
                   {DOC_KEYS.map((k) => (
@@ -90,16 +92,16 @@ export default function DrppTab({ drpps, packs, packsById, search, setSearch, on
                       {docs[k] ? <FaCheck size={9} /> : <FaClock size={9} />} {k.toUpperCase()}
                     </span>
                   ))}
-                  <DrppStatusPill status={drppStatus(packsById, packs, d)} />
+                  <DrppStatusPill status={drppStatus(d)} />
                 </span>
               </span>
               <span className="flex flex-col items-end gap-[3px] text-right shrink-0 max-md:w-full max-md:flex-row max-md:justify-between max-md:items-baseline max-md:text-left">
                 <span className={`${FONT.mono} text-base font-semibold whitespace-nowrap ${T.ink}`}>
-                  {rupiah(total)}
+                  {rupiah(drppTotal(d))}
                 </span>
                 <span className={`text-xs whitespace-nowrap ${T.inkMuted}`}>
-                  <b className={T.ink2}>{rows.length} LPJ</b> masuk · {prog.done}/{prog.total}{' '}
-                  sesuai daftar
+                  <b className={T.ink2}>{nMasuk} LPJ</b> masuk · {prog.done}/{prog.total} sesuai
+                  daftar
                 </span>
               </span>
               <span

@@ -46,6 +46,8 @@ export const ANIM = {
     'motion-safe:transition-opacity motion-safe:duration-200 motion-safe:ease-out motion-safe:starting:opacity-0',
   /** Kartu popup: melenting dari sedikit lebih kecil & lebih rendah. */
   popup: `motion-safe:transition-[opacity,scale,translate] motion-safe:duration-300 ${PEGAS} motion-safe:starting:opacity-0 motion-safe:starting:scale-90 motion-safe:starting:translate-y-3`,
+  /** Kartu popup `Modal lembar`: di HP naik dari tepi bawah layar, di layar lebar seperti `popup`. */
+  lembar: `motion-safe:transition-[opacity,scale,translate] motion-safe:duration-300 motion-safe:ease-out md:motion-safe:ease-[cubic-bezier(.34,1.56,.64,1)] motion-safe:starting:opacity-0 max-md:motion-safe:starting:translate-y-1/2 md:motion-safe:starting:scale-90 md:motion-safe:starting:translate-y-3`,
   /** Chip / tombol pilihan: warna berganti halus + mengecil saat ditekan. */
   pilih:
     'motion-safe:transition-[color,background-color,border-color,box-shadow,scale] motion-safe:duration-200 motion-safe:active:scale-95',

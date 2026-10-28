@@ -30,8 +30,8 @@ const CHECK = 'w-4 h-4 accent-[#0E2340] cursor-pointer disabled:cursor-not-allow
 const BTN_SCAN = `inline-flex items-center gap-1.5 px-3 py-[7px] rounded-lg text-xs font-bold whitespace-nowrap ${NAVY.bg} ${NAVY.hoverBg} text-white`;
 
 /**
- * Tab "Berkas LPJ" (LpjTab purwarupa): semua berkas yang sudah bernomor — pindai, lalu pilih
- * beberapa untuk dimasukkan ke DRPP.
+ * Tab "Berkas LPJ" (LpjTab purwarupa): berkas di tahap Arsip — pindai, lalu pilih beberapa untuk
+ * dimasukkan ke DRPP. `lanjutan` = { bisaLagi, memuatLagi, muatLagi } untuk halaman berikutnya.
  */
 export default function LpjTab({
   rows: semua,
@@ -43,6 +43,7 @@ export default function LpjTab({
   selected,
   setSelected,
   assignTarget,
+  lanjutan,
   onCancelAssign,
   onScan,
   onLihat,
@@ -194,7 +195,7 @@ export default function LpjTab({
                   <div className={`text-center px-2.5 py-11 text-[13.5px] ${T.inkMuted}`}>
                     <FaArchive size={30} className="block mx-auto mb-3 opacity-40" />
                     {semua.length === 0
-                      ? 'Belum ada berkas LPJ bernomor. Nomor LPJ terbit setelah SPBy selesai.'
+                      ? 'Belum ada berkas LPJ di tahap Arsip. Berkas masuk ke sini setelah bukti transfer Bendahara tersimpan.'
                       : 'Tidak ada berkas yang cocok dengan filter ini.'}
                   </div>
                 </td>
@@ -282,6 +283,19 @@ export default function LpjTab({
         noun="berkas"
         onPage={setPage}
       />
+      {lanjutan?.bisaLagi && (
+        <div className="flex flex-col items-center gap-1.5 mt-3.5">
+          <span className={`text-xs ${T.inkMuted}`}>Sebagian berkas lama belum dimuat.</span>
+          <button
+            type="button"
+            className={BTN.sm}
+            onClick={lanjutan.muatLagi}
+            disabled={lanjutan.memuatLagi}
+          >
+            {lanjutan.memuatLagi ? 'Memuat…' : 'Muat lebih banyak'}
+          </button>
+        </div>
+      )}
 
       {selIds.length > 0 && (
         <div

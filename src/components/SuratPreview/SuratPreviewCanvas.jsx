@@ -2333,7 +2333,25 @@ const lapStyles = StyleSheet.create({
   kvLabel: { width: 82 },
   ttd: { marginLeft: '52%', marginTop: 20 },
   ttdLabel: { width: 74 },
+  ttdJudul: { textAlign: 'center', marginTop: 10 },
+  ttdBaris: { flexDirection: 'row', justifyContent: 'center' },
+  ttdKolom: { width: '50%', alignItems: 'center', paddingHorizontal: 8, marginTop: 6 },
 });
+
+/** Satu blok TTD pelaksana: ruang tanda tangan, nama, NIP. */
+const TtdPelaksana = ({ pegawai, no }) => {
+  const [nama, nip] = String(pegawai || '').split('\n');
+  return (
+    <>
+      <View style={{ height: 50 }} />
+      <Text>
+        {no ? `${no}. ` : ''}
+        {nama || '[Nama Pelaksana]'}
+      </Text>
+      <Text>NIP. {nip?.replace('NIP. ', '') || '[NIP]'}</Text>
+    </>
+  );
+};
 
 // Judul tidak boleh tertinggal sendirian di bawah halaman: judul + `pembuka` selalu satu halaman,
 // dan bagian `utuh` (isi pendek) tidak dipotong antarhalaman.
@@ -2384,7 +2402,6 @@ const LaporanKegiatan = ({ data }) => {
   const dasar = (Array.isArray(data.dasar) ? data.dasar : []).filter(Boolean);
   const pelaksana = Array.isArray(data.pegawai_list) ? data.pegawai_list : [];
   const hasil = barisIsi(data.lap_hasil);
-  const [namaTtd, nipTtd] = String(data.lap_ttd || '').split('\n');
   const huruf = (i) => `${String.fromCharCode(97 + i)}.`;
 
   // B.1 Pelaksana: a., b., c. … masing-masing Nama / NIP / Pangkat/Gol. / Jabatan
@@ -2420,6 +2437,33 @@ const LaporanKegiatan = ({ data }) => {
 
   // D. Simpulan dan Saran (berkas lama: isian Rekomendasi ikut dicetak di sini)
   const simpulan = [data.lap_kesimpulan, data.lap_rekomendasi].filter(Boolean).join('\n');
+
+  // TTD setiap pelaksana: satu pelaksana di kanan seperti biasa; lebih dari satu disusun dua
+  // kolom bernomor (baris ganjil terakhir di tengah). Tanpa pelaksana: pakai penanda tangan lama.
+  const penandaTangan = pelaksana.length ? pelaksana : [data.lap_ttd];
+  const barisTtd = [];
+  for (let i = 0; i < penandaTangan.length; i += 2) barisTtd.push(penandaTangan.slice(i, i + 2));
+  const tempatTanggal = (
+    <>
+      <View style={{ flexDirection: 'row' }}>
+        <Text style={lapStyles.ttdLabel}>Dikeluarkan di</Text>
+        <Text>: Singaraja</Text>
+      </View>
+      <View style={{ flexDirection: 'row' }}>
+        <Text style={lapStyles.ttdLabel}>Pada tanggal</Text>
+        <Text>: {fmtTanggalPanjang(data.lap_tanggal)}</Text>
+      </View>
+    </>
+  );
+  const rowTtd = (baris, r) => (
+    <View key={r} style={lapStyles.ttdBaris} wrap={false}>
+      {baris.map((p, k) => (
+        <View key={k} style={lapStyles.ttdKolom}>
+          <TtdPelaksana pegawai={p} no={r * 2 + k + 1} />
+        </View>
+      ))}
+    </View>
+  );
 
   return (
     <Page size="A4" style={lapStyles.page}>
@@ -2470,20 +2514,23 @@ const LaporanKegiatan = ({ data }) => {
         <ParagrafLap teks={data.lap_penutup} kosong="[Penutup]" />
       </BagianLap>
 
-      <View style={lapStyles.ttd} wrap={false}>
-        <View style={{ flexDirection: 'row' }}>
-          <Text style={lapStyles.ttdLabel}>Dikeluarkan di</Text>
-          <Text>: Singaraja</Text>
+      {penandaTangan.length === 1 ? (
+        <View style={lapStyles.ttd} wrap={false}>
+          {tempatTanggal}
+          <Text style={{ marginTop: 6 }}>Pegawai yang Melaksanakan Tugas,</Text>
+          <TtdPelaksana pegawai={penandaTangan[0]} />
         </View>
-        <View style={{ flexDirection: 'row' }}>
-          <Text style={lapStyles.ttdLabel}>Pada tanggal</Text>
-          <Text>: {fmtTanggalPanjang(data.lap_tanggal)}</Text>
-        </View>
-        <Text style={{ marginTop: 6 }}>Pegawai yang Melaksanakan Tugas,</Text>
-        <View style={{ height: 50 }} />
-        <Text>{namaTtd || '[Nama Penanda Tangan]'}</Text>
-        <Text>NIP. {nipTtd?.replace('NIP. ', '') || '[NIP]'}</Text>
-      </View>
+      ) : (
+        <>
+          {/* Tempat/tanggal + judul tidak boleh terpisah dari baris TTD pertama */}
+          <View wrap={false}>
+            <View style={lapStyles.ttd}>{tempatTanggal}</View>
+            <Text style={lapStyles.ttdJudul}>Pegawai yang Melaksanakan Tugas,</Text>
+            {rowTtd(barisTtd[0], 0)}
+          </View>
+          {barisTtd.slice(1).map((baris, r) => rowTtd(baris, r + 1))}
+        </>
+      )}
     </Page>
   );
 };

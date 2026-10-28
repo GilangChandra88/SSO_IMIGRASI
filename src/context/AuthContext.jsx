@@ -1,23 +1,34 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import { onIdTokenChanged } from 'firebase/auth';
+import { doc, getDoc, serverTimestamp, setDoc } from 'firebase/firestore';
 import { auth, db } from '@/config/firebase';
-import { onAuthStateChanged } from 'firebase/auth';
-import { collection, query, where, getDocs, doc, getDoc, setDoc } from 'firebase/firestore';
+import { KOLEKSI } from '@/config/koleksi';
+import { pantau } from '@/utils/pantau';
+import { keluarAkun } from '@/utils/keluarAkun';
+import { PERAN, PILIHAN_LIHAT_SEBAGAI, labelPeran, peranDariKlaim } from '@/utils/peran';
 
+/**
+ * Identitas & peran pengguna. Peran HANYA dibaca dari custom claims token login
+ * ({ peran, aktif, pegawaiId, wajibGantiSandi }) yang ditulis Cloud Function — tidak pernah dari
+ * dokumen yang bisa ditulis klien (docs/rencana-keamanan-efisiensi-firebase.md K2, K3, K18).
+ * Pengecekan di sini hanya untuk tampilan; penjaga sebenarnya adalah rules & Functions.
+ *
+ * statusAkun: 'memuat' | 'keluar' | 'belumTerdaftar' (login tanpa claim aktif) | 'aktif'
+ */
 const AuthContext = createContext({});
-
-/** Peran yang tersedia (nilai persis, lihat CLAUDE.md). */
-const ROLES = ['Super Admin', 'Admin', 'Pegawai'];
 
 // Mode "lihat sebagai" Super Admin disimpan per tab; login ulang kembali ke Super Admin
 const VIEW_AS_KEY = 'viewAsRole';
 const bacaViewAs = () => {
   try {
     const v = sessionStorage.getItem(VIEW_AS_KEY);
-    return ROLES.includes(v) ? v : null;
+    return PILIHAN_LIHAT_SEBAGAI.includes(v) ? v : null;
   } catch {
     return null;
   }
 };
+
+const terapkanTema = (gelap) => document.documentElement.classList.toggle('dark', !!gelap);
 
 export function useAuth() {
   return useContext(AuthContext);
@@ -25,99 +36,123 @@ export function useAuth() {
 
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
-  // Peran asli dari dokumen pegawai (tidak pernah diubah oleh mode "lihat sebagai")
-  const [userRole, setUserRole] = useState(null);
-  const [viewAsRole, setViewAsRoleState] = useState(bacaViewAs);
+  const [klaim, setKlaim] = useState(null);
+  const [statusAkun, setStatusAkun] = useState('memuat');
   const [userData, setUserData] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [viewAsRole, setViewAsRoleState] = useState(bacaViewAs);
+  const klaimRef = useRef(null);
 
-  // Dark Mode State
   const [isDark, setIsDark] = useState(() => {
-    const saved = localStorage.getItem('darkMode');
-    const isCurrentlyDark = saved === 'true' || document.documentElement.classList.contains('dark');
-    if (isCurrentlyDark) document.documentElement.classList.add('dark');
-    return isCurrentlyDark;
+    let simpan = null;
+    try {
+      simpan = localStorage.getItem('darkMode');
+    } catch {
+      // penyimpanan lokal tidak tersedia
+    }
+    const gelap = simpan === 'true' || document.documentElement.classList.contains('dark');
+    terapkanTema(gelap);
+    return gelap;
   });
 
-  const applyTheme = (dark) => {
-    if (dark) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
+  const ubahTema = (gelap) => {
+    setIsDark(gelap);
+    terapkanTema(gelap);
+    try {
+      localStorage.setItem('darkMode', String(gelap));
+    } catch {
+      // abaikan
     }
   };
 
   const toggleDarkMode = async () => {
-    const newDark = !isDark;
-    setIsDark(newDark);
-    applyTheme(newDark);
-    localStorage.setItem('darkMode', String(newDark));
-
-    // Save to Firestore if logged in
-    if (currentUser && currentUser.email) {
+    const gelap = !isDark;
+    ubahTema(gelap);
+    if (currentUser && statusAkun === 'aktif') {
       try {
-        const settingsRef = doc(db, 'userSettings', currentUser.email);
-        await setDoc(settingsRef, { darkMode: newDark }, { merge: true });
-      } catch (error) {
-        console.error('Error saving dark mode setting:', error);
+        await setDoc(doc(db, KOLEKSI.penggunaPreferensi, currentUser.uid), {
+          modeGelap: gelap,
+          diubahPada: serverTimestamp(),
+        });
+      } catch {
+        // preferensi tampilan bukan data penting; cukup tersimpan di browser ini
       }
     }
   };
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      setCurrentUser(user);
-      if (user) {
-        // Fetch User Settings (Dark Mode)
-        try {
-          const settingsRef = doc(db, 'userSettings', user.email);
-          const settingsSnap = await getDoc(settingsRef);
-          if (settingsSnap.exists()) {
-            const darkPref = settingsSnap.data().darkMode;
-            setIsDark(darkPref);
-            applyTheme(darkPref);
-            localStorage.setItem('darkMode', String(darkPref));
-          }
-        } catch (err) {
-          console.error('Error fetching settings:', err);
-        }
+  /** Ambil ulang token (mis. setelah peran diubah atau kata sandi diganti) agar claims terbaru. */
+  const segarkanToken = async () => {
+    if (auth.currentUser) await auth.currentUser.getIdToken(true);
+  };
 
-        if (user.email && user.email.toLowerCase() === 'bakmiekt@gmail.com') {
-          setUserRole('Super Admin');
-          setUserData({ nama: 'Master Admin', email: user.email });
-        } else {
-          try {
-            const q = query(collection(db, 'pegawai'), where('email', '==', user.email));
-            const querySnapshot = await getDocs(q);
-            if (!querySnapshot.empty) {
-              const data = querySnapshot.docs[0].data();
-              setUserRole(data.role || 'Pegawai');
-              setUserData({ ...data, id: querySnapshot.docs[0].id });
-            } else {
-              setUserRole('Pegawai');
-              setUserData({ email: user.email });
-            }
-          } catch (error) {
-            console.error('Error fetching user role:', error);
-            setUserRole('Pegawai');
-          }
-        }
-      } else {
-        setUserRole(null);
+  // 1) Token login → claims
+  useEffect(() => {
+    return onIdTokenChanged(auth, async (user) => {
+      setCurrentUser(user);
+      if (!user) {
+        klaimRef.current = null;
+        setKlaim(null);
         setUserData(null);
+        setStatusAkun('keluar');
         setViewAsRole(null);
+        return;
       }
-      setLoading(false);
+      try {
+        const { claims } = await user.getIdTokenResult();
+        klaimRef.current = claims;
+        setKlaim(claims);
+        setStatusAkun(
+          claims.aktif === true && typeof claims.pegawaiId === 'string'
+            ? 'aktif'
+            : 'belumTerdaftar',
+        );
+      } catch {
+        setKlaim(null);
+        setStatusAkun('belumTerdaftar');
+      }
     });
-    return unsubscribe;
   }, []);
 
+  // 2) Dokumen pegawai sendiri: data tampilan + sinyal bila peran/status diubah admin
+  const pegawaiId = statusAkun === 'aktif' ? klaim?.pegawaiId : null;
+  useEffect(() => {
+    if (!pegawaiId) return undefined;
+    return pantau(
+      doc(db, KOLEKSI.pegawai, pegawaiId),
+      (snap) => {
+        if (!snap.exists()) return;
+        const data = snap.data();
+        setUserData({ id: snap.id, ...data });
+        if (data.aktif === false) {
+          keluarAkun();
+          return;
+        }
+        const peranToken = peranDariKlaim(klaimRef.current).join(',');
+        const peranDok = peranDariKlaim({ peran: data.peran }).join(',');
+        if (peranToken !== peranDok) segarkanToken().catch(() => {});
+      },
+      { diam: true },
+    );
+  }, [pegawaiId]);
+
+  // 3) Preferensi mode gelap milik akun ini
+  const uid = statusAkun === 'aktif' ? currentUser?.uid : null;
+  useEffect(() => {
+    if (!uid) return;
+    getDoc(doc(db, KOLEKSI.penggunaPreferensi, uid))
+      .then((snap) => {
+        if (snap.exists() && typeof snap.data().modeGelap === 'boolean')
+          ubahTema(snap.data().modeGelap);
+      })
+      .catch(() => {});
+  }, [uid]);
+
   /**
-   * Super Admin dapat menjelajahi aplikasi sebagai peran lain (tampilan & aksi mengikuti peran
-   * itu) tanpa kehilangan peran aslinya. null = kembali ke peran asli. Hanya di sisi klien.
+   * Super Admin dapat menjelajahi aplikasi sebagai peran lain (tampilan mengikuti peran itu) tanpa
+   * kehilangan peran aslinya. null = kembali ke peran asli. Hanya tampilan: rules & Functions tetap
+   * memakai peran asli, jadi mode ini BUKAN alat uji keamanan.
    */
   function setViewAsRole(role) {
-    const v = ROLES.includes(role) && role !== 'Super Admin' ? role : null;
+    const v = PILIHAN_LIHAT_SEBAGAI.includes(role) && role !== PERAN.superadmin ? role : null;
     setViewAsRoleState(v);
     try {
       if (v) sessionStorage.setItem(VIEW_AS_KEY, v);
@@ -127,24 +162,41 @@ export function AuthProvider({ children }) {
     }
   }
 
-  const isRealSuperAdmin = userRole === 'Super Admin';
-  // Peran efektif yang dipakai seluruh aplikasi
-  const role = isRealSuperAdmin && viewAsRole ? viewAsRole : userRole;
+  const peranAsli = statusAkun === 'aktif' ? peranDariKlaim(klaim) : [];
+  const isRealSuperAdmin = peranAsli.includes(PERAN.superadmin);
+  // Peran efektif yang dipakai tampilan ("lihat sebagai" = satu peran saja)
+  const peran =
+    isRealSuperAdmin && viewAsRole ? (viewAsRole === 'pegawai' ? [] : [viewAsRole]) : peranAsli;
+  const isSuperAdmin = peran.includes(PERAN.superadmin);
+  // Super Admin selalu memiliki hak semua peran khusus
+  const punyaPeran = (r) => isSuperAdmin || peran.includes(r);
 
   const value = {
     currentUser,
-    userRole: role,
-    realRole: userRole,
+    statusAkun,
+    wajibGantiSandi: statusAkun === 'aktif' && klaim?.wajibGantiSandi === true,
+    segarkanToken,
+    peran,
+    punyaPeran,
+    // Teks peran efektif untuk tampilan, mis. "Keuangan, Umum"
+    userRole: labelPeran(peran),
+    realRole: statusAkun === 'aktif' ? labelPeran(peranAsli) : null,
     isRealSuperAdmin,
     viewAsRole: isRealSuperAdmin ? viewAsRole : null,
     setViewAsRole,
-    roles: ROLES,
+    roles: PILIHAN_LIHAT_SEBAGAI,
+    // ID dokumen pegawai milik akun ini (dari claims), tersedia sebelum userData termuat
+    pegawaiId,
     userData,
-    isSuperAdmin: role === 'Super Admin',
-    isAdmin: role === 'Admin' || role === 'Super Admin',
+    isSuperAdmin,
+    isKeuangan: punyaPeran(PERAN.keuangan),
+    isKepegawaian: punyaPeran(PERAN.kepegawaian),
+    isUmum: punyaPeran(PERAN.umum),
     isDark,
     toggleDarkMode,
   };
 
-  return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>{statusAkun !== 'memuat' && children}</AuthContext.Provider>
+  );
 }

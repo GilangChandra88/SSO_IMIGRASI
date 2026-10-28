@@ -1,6 +1,7 @@
 import React from 'react';
 import { FaCheck, FaChevronLeft } from 'react-icons/fa';
-import { ALAT_ANGKUT, SEKSI_LIST } from '../../data/masterLpj';
+import { SEKSI } from '@/data/seksi';
+import { ALAT_ANGKUT } from '../../data/masterLpj';
 import MakDropdowns from '../../components/MakDropdowns';
 import PegawaiCards from '../../components/PegawaiCards';
 import Field from '../../ui/Field';
@@ -8,7 +9,7 @@ import { BTN, FORM, STATUS, T } from '@/utils/uiTokens';
 
 function validateSpd(spd) {
   const e = {};
-  if (!String(spd.nomorSPD || '').trim()) e.nomorSPD = 'Wajib diisi';
+  if (!String(spd.nomorSpd || '').trim()) e.nomorSpd = 'Wajib diisi';
   if (!spd.tanggal) e.tanggal = 'Wajib diisi';
   if (!spd.seksi) e.seksi = 'Wajib dipilih';
   if (!spd.tujuan.trim()) e.tujuan = 'Wajib diisi';
@@ -44,10 +45,7 @@ export default function StepSPD({ ctx }) {
     askConfirm({
       label: 'SPD (Surat Perjalanan Dinas)',
       onYes: async () => {
-        const ok = await persist((prev) => ({ ...prev, spd: { ...prev.spd, locked: true } }), {
-          quiet: true,
-          teks: 'menandai SPD selesai',
-        });
+        const ok = await persist(ctx.pfRef.current, { quiet: true, kunci: 'spd' });
         closeConfirm();
         if (ok) {
           showToast('SPD ditandai selesai.');
@@ -69,14 +67,14 @@ export default function StepSPD({ ctx }) {
       >
         <FaCheck size={12} className="shrink-0" />
         <span>
-          Nomor Surat <strong>{pf.sp.nomorSurat}</strong> otomatis mengikuti Surat Perintah yang
-          sudah selesai
+          Nomor Surat <strong>{ctx.pack.tte?.nomorSurat}</strong> otomatis mengikuti Surat Perintah
+          yang sudah selesai
         </span>
       </div>
 
       <div className={FORM.card}>
         <h3 className={`${FORM.cardTitle} mb-4`}>Surat Perjalanan Dinas (SPD)</h3>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-x-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4">
           <Field label="Lembar Ke" htmlFor="spd-lembar">
             <input
               id="spd-lembar"
@@ -87,20 +85,11 @@ export default function StepSPD({ ctx }) {
               className={`${FORM.input} ${FORM.borderOk}`}
             />
           </Field>
-          <Field label="Kode No" htmlFor="spd-kode">
-            <input
-              id="spd-kode"
-              value={spd.kodeNo}
-              placeholder="Otomatis / manual"
-              onChange={(e) => setSpd({ kodeNo: e.target.value })}
-              className={`${FORM.input} ${FORM.borderOk}`}
-            />
-          </Field>
           <Field
             label="Nomor SPD"
             required
             hint="Otomatis mengikuti nomor Surat Perintah"
-            err={errors.nomorSPD}
+            err={errors.nomorSpd}
           >
             <div
               className={`flex items-center gap-2 h-[38px] px-3 rounded-lg border ${STATUS.doneBg} ${STATUS.doneBorder}`}
@@ -109,7 +98,7 @@ export default function StepSPD({ ctx }) {
               <span
                 className={`flex-1 min-w-0 truncate text-[13.5px] font-semibold ${STATUS.doneInk}`}
               >
-                {spd.nomorSPD || '—'}
+                {spd.nomorSpd || '—'}
               </span>
               <span
                 className={`text-[10.5px] font-semibold px-2 py-0.5 rounded-[10px] whitespace-nowrap ${STATUS.doneBg} ${STATUS.doneInk}`}
@@ -137,7 +126,7 @@ export default function StepSPD({ ctx }) {
               className={`${FORM.select} ${border('seksi')}`}
             >
               <option value="">— Pilih Seksi —</option>
-              {SEKSI_LIST.map((s) => (
+              {SEKSI.map((s) => (
                 <option key={s} value={s}>
                   {s}
                 </option>
@@ -217,7 +206,7 @@ export default function StepSPD({ ctx }) {
         <MakDropdowns
           nodes={mak.nodes}
           byId={mak.byId}
-          loading={mak.loading}
+          loading={mak.memuat}
           mak={spd.mak}
           bertahap
           onChange={(m) => setSpd({ mak: { ...spd.mak, ...m } })}

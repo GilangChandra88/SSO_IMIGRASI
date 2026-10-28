@@ -23,15 +23,14 @@ import {
   FaRegFileAlt,
   FaUpload,
 } from 'react-icons/fa';
-import { useLPJPack } from '../hooks/useLPJ';
+import { useBerkas } from '../hooks/useBerkas';
 import { useLpjUser } from '../hooks/useLpjUser';
-import { usePegawaiList } from '../hooks/usePegawaiList';
+import { usePegawaiRingkas } from '@/context/usePegawaiRingkas';
 import { useDokumenLpj } from '../hooks/useDokumenLpj';
 import {
   STAGE_STATUS_LABEL,
   canEditPack,
   isPerjadin,
-  isSkemaBaru,
   jenisLabel,
   lpjGroupStatus,
   lpjIdLabel,
@@ -42,7 +41,6 @@ import {
   lpjTahapDisplay,
   overallProgress,
   stagesWithStatus,
-  uraianOf,
 } from '../utils/lpjLogic';
 import LinkBack from '../ui/LinkBack';
 import TombolBuat from '../components/TombolBuat';
@@ -66,17 +64,12 @@ export default function PackDetail({ packId }) {
   const navigate = useNavigate();
   const showToast = useToast();
   const user = useLpjUser();
-  const { pack, loading, error } = useLPJPack(packId);
-  const { pegawai } = usePegawaiList();
-  const dok = useDokumenLpj({ pack, pegawai, showToast });
-  // Scan SP ber-TTE disiapkan (unduh + render) di latar belakang setelah halaman tampil, agar
-  // "Lihat" dan "Cetak Semua" Fase 2 tidak perlu menunggu lama
-  const scanSp = pack?.sp?.scan;
-  useEffect(() => {
-    if (!scanSp?.url) return;
-    const t = setTimeout(() => siapkanBerkas(scanSp), 1200);
-    return () => clearTimeout(t);
-  }, [scanSp]);
+  const { berkas: pack, memuat: loading, galat: error } = useBerkas(packId);
+  const { pegawai } = usePegawaiRingkas();
+  const dok = useDokumenLpj({ pack, showToast });
+  // Scan SP ber-TTE baru diunduh & disiapkan saat tombol "Lihat"-nya disorot (hemat unduhan),
+  // sehingga "Lihat" dan "Cetak Semua" Fase 2 tidak perlu menunggu lama
+  const siapkanScan = () => pack?.tte?.scan && siapkanBerkas(pack.tte.scan);
   // Nomor fase yang dokumennya sedang disiapkan untuk "Cetak Semua" (null = tidak ada)
   const [mencetakFase, setMencetakFase] = useState(null);
   async function cetakFase(num, docs, label) {
@@ -104,7 +97,7 @@ export default function PackDetail({ packId }) {
   }, [pack, packId]);
   useEffect(() => {
     const kunci = state?.sorot;
-    if (!pack || !kunci || !isSkemaBaru(pack) || sorotDitangani.current === kunciLokasi) return;
+    if (!pack || !kunci || sorotDitangani.current === kunciLokasi) return;
     sorotDitangani.current = kunciLokasi;
     const num = faseTujuan(stagesWithStatus(pack), kunci);
     if (num) gulirDanSorot(() => isiRef.current?.querySelector(`[data-fase="${num}"]`));
@@ -118,22 +111,10 @@ export default function PackDetail({ packId }) {
       <Shell>
         <LinkBack onClick={backToList}>Kembali ke Daftar LPJ</LinkBack>
         <p className={`text-center py-9 text-[13.5px] ${T.inkMuted}`}>
-          {error || 'Berkas tidak ditemukan.'}
+          {error
+            ? 'Berkas tidak dapat dibuka: Anda bukan pembuat/pelaksananya, atau berkas sudah dihapus.'
+            : 'Berkas tidak ditemukan.'}
         </p>
-      </Shell>
-    );
-  }
-  if (!isSkemaBaru(pack)) {
-    return (
-      <Shell>
-        <LinkBack onClick={backToList}>Kembali ke Daftar LPJ</LinkBack>
-        <div className={`rounded-xl border p-6 text-center ${T.border} ${T.surface2}`}>
-          <p className={`font-bold text-sm mb-1 ${T.ink}`}>{uraianOf(pack) || pack.id}</p>
-          <p className={`text-[13px] ${T.ink2}`}>
-            Berkas ini dibuat dengan format lama dan tidak didukung lagi oleh alur LPJ yang baru.
-            Silakan buat berkas baru.
-          </p>
-        </div>
       </Shell>
     );
   }
@@ -336,6 +317,7 @@ export default function PackDetail({ packId }) {
                       doc={doc}
                       status={lpjSingleStatus(pack, stage, doc)}
                       onLihat={dok.lihat}
+                      onSiapkan={doc.berkas ? siapkanScan : undefined}
                     />
                   ))}
                   {(stage.groups || []).map((group) => (
@@ -440,7 +422,7 @@ function dokumenSiapCetak(pack, stage) {
   const tunggal = (stage.items || []).filter(
     (d) =>
       lpjSingleStatus(pack, stage, d) === 'selesai' &&
-      (d.berkas ? !!pack.sp?.scan : punyaTemplatePdf(d)),
+      (d.berkas ? !!pack.tte?.scan : punyaTemplatePdf(d)),
   );
   const sub = (stage.groups || []).flatMap((g) =>
     g.subItems.filter((it) => lpjGroupSubDone(pack, stage, g, it) && punyaTemplatePdf(it)),
@@ -480,13 +462,18 @@ const TEKS_AKSI = {
   nplampiran: { mulai: 'Upload Lampiran', lanjut: 'Lanjutkan Lampiran', ikon: FaUpload },
 };
 
-/** Tombol "Lihat" / "Lihat / Print" dengan ukuran & lebar sama di semua baris dokumen. */
-function TombolLihat({ onClick, children }) {
+/**
+ * Tombol "Lihat" / "Lihat / Print" dengan ukuran & lebar sama di semua baris dokumen.
+ * `onSiapkan` (opsional) dipanggil saat tombol disorot/difokus, mis. mengunduh scan lebih dulu.
+ */
+function TombolLihat({ onClick, onSiapkan, children }) {
   return (
     <button
       type="button"
       className={`${BTN.sm} w-[122px] shrink-0 justify-center`}
       onClick={onClick}
+      onPointerEnter={onSiapkan}
+      onFocus={onSiapkan}
     >
       <FaRegEye size={12} /> {children}
     </button>
@@ -497,14 +484,14 @@ function BelumDibuat({ teks = 'Belum dibuat' }) {
   return <span className={`text-[11.5px] shrink-0 ${T.inkMuted}`}>{teks}</span>;
 }
 
-function SingleCard({ doc, status, onLihat }) {
+function SingleCard({ doc, status, onLihat, onSiapkan }) {
   let actions = null;
   if (status === 'selesai' || status === 'proses') {
     // Satu tombol: popup pratinjau, yang juga bisa langsung mencetak (berkas unggahan seperti
     // scan SP lewat tombol Cetak di popup). Draf yang belum selesai cukup berlabel "Lihat".
     const bisaPrint = status === 'selesai';
     actions = (
-      <TombolLihat onClick={() => onLihat(doc)}>
+      <TombolLihat onClick={() => onLihat(doc)} onSiapkan={onSiapkan}>
         {bisaPrint ? 'Lihat / Print' : 'Lihat'}
       </TombolLihat>
     );

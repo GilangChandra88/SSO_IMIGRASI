@@ -1,31 +1,37 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { FaEye, FaPen, FaSearch } from 'react-icons/fa';
-import { ADMIN, FONT, T } from '@/utils/uiTokens';
+import { useAuth } from '@/context/AuthContext';
+import { tahunIni } from '@/utils/nilai';
+import { ADMIN, FONT, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, jedaKe } from '@/utils/animasi';
+import { daftarTahun } from '../../../tahunAnggaran';
+import { useDaftarNomor } from '../../hooks/useNomorSurat';
 import EditNomorSuratModal from './EditNomorSuratModal';
 import NomorSuratDetailModal from './NomorSuratDetailModal';
-import { formatTanggalNomor, kodeKop, kodeLanjutan } from './nomorSuratTampil';
+import { bolehUbahNomor, formatTanggalNomor, kodeKop, kodeLanjutan } from './nomorSuratTampil';
 
-/** Daftar nomor surat (tabel NomorSuratPage purwarupa): cari, filter tahun, Lihat/Edit. */
-export default function RegisterNomorSurat({ rows, loading }) {
-  const tahunIni = String(new Date().getFullYear());
+/**
+ * Daftar nomor surat (tabel NomorSuratPage purwarupa): register satu tahun (`surat_nomor`, sumber
+ * register), cari, Lihat/Edit. Edit untuk pemohon nomor atau Keuangan selama nomor belum batal.
+ */
+export default function RegisterNomorSurat() {
+  const { currentUser, isKeuangan } = useAuth();
+  const uid = currentUser?.uid || '';
   const [search, setSearch] = useState('');
-  const [year, setYear] = useState(tahunIni);
+  const [tahun, setTahun] = useState(tahunIni);
   const [lihat, setLihat] = useState(null);
   const [edit, setEdit] = useState(null);
-
-  const years = useMemo(() => {
-    const s = new Set(rows.map((r) => String(r.tanggal || '').slice(0, 4)).filter(Boolean));
-    s.add(tahunIni);
-    return [...s].sort().reverse();
-  }, [rows, tahunIni]);
+  const { rows, loading, bisaLagi, memuatLagi, muatLagi } = useDaftarNomor({
+    tahun,
+    sumber: 'register',
+  });
 
   const q = search.trim().toLowerCase();
-  const filtered = rows.filter((r) => {
-    const cocokCari =
-      !q || `${r.perihal} ${r.tujuan} ${r.nomor} ${r.seksi}`.toLowerCase().includes(q);
-    return cocokCari && (!year || String(r.tanggal || '').slice(0, 4) === year);
-  });
+  const filtered = q
+    ? rows.filter((r) => `${r.perihal} ${r.tujuan} ${r.nomor} ${r.seksi}`.toLowerCase().includes(q))
+    : rows;
+  // Baris dibuka dari data terbaru supaya jendela ikut berubah bila datanya berubah
+  const lihatRow = lihat ? rows.find((r) => r.id === lihat.id) || lihat : null;
 
   return (
     <>
@@ -44,10 +50,10 @@ export default function RegisterNomorSurat({ rows, loading }) {
         <select
           className={`${ADMIN.input} ${FONT.mono} max-w-[160px]`}
           aria-label="Pilih tahun"
-          value={year}
-          onChange={(e) => setYear(e.target.value)}
+          value={tahun}
+          onChange={(e) => setTahun(Number(e.target.value))}
         >
-          {years.map((y) => (
+          {daftarTahun().map((y) => (
             <option key={y} value={y}>
               {y}
             </option>
@@ -87,67 +93,90 @@ export default function RegisterNomorSurat({ rows, loading }) {
               <tr>
                 <td colSpan={9} className={ADMIN.emptyRow}>
                   {rows.length === 0
-                    ? 'Belum ada nomor surat. Klik "Tambah Nomor Surat" untuk membuat.'
+                    ? `Belum ada nomor surat tahun ${tahun}. Klik "Tambah Nomor Surat" untuk membuat.`
                     : 'Tidak ada data yang cocok.'}
                 </td>
               </tr>
             ) : (
-              filtered.map((r, i) => (
-                <tr
-                  key={r.id}
-                  data-nomor={r.nomor}
-                  className={`${ADMIN.tr} ${ANIM.muncul} ${jedaKe(i)}`}
-                >
-                  <td className={ADMIN.td}>{r.nomorUrut || '-'}</td>
-                  <td className={ADMIN.td}>
-                    <span className={ADMIN.mono}>{formatTanggalNomor(r.tanggal)}</span>
-                  </td>
-                  <td className={ADMIN.td}>
-                    {r.seksi ? <span className={ADMIN.tag}>{r.seksi}</span> : '-'}
-                  </td>
-                  <td className={ADMIN.td}>
-                    <span className={ADMIN.mono}>{kodeKop(r)}</span>
-                  </td>
-                  <td className={ADMIN.td}>
-                    <span className={ADMIN.mono}>{kodeLanjutan(r)}</span>
-                  </td>
-                  <td className={ADMIN.td}>
-                    <span className={`${ADMIN.mono} font-semibold`}>{r.nomor}</span>
-                  </td>
-                  <td className={`${ADMIN.td} max-w-[320px]`}>{r.perihal}</td>
-                  <td className={ADMIN.td}>
-                    <span className={T.ink2}>{r.tujuan}</span>
-                  </td>
-                  <td className={ADMIN.td}>
-                    <div className="flex gap-1.5 whitespace-nowrap">
-                      <button
-                        type="button"
-                        className={ADMIN.rowBtn}
-                        title="Lihat"
-                        aria-label="Lihat"
-                        onClick={() => setLihat(r)}
+              filtered.map((r, i) => {
+                const batal = r.status === 'batal';
+                return (
+                  <tr
+                    key={r.id}
+                    data-nomor={r.nomor}
+                    className={`${ADMIN.tr} ${ANIM.muncul} ${jedaKe(i)}`}
+                  >
+                    <td className={ADMIN.td}>{r.nomorUrut || '-'}</td>
+                    <td className={ADMIN.td}>
+                      <span className={ADMIN.mono}>{formatTanggalNomor(r.tanggal)}</span>
+                    </td>
+                    <td className={ADMIN.td}>
+                      {r.seksi ? <span className={ADMIN.tag}>{r.seksi}</span> : '-'}
+                    </td>
+                    <td className={ADMIN.td}>
+                      <span className={ADMIN.mono}>{kodeKop(r)}</span>
+                    </td>
+                    <td className={ADMIN.td}>
+                      <span className={ADMIN.mono}>{kodeLanjutan(r)}</span>
+                    </td>
+                    <td className={ADMIN.td}>
+                      <span
+                        className={`${ADMIN.mono} font-semibold ${batal ? `line-through ${T.inkMuted}` : ''}`}
                       >
-                        <FaEye size={13} />
-                      </button>
-                      <button
-                        type="button"
-                        className={ADMIN.rowBtn}
-                        title="Edit"
-                        aria-label="Edit"
-                        onClick={() => setEdit(r)}
-                      >
-                        <FaPen size={11} />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))
+                        {r.nomor}
+                      </span>
+                      {batal && (
+                        <span
+                          className={`ml-1.5 text-[10.5px] font-bold px-1.5 py-0.5 rounded ${STATUS.critBg} ${STATUS.critInk}`}
+                        >
+                          Batal
+                        </span>
+                      )}
+                    </td>
+                    <td className={`${ADMIN.td} max-w-[320px]`}>{r.perihal}</td>
+                    <td className={ADMIN.td}>
+                      <span className={T.ink2}>{r.tujuan}</span>
+                    </td>
+                    <td className={ADMIN.td}>
+                      <div className="flex gap-1.5 whitespace-nowrap">
+                        <button
+                          type="button"
+                          className={ADMIN.rowBtn}
+                          title="Lihat"
+                          aria-label="Lihat"
+                          onClick={() => setLihat(r)}
+                        >
+                          <FaEye size={13} />
+                        </button>
+                        {bolehUbahNomor(r, { uid, isKeuangan }) && (
+                          <button
+                            type="button"
+                            className={ADMIN.rowBtn}
+                            title="Edit"
+                            aria-label="Edit"
+                            onClick={() => setEdit(r)}
+                          >
+                            <FaPen size={11} />
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </div>
+      {bisaLagi && (
+        <div className="flex justify-center mt-3">
+          <button type="button" className={ADMIN.btnGhost} onClick={muatLagi} disabled={memuatLagi}>
+            {memuatLagi ? 'Memuat…' : 'Muat lebih banyak'}
+          </button>
+        </div>
+      )}
 
-      {lihat && <NomorSuratDetailModal row={lihat} onClose={() => setLihat(null)} />}
+      {lihatRow && <NomorSuratDetailModal row={lihatRow} onClose={() => setLihat(null)} />}
       {edit && <EditNomorSuratModal row={edit} onClose={() => setEdit(null)} />}
     </>
   );

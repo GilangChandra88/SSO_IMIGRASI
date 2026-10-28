@@ -1,24 +1,29 @@
 import React, { useState } from 'react';
 import { FaSearch, FaTimes } from 'react-icons/fa';
 import { PEJABAT_KATEGORI } from '../data/masterLpj';
-import { toPegawaiRef } from '../utils/emptyModels';
+import { keOrang } from '@/context/usePegawaiRingkas';
+import { usePejabat } from '@/context/usePejabat';
 import { FORM, NAVY, T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
 
 /**
- * Pilih kategori pejabat penandatangan (Kepala/PLT/PLH) lalu cari namanya di data pegawai.
- * Nilai: { kategori, id, uid, nama, nip, pangkat, jabatan } atau null.
+ * Pilih kategori pejabat penandatangan (Kepala/PLT/PLH) lalu cari namanya di pegawai ringkas.
+ * Pejabat yang ditetapkan Kepegawaian untuk kategori itu hari ini (`pegawai_pejabat`) ditawarkan
+ * sebagai pilihan cepat. Nilai: salinan beku Orang + kategori ({ kategori, pegawaiId, nama, nip,
+ * pangkat, jabatan }) atau null.
  */
 export default function PejabatPicker({ pegawai, value, onChange, err }) {
   const [kat, setKat] = useState(value?.kategori || '');
   const [q, setQ] = useState('');
   const [open, setOpen] = useState(false);
+  const { pejabatPada } = usePejabat();
+  const saran = kat && !value ? pejabatPada(kat) : null;
 
   const kata = q.toLowerCase();
   const filtered = pegawai.filter(
     (p) =>
       p.nama.toLowerCase().includes(kata) ||
-      String(p.jabatan || '')
+      String(p.jabatanNama || '')
         .toLowerCase()
         .includes(kata),
   );
@@ -69,6 +74,19 @@ export default function PejabatPicker({ pegawai, value, onChange, err }) {
         </div>
       ) : kat ? (
         <div className="relative">
+          {saran && (
+            <button
+              type="button"
+              onClick={() => onChange({ kategori: kat, ...saran })}
+              className={`mb-2 w-full text-left px-3.5 py-2.5 rounded-lg border ${ANIM.pilih} ${T.surface2} ${T.border} ${T.hoverSurfaceHover}`}
+            >
+              <div className={`text-[10.5px] font-semibold uppercase tracking-wide ${T.inkMuted}`}>
+                Ditetapkan di Kepegawaian · klik untuk memilih
+              </div>
+              <div className={`text-[13px] font-semibold mt-0.5 ${T.ink}`}>{saran.nama}</div>
+              <div className={`text-[11.5px] mt-px ${T.ink2}`}>{saran.jabatan || '-'}</div>
+            </button>
+          )}
           <div className="relative">
             <FaSearch
               size={13}
@@ -95,13 +113,13 @@ export default function PejabatPicker({ pegawai, value, onChange, err }) {
                 <div
                   key={p.id}
                   onMouseDown={() => {
-                    onChange({ kategori: kat, ...toPegawaiRef(p) });
+                    onChange({ kategori: kat, ...keOrang(p) });
                     setQ('');
                   }}
                   className={`px-3.5 py-2.5 cursor-pointer border-b last:border-b-0 ${T.border} ${T.hoverSurface2}`}
                 >
                   <div className={`text-[13px] font-medium ${T.ink}`}>{p.nama}</div>
-                  <div className={`text-[11.5px] mt-0.5 ${T.ink2}`}>{p.jabatan || '-'}</div>
+                  <div className={`text-[11.5px] mt-0.5 ${T.ink2}`}>{p.jabatanNama || '-'}</div>
                 </div>
               ))}
             </div>

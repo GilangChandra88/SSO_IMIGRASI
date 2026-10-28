@@ -6,6 +6,7 @@ import ModalTahap from './ModalTahap';
 import { InfoBerkasVerif, TabelPelaksana } from './InfoBerkasVerif';
 import { TabelTransaksi } from './DetailTransaksi';
 import { XLBL } from './tahapTampil';
+import { PANJANG } from '@/utils/batas';
 import { ADMIN, FONT, STATUS } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
 
@@ -16,8 +17,8 @@ const layarSempit = () => window.matchMedia?.('(max-width:640px)').matches;
  * Upload SAKTI (PgvSaktiModal purwarupa): informasi LPJ yang bisa digulir + isian nomor kwitansi
  * SAKTI. `onSave(nomor)` mengembalikan true bila tersimpan.
  */
-export default function ModalSakti({ pack, nom, onSalin, onClose, onSave }) {
-  const [no, setNo] = useState(pack.arsip?.kwitansi || '');
+export default function ModalSakti({ pack, keuangan, nom, onSalin, onClose, onSave }) {
+  const [no, setNo] = useState(keuangan?.sakti?.nomorKwitansi || '');
   const [err, setErr] = useState(false);
   const [sibuk, setSibuk] = useState(false);
   const inputId = `sakti-${pack.id}`;
@@ -62,6 +63,7 @@ export default function ModalSakti({ pack, nom, onSalin, onClose, onSave }) {
         value={no}
         autoFocus={!layarSempit()}
         autoComplete="off"
+        maxLength={PANJANG.nomorKwitansi}
         aria-invalid={err}
         placeholder="00000/KW/000000/2026"
         disabled={sibuk}

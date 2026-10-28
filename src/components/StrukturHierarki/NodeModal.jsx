@@ -1,14 +1,22 @@
 import React from 'react';
 import { FaTimes } from 'react-icons/fa';
 import Modal from '@/components/Modal';
-import { ADMIN, FONT } from '@/utils/uiTokens';
+import { ADMIN, FONT, T } from '@/utils/uiTokens';
 
 /**
- * Jendela Tambah/Edit node (MakNodeModal purwarupa): Kode, Nama / Uraian, dan Pagu (hanya
- * tingkat terakhir bila `denganPagu`).
- * @param {{ mode: 'add'|'edit', type: string, kode: string, name: string, pagu: string|number, error: boolean }} data
+ * Jendela Tambah/Edit node (MakNodeModal purwarupa): Kode, Nama / Uraian, Pagu (hanya tingkat
+ * terakhir bila `denganPagu`), dan pilihan Aktif (bila `denganStatus`).
+ * @param {{ mode: 'add'|'edit', type: string, kode: string, name: string, pagu: string|number, aktif?: boolean, error: boolean }} data
  */
-export default function NodeModal({ data, setData, denganPagu, onTutup, onSimpan, sibuk }) {
+export default function NodeModal({
+  data,
+  setData,
+  denganPagu,
+  denganStatus = false,
+  onTutup,
+  onSimpan,
+  sibuk,
+}) {
   const ubah = (patch) => setData({ ...data, ...patch });
   return (
     <Modal onClose={sibuk ? undefined : onTutup} labelledBy="judul-node">
@@ -82,6 +90,22 @@ export default function NodeModal({ data, setData, denganPagu, onTutup, onSimpan
                 onChange={(e) => ubah({ pagu: e.target.value })}
               />
             </div>
+          )}
+          {denganStatus && (
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                className="mt-[3px] w-4 h-4 shrink-0 accent-[#0f2040] dark:accent-[#7DB6F3]"
+                checked={data.aktif !== false}
+                onChange={(e) => ubah({ aktif: e.target.checked })}
+              />
+              <span>
+                <span className={`block text-[13px] font-semibold ${T.ink}`}>Aktif</span>
+                <span className={`block ${ADMIN.hint}`}>
+                  Data nonaktif tidak bisa dipilih lagi di form; riwayatnya tetap tersimpan.
+                </span>
+              </span>
+            </label>
           )}
         </div>
         <div className={ADMIN.modalActions}>

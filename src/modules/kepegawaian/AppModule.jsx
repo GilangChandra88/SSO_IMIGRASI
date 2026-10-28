@@ -1,7 +1,8 @@
 import React from 'react';
-import { Routes, Route, Link } from 'react-router-dom';
+import { Routes, Route, Link, Navigate } from 'react-router-dom';
 import { FaUsers, FaArrowLeft } from 'react-icons/fa';
 import AppLayout from '@/layouts/AppLayout';
+import { useAuth } from '@/context/AuthContext';
 import Pegawai from './pages/Pegawai';
 
 const BRAND = {
@@ -29,6 +30,9 @@ const renderNav = ({ isCollapsed, navItemClass, isActive }) => (
 );
 
 export default function AppModule() {
+  // Modul Kepegawaian khusus Super Admin & peran Kepegawaian (pengecekan sisi klien)
+  const { isKepegawaian } = useAuth();
+  if (!isKepegawaian) return <Navigate to="/" replace />;
   return (
     <AppLayout
       brand={BRAND}

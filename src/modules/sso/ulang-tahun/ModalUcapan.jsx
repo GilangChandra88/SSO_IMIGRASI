@@ -13,8 +13,8 @@ const SARAN = [
   'Traktirannya ditunggu ya 😄',
 ];
 
-/** Jendela menulis ucapan untuk rekan kerja yang berulang tahun. */
-export default function ModalUcapan({ pegawai, dari, onClose }) {
+/** Jendela menulis ucapan untuk rekan kerja yang berulang tahun (`pegawai` = pegawai ringkas). */
+export default function ModalUcapan({ pegawai, dariUid, onClose }) {
   const [pesan, setPesan] = useState('');
   const [mengirim, setMengirim] = useState(false);
 
@@ -26,7 +26,7 @@ export default function ModalUcapan({ pegawai, dari, onClose }) {
     if (!pesan.trim()) return;
     setMengirim(true);
     try {
-      await kirimUcapan({ untuk: pegawai, dariUid: dari.uid, dariNama: dari.nama, pesan });
+      await kirimUcapan({ untukPegawaiId: pegawai.id, dariUid, pesan });
       showToast(`Ucapan untuk ${pegawai.nama} terkirim 🎉`);
       onClose();
     } catch {

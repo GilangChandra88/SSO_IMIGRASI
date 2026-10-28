@@ -1,34 +1,47 @@
 /**
- * Foto pegawai di Firebase Storage `pegawai/{id}/...` (aturan: storage.rules). Dipakai captcha
- * ulang tahun saat login; dokumen pegawai hanya menyimpan { path, url }.
+ * Foto pegawai di Firebase Storage (docs/skema-database.md §5.1 & §7). Setiap foto disimpan dua kali
+ * dengan nama berkas yang sama: `pegawai/{id}/foto/{nama}` (JPEG ≤300 KB, dibaca pemilik &
+ * Kepegawaian, untuk captcha ulang tahun) dan `pegawai/{id}/thumb/{nama}` (JPEG ≤60 KB, dibaca semua
+ * pegawai). Dokumen pegawai hanya menyimpan `fotoPaths`; thumbnail foto pertama diturunkan Cloud
+ * Function ke `pegawai_ringkas.fotoThumbPath`.
  */
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
-import { storage } from '@/config/firebase';
+import { JALUR_BERKAS, TIPE_GAMBAR } from '@/config/koleksi';
+import { UKURAN_BERKAS } from '@/utils/batas';
+import { hapusDariStorage, unggahBerkas, validasiBerkas } from '@/utils/berkasStorage';
+import { kompresGambar } from '@/utils/kompresGambar';
 
-export const MAKS_FOTO = 2 * 1024 * 1024;
+/** Batas berkas asli sebelum dikompres di browser (foto kamera ponsel). */
+const MAKS_ASLI = 20 * 1024 * 1024;
 
 /** @returns {string} pesan galat, atau '' bila sah */
-export function validasiFoto(file) {
-  if (!file) return '';
-  if (!file.type.startsWith('image/')) return 'Foto harus berupa gambar (JPG/PNG).';
-  if (file.size >= MAKS_FOTO) return 'Ukuran foto harus kurang dari 2 MB.';
-  return '';
-}
+export const validasiFoto = (file) =>
+  validasiBerkas(file, { tipe: TIPE_GAMBAR, maksByte: MAKS_ASLI });
 
-export async function unggahFotoPegawai(pegawaiId, file) {
-  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '');
-  const path = `pegawai/${pegawaiId}/foto-${Date.now()}.${ext || 'jpg'}`;
-  const fileRef = ref(storage, path);
-  await uploadBytes(fileRef, file, { contentType: file.type });
-  return { path, url: await getDownloadURL(fileRef) };
-}
+/** Path thumbnail dari path foto asli (nama berkas sama). */
+export const thumbDari = (path) => String(path || '').replace(/\/foto\/([^/]+)$/, '/thumb/$1');
 
-/** Hapus foto lama; diam bila sudah tidak ada. */
-export async function hapusFotoPegawai(path) {
-  if (!path) return;
+/**
+ * Kompres lalu unggah foto asli + thumbnailnya. Bila thumbnail gagal, foto asli dihapus lagi.
+ * @returns {Promise<string>} path foto asli (isi `fotoPaths`)
+ */
+export async function unggahFotoPegawai(pegawaiId, file, uid) {
+  const [foto, thumb] = await Promise.all([
+    kompresGambar(file, { targetByte: UKURAN_BERKAS.pegawaiFoto, sisiMaks: 1080, wajibJpeg: true }),
+    kompresGambar(file, { targetByte: UKURAN_BERKAS.pegawaiThumb, sisiMaks: 240, wajibJpeg: true }),
+  ]);
+  const { path } = await unggahBerkas(JALUR_BERKAS.pegawaiFoto(pegawaiId), foto, { uid });
   try {
-    await deleteObject(ref(storage, path));
+    await unggahBerkas(JALUR_BERKAS.pegawaiThumb(pegawaiId), thumb, {
+      uid,
+      nama: path.slice(path.lastIndexOf('/') + 1),
+    });
   } catch (err) {
-    if (err?.code !== 'storage/object-not-found') throw err;
+    await hapusDariStorage(path).catch(() => {});
+    throw err;
   }
+  return path;
 }
+
+/** Hapus foto asli + thumbnailnya; diam bila sudah tidak ada. */
+export const hapusFotoPegawai = (path) =>
+  Promise.all([hapusDariStorage(path), hapusDariStorage(thumbDari(path))]);

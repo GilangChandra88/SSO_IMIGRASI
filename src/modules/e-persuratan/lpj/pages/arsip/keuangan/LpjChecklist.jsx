@@ -8,8 +8,8 @@ const BADGE = 'text-[10.5px] font-bold px-2 py-[3px] rounded-md whitespace-nowra
 
 /**
  * Daftar centang LPJ untuk daftar sebuah DRPP (dipakai Buat DRPP & Edit Daftar).
- * `rows` = barisLpj semua berkas Arsip; berkas yang sudah dimuat/dicantumkan DRPP lain dinonaktifkan.
- * `selected` = { packId: true }.
+ * `rows` = barisLpj berkas Arsip; berkas yang sudah dimuat/dicantumkan DRPP lain dinonaktifkan.
+ * `selected` = { packId: true }; `memuatIds` = berkas tercentang yang ringkasannya masih dibaca.
  */
 export default function LpjChecklist({
   rows,
@@ -19,6 +19,7 @@ export default function LpjChecklist({
   search,
   onSearch,
   currentDrppId,
+  memuatIds = [],
 }) {
   const q = search.trim().toLowerCase();
   const items = useMemo(
@@ -29,10 +30,12 @@ export default function LpjChecklist({
         .sort((a, b) => (a.taken ? 1 : 0) - (b.taken ? 1 : 0)),
     [rows, drpps, q, currentDrppId],
   );
-  // Tercentang tetapi tidak ada di daftar berkas (dokumen lpj_packs terhapus): tetap tampil agar
-  // bisa dilepas, supaya DRPP tidak macet menunggu berkas yang tidak akan pernah masuk
+  // Tercentang tetapi tidak ada di daftar berkas (berkas terhapus): tetap tampil agar bisa
+  // dilepas, supaya DRPP tidak macet menunggu berkas yang tidak akan pernah masuk
   const rowIds = new Set(rows.map((r) => r.packId));
-  const hilang = Object.keys(selected).filter((k) => selected[k] && !rowIds.has(k));
+  const hilang = Object.keys(selected).filter(
+    (k) => selected[k] && !rowIds.has(k) && !memuatIds.includes(k),
+  );
   const takenOf = Object.fromEntries(items.map(({ r, taken }) => [r.packId, taken]));
   const selCount = Object.keys(selected).filter(
     (k) => selected[k] && rowIds.has(k) && !takenOf[k],
@@ -91,7 +94,7 @@ export default function LpjChecklist({
                 >
                   {checked ? `Bentrok: di ${taken}` : `Di ${taken}`}
                 </span>
-              ) : !r.scan ? (
+              ) : !r.diarsip ? (
                 <span className={`${BADGE} ${T.surface2} ${T.ink2}`}>Belum discan</span>
               ) : (
                 <span className={`${BADGE} ${STATUS.doneBg} ${STATUS.doneInk}`}>Sudah discan</span>
@@ -99,6 +102,11 @@ export default function LpjChecklist({
             </label>
           );
         })}
+        {memuatIds.length > 0 && (
+          <p className={`text-xs p-2.5 animate-pulse ${T.inkMuted}`}>
+            Memuat {memuatIds.length} LPJ lain pada daftar…
+          </p>
+        )}
         {hilang.map((id) => (
           <label
             key={id}

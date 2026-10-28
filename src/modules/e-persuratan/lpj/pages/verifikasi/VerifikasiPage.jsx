@@ -1,17 +1,16 @@
 /**
  * Berkas Verifikasi (rute /e-persuratan/verifikasi dan /e-persuratan/verifikasi/:packId), khusus
- * Admin/Keuangan:
+ * Keuangan:
  * - tanpa packId → Daftar per tahap (Draft → Verifikasi → Upload SAKTI → Transfer → Arsip)
- * - packId       → halaman Draft (lihat saja) atau halaman Verifikasi berkas itu
+ * - packId       → halaman Draft (belum bernomor, lihat saja) atau halaman Verifikasi berkas itu
  */
 
 import React from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import ToastViewport from '@/components/ToastViewport';
-import { useLPJPack } from '../../hooks/useLPJ';
+import { useBerkas, useKeuanganBerkas } from '../../hooks/useBerkas';
 import { useLpjUser } from '../../hooks/useLpjUser';
-import { isSkemaBaru } from '../../utils/lpjLogic';
-import { tahapBerkas } from '../../utils/verifikasiLogic';
+import { lpjIdOf } from '../../utils/lpjLogic';
 import LinkBack from '../../ui/LinkBack';
 import DaftarVerifikasi from './DaftarVerifikasi';
 import HalamanDraft from './HalamanDraft';
@@ -31,9 +30,11 @@ export default function VerifikasiPage() {
 function BerkasVerifikasi({ packId }) {
   const navigate = useNavigate();
   const user = useLpjUser();
-  const { pack, loading, error } = useLPJPack(packId);
+  const { berkas: pack, memuat: loading, galat: error } = useBerkas(packId);
+  const bernomor = !!lpjIdOf(pack);
+  const { keuangan, memuat: memuatKeuangan } = useKeuanganBerkas(bernomor ? packId : null);
 
-  if (loading) {
+  if (loading || (bernomor && memuatKeuangan)) {
     return (
       <div className={`min-h-full ${T.ground}`}>
         <div className={LAYOUT.page}>
@@ -47,7 +48,7 @@ function BerkasVerifikasi({ packId }) {
       </div>
     );
   }
-  if (error || !pack || !isSkemaBaru(pack)) {
+  if (error || !pack) {
     return (
       <div className={`min-h-full ${T.ground}`}>
         <div className={LAYOUT.page}>
@@ -55,15 +56,12 @@ function BerkasVerifikasi({ packId }) {
             Kembali ke Berkas Verifikasi
           </LinkBack>
           <p className={`text-center py-9 text-[13.5px] ${T.inkMuted}`}>
-            {error ||
-              (pack
-                ? 'Berkas format lama tidak bisa diverifikasi di sini.'
-                : 'Berkas tidak ditemukan.')}
+            {error ? 'Berkas tidak dapat dibuka (tidak punya akses).' : 'Berkas tidak ditemukan.'}
           </p>
         </div>
       </div>
     );
   }
-  if (tahapBerkas(pack) === 'draft') return <HalamanDraft pack={pack} />;
-  return <HalamanVerifikasi pack={pack} user={user} />;
+  if (!bernomor) return <HalamanDraft pack={pack} />;
+  return <HalamanVerifikasi pack={pack} keuangan={keuangan} user={user} />;
 }

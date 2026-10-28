@@ -1,22 +1,26 @@
 import React, { useState } from 'react';
 import {
+  FaBan,
   FaCheck,
   FaLayerGroup,
   FaPrint,
   FaRegEye,
   FaRegFileAlt,
-  FaRegTrashAlt,
   FaSyncAlt,
   FaTimes,
 } from 'react-icons/fa';
 import Modal from '@/components/Modal';
+import { useBerkas, useKeuanganBerkas } from '../../hooks/useBerkas';
 import { useDokumenLpj } from '../../hooks/useDokumenLpj';
-import { ubahKwitansi } from '../../hooks/useDrpp';
-import { bukaBerkas } from '../../services/lpjStorage';
+import { useLpjUser } from '../../hooks/useLpjUser';
+import { ubahKwitansi } from '../../services/keuanganDb';
 import { BERKAS_LABEL } from '../../utils/drppLogic';
 import { lpjGroupSubDone, lpjSingleStatus, stagesWithStatus } from '../../utils/lpjLogic';
 import { formatTanggal } from '../../utils/formatTanggal';
 import Kwitansi from '../../components/arsip/Kwitansi';
+import { PANJANG } from '@/utils/batas';
+import { bukaBerkas, pesanGagalUnggah } from '@/utils/berkasStorage';
+import { pesanGalat } from '@/utils/pesanGalat';
 import { useToast } from '@/utils/toastStore';
 import { BTN, FONT, FORM, LAYOUT, STATUS, T } from '@/utils/uiTokens';
 
@@ -30,7 +34,7 @@ function dokumenSelesai(pack) {
     });
     (stage.groups || []).forEach((g) => {
       g.subItems.forEach((it) => {
-        if (lpjGroupSubDone(pack, stage, g, it)) out.push({ ...it, fase: stage.label });
+        if (lpjGroupSubDone(pack, stage, g)) out.push({ ...it, fase: stage.label });
       });
     });
   });
@@ -39,13 +43,16 @@ function dokumenSelesai(pack) {
 
 /**
  * "Lihat" satu LPJ di Arsip (LihatLpjModal purwarupa): berkas terpindai dari Keuangan + dokumen
- * yang dihasilkan aplikasi (PDF dari template yang sama dengan halaman Detail LPJ).
+ * yang dihasilkan aplikasi (PDF dari template yang sama dengan halaman Detail LPJ). Berkas lengkap
+ * dan status Keuangannya baru dibaca saat jendela dibuka (`row` = baris ringkas `barisLpj`).
  * `kelola` (Keuangan): ubah no. kwitansi, ganti scan (`onGantiScan`), dan info DRPP; keduanya
- * dikunci (`terkunci`) bila DRPP berkas ini sudah Lengkap/terkunci.
+ * dikunci (`terkunci`) bila DRPP berkas ini sudah Lengkap/terkunci atau pengguna bukan Super Admin
+ * untuk berkas yang sudah diarsipkan. Pindaian arsip yang sudah selesai tidak bisa diganti
+ * (storage.rules): Super Admin membatalkan arsip (`onHapusPindaian`, pindaian lama tetap
+ * tercatat), lalu berkas dipindai ulang.
  */
 export default function ArsipLpjModal({
   row,
-  pegawai,
   onClose,
   kelola = false,
   terkunci = false,
@@ -53,8 +60,20 @@ export default function ArsipLpjModal({
   onHapusPindaian,
 }) {
   const showToast = useToast();
-  const dok = useDokumenLpj({ pack: row.pack, pegawai, showToast });
-  const docs = dokumenSelesai(row.pack);
+  const { uid } = useLpjUser();
+  const { berkas, memuat } = useBerkas(row.packId);
+  const { keuangan } = useKeuanganBerkas(row.packId);
+  const dok = useDokumenLpj({
+    pack: berkas,
+    showToast,
+    mak: { pok: keuangan?.pokBeku || {} },
+    pejabat: keuangan?.pejabatBeku || {},
+    verifikasi: keuangan?.verifikasi || {},
+  });
+  const scan = keuangan?.arsip?.berkas || null;
+  const tanggalArsip = keuangan?.arsip?.tanggalArsip || row.tanggalArsip;
+  const kwitansi = keuangan?.sakti?.nomorKwitansi ?? row.kwitansi;
+  const docs = berkas ? dokumenSelesai(berkas) : [];
   const [kw, setKw] = useState(row.kwitansi);
   const [simpanKw, setSimpanKw] = useState(false);
   const [konfirmHapus, setKonfirmHapus] = useState(false);
@@ -63,10 +82,13 @@ export default function ArsipLpjModal({
   // Pratinjau PDF (z-50) berada di bawah Modal (z-[1000]); sembunyikan Modal selama pratinjau terbuka.
   if (dok.modal) return dok.modal;
 
-  const cetakScan = () => {
-    bukaBerkas(row.scan);
-    showToast('Berkas dibuka di tab baru — cetak dari penampil (Ctrl+P).');
-  };
+  const gagalBuka = (err) => showToast(pesanGagalUnggah(err, 'Berkas gagal dibuka.'), 'error');
+  const lihatScan = () => bukaBerkas(scan).catch(gagalBuka);
+  const cetakScan = () =>
+    bukaBerkas(scan).then(
+      (dibuka) => dibuka && showToast('Berkas dibuka di tab baru — cetak dari penampil (Ctrl+P).'),
+      gagalBuka,
+    );
 
   async function hapus() {
     setMenghapus(true);
@@ -84,11 +106,10 @@ export default function ArsipLpjModal({
     }
     setSimpanKw(true);
     try {
-      await ubahKwitansi(row.pack, kw);
+      await ubahKwitansi(row.packId, kw, uid);
       showToast('No. kwitansi diperbarui.');
     } catch (err) {
-      console.error('ubahKwitansi error:', err);
-      showToast('Gagal menyimpan no. kwitansi.', 'error');
+      showToast(pesanGalat(err, 'Gagal menyimpan no. kwitansi.'), 'error');
     } finally {
       setSimpanKw(false);
     }
@@ -110,7 +131,7 @@ export default function ArsipLpjModal({
               {row.drppId && !kelola ? ` · ${row.drppId}` : ''}
             </p>
             <div className="mt-2">
-              <Kwitansi value={row.kwitansi} />
+              <Kwitansi value={kwitansi} />
             </div>
           </div>
           <button
@@ -125,17 +146,19 @@ export default function ArsipLpjModal({
 
         <div className={`${LAYOUT.label} mt-[18px] mb-2.5`}>Dokumen Terpindai</div>
         <BarisBerkas
-          selesai={!!row.scan}
+          selesai={!!scan}
           nama={BERKAS_LABEL(row.pack)}
           sub={
-            row.scan
-              ? `Terarsip ${formatTanggal(row.tanggalArsip)} · ${row.scan.name}`
-              : 'Belum dipindai Keuangan'
+            scan
+              ? `Terarsip ${formatTanggal(tanggalArsip)} · ${scan.nama}`
+              : row.diarsip && !keuangan
+                ? 'Memuat…'
+                : 'Belum dipindai Keuangan'
           }
         >
-          {row.scan && (
+          {scan && (
             <>
-              <button type="button" className={BTN.xs} onClick={() => bukaBerkas(row.scan)}>
+              <button type="button" className={BTN.xs} onClick={lihatScan}>
                 <FaRegEye size={11} /> Lihat
               </button>
               <button type="button" className={BTN.xs} onClick={cetakScan}>
@@ -150,7 +173,7 @@ export default function ArsipLpjModal({
           )}
         </BarisBerkas>
 
-        {kelola && row.scan && !terkunci && (
+        {kelola && scan && !terkunci && (
           <div className="mt-3">
             <label className={FORM.label} htmlFor="kw-lihat">
               No. Kwitansi SAKTI
@@ -159,6 +182,7 @@ export default function ArsipLpjModal({
               <input
                 id="kw-lihat"
                 value={kw}
+                maxLength={PANJANG.nomorKwitansi}
                 onChange={(e) => setKw(e.target.value)}
                 placeholder="00000/KW/000000/2026"
                 className={`${FORM.input} ${FORM.borderOk} ${FONT.mono}`}
@@ -166,7 +190,7 @@ export default function ArsipLpjModal({
               <button
                 type="button"
                 className={BTN.sm}
-                disabled={simpanKw || kw.trim() === row.kwitansi}
+                disabled={simpanKw || kw.trim() === kwitansi}
                 onClick={simpanKwitansi}
               >
                 Simpan
@@ -196,7 +220,11 @@ export default function ArsipLpjModal({
         )}
 
         <div className={`${LAYOUT.label} mt-[18px] mb-2.5`}>Dokumen dari Aplikasi</div>
-        {docs.length === 0 ? (
+        {!berkas ? (
+          <p className={`text-[12.5px] ${T.inkMuted} ${memuat ? 'animate-pulse' : ''}`}>
+            {memuat ? 'Memuat dokumen…' : 'Berkas LPJ tidak dapat dibuka.'}
+          </p>
+        ) : docs.length === 0 ? (
           <p className={`text-[12.5px] ${T.inkMuted}`}>Belum ada dokumen yang selesai.</p>
         ) : (
           <div className="flex flex-col gap-2">
@@ -213,14 +241,14 @@ export default function ArsipLpjModal({
           </div>
         )}
 
-        {kelola && onHapusPindaian && row.scan && (
+        {kelola && onHapusPindaian && scan && (
           <div
             className={`flex flex-wrap items-center justify-between gap-2 mt-[18px] px-3.5 py-3 rounded-[11px] border border-dashed ${T.border}`}
           >
             <span className={`text-xs ${konfirmHapus ? STATUS.critInk : T.inkMuted}`}>
               {konfirmHapus
-                ? 'Hapus pindaian & no. kwitansi? Berkas kembali "Belum Discan" dan keluar dari DRPP.'
-                : 'Super Admin: hapus data arsip berkas ini.'}
+                ? 'Batalkan arsip? Berkas kembali "Belum Discan" dan keluar dari DRPP; bila tercantum di daftar DRPP, otomatis masuk lagi setelah dipindai ulang. Pindaian lama tetap tersimpan.'
+                : 'Super Admin: batalkan arsip berkas ini.'}
             </span>
             {konfirmHapus ? (
               <span className="flex gap-1.5">
@@ -233,7 +261,7 @@ export default function ArsipLpjModal({
                   Batal
                 </button>
                 <button type="button" className={BTN.danger} onClick={hapus} disabled={menghapus}>
-                  <FaRegTrashAlt size={11} /> {menghapus ? 'Menghapus…' : 'Ya, Hapus'}
+                  <FaBan size={11} /> {menghapus ? 'Membatalkan…' : 'Ya, Batalkan'}
                 </button>
               </span>
             ) : (
@@ -242,7 +270,7 @@ export default function ArsipLpjModal({
                 className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-[11.5px] ${T.surface} ${T.border} ${STATUS.critInk} ${T.hoverSurface2}`}
                 onClick={() => setKonfirmHapus(true)}
               >
-                <FaRegTrashAlt size={11} /> Hapus Pindaian
+                <FaBan size={11} /> Batalkan Arsip
               </button>
             )}
           </div>
@@ -256,8 +284,8 @@ export default function ArsipLpjModal({
             <button
               type="button"
               className={BTN.action}
-              disabled={!row.scan}
-              title={row.scan ? undefined : 'Berkas belum dipindai Keuangan'}
+              disabled={!scan}
+              title={scan ? undefined : 'Berkas belum dipindai Keuangan'}
               onClick={cetakScan}
             >
               <FaPrint size={12} /> Cetak Berkas

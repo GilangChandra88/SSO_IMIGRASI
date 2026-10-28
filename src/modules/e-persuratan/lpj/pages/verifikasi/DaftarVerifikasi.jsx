@@ -6,18 +6,25 @@
  *   Upload SAKTI → jendela isi nomor kwitansi SAKTI
  *   Transfer     → jendela unggah bukti transfer
  *   Arsip        → jendela unggah pindaian berkas; setelah itu berkas pindah ke menu Arsip
- * Tab aktif tersimpan di URL (?tab=).
+ * Daftar tiap tab dibaca dari `lpj_ringkas` (tahap dihitung Function, 50 per halaman); jumlah per
+ * tab lewat kueri hitung. Tab aktif tersimpan di URL (?tab=).
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 import { FaArrowRight, FaRegEye, FaSearch, FaSort, FaSortDown, FaSortUp } from 'react-icons/fa';
-import { useLPJPacks } from '../../hooks/useLPJ';
+import { tahunIni } from '@/utils/nilai';
+import {
+  useBerkas,
+  useDaftarBerkas,
+  useDaftarDrpp,
+  useJumlahTahap,
+  useKeuanganBerkas,
+} from '../../hooks/useBerkas';
 import { useLpjUser } from '../../hooks/useLpjUser';
-import { scanLpj, useDrppList } from '../../hooks/useDrpp';
-import { kirimTransfer, simpanSakti, useMakBerkas } from '../../hooks/useVerifikasi';
-import { pesanGagalUnggah } from '../../services/lpjStorage';
-import { lpjPendingDrpp } from '../../utils/drppLogic';
+import { useMakBerkas } from '../../hooks/useMakBerkas';
+import { simpanSakti } from '../../services/keuanganDb';
+import { arsipkanBerkas, kirimTransfer, pesanUnggah } from '../../services/unggahan';
 import {
   isPerjadin,
   jenisLabel,
@@ -35,10 +42,10 @@ import {
   cocokCari,
   labelTahap,
   nominalBerkas,
-  tahapBerkas,
   tanggalUrut,
   verifOf,
 } from '../../utils/verifikasiLogic';
+import { daftarTahun } from '../../../tahunAnggaran';
 import TabTahap from '../../components/verifikasi/TabTahap';
 import ModalSakti from '../../components/verifikasi/ModalSakti';
 import ModalTransfer from '../../components/verifikasi/ModalTransfer';
@@ -55,13 +62,17 @@ const SELECT = `h-9 pl-3 pr-2 rounded-lg border min-w-[130px] ${T.borderStrong} 
 const TH = `text-left text-[10.5px] font-bold tracking-[.05em] uppercase px-3 py-2 whitespace-nowrap ${T.surface2} ${T.inkMuted}`;
 const TD = `px-3 py-[9px] border-t align-middle ${T.border} max-md:border-0 max-md:p-0`;
 const BTN_AKSI = `inline-flex items-center justify-center gap-1.5 w-[136px] max-md:w-auto max-md:min-w-[150px] h-[34px] max-md:h-10 px-2.5 max-md:px-4 rounded-lg max-md:rounded-[10px] text-[12.5px] max-md:text-[13px] font-bold whitespace-nowrap ${ANIM.tekan}`;
+const BATAS_HITUNG = 50; // kueri hitung dibatasi limit daftar rules
 
-/** Fase pelaksana yang sedang berjalan, mis. "Fase 2/4 — SPD". */
-function faseBerjalan(pack) {
-  const list = stagesWithStatus(pack);
+/** Fase pelaksana yang sedang berjalan, mis. "Fase 2/4 — SPD" (dari dokumen ringkas). */
+function faseBerjalan(r) {
+  const list = stagesWithStatus(r);
   const cur = list.find((s) => s.raw !== 'selesai') || list[list.length - 1];
   return { teks: `Fase ${cur.stage.num}/${list.length} — ${cur.stage.label}`, list };
 }
+
+/** Nominal baris: total setelah koreksi Keuangan bila verifikasi sudah selesai. */
+const nominalBaris = (r) => r.keuangan?.totalVerifikasi ?? lpjRowTotal(r);
 
 export default function DaftarVerifikasi() {
   const navigate = useNavigate();
@@ -69,10 +80,24 @@ export default function DaftarVerifikasi() {
   const [sp, setSp] = useSearchParams();
   const showToast = useToast();
   const user = useLpjUser();
-  const { packs, loading, error } = useLPJPacks({ isAdmin: true, userUid: user.uid });
-  const { list: drpps } = useDrppList({ uid: user.uid });
+  const [tahun, setTahun] = useState(tahunIni);
 
   const tab = TAHAP_KEYS.includes(sp.get('tab')) ? sp.get('tab') : 'verif';
+  const {
+    berkas: daftarTab,
+    memuat: loading,
+    galat: error,
+    bisaLagi,
+    memuatLagi,
+    muatLagi,
+  } = useDaftarBerkas({ uid: user.uid, semua: true, tahunAnggaran: tahun, tahap: tab });
+  const { list: drpps } = useDaftarDrpp({ uid: user.uid, semua: true, tahunAnggaran: tahun });
+  const hitung = useJumlahTahap({
+    tahunAnggaran: tahun,
+    daftarTahap: TAHAP_KEYS,
+    segar: daftarTab.map((r) => r.id).join(),
+  });
+
   const [q, setQ] = useState('');
   const [jenis, setJenis] = useState('');
   const [urut, setUrut] = useState({ key: null, arah: 'asc' });
@@ -94,30 +119,28 @@ export default function DaftarVerifikasi() {
   useEffect(() => () => clearTimeout(sorotTimer.current), []);
   const tutupInfo = useCallback(() => setInfo(null), []);
 
-  // Berkas yang cocok dengan pencarian & jenis, lalu tahap masing-masing → jumlah tiap tab
-  const cocok = useMemo(() => {
-    const kata = q.trim().toLowerCase();
-    return packs
-      .map((p) => ({ pack: p, tahap: tahapBerkas(p) }))
-      .filter(({ pack, tahap }) => {
-        if (!tahap) return false;
-        if (jenis && (jenis === 'perjadin') !== isPerjadin(pack)) return false;
-        return cocokCari(pack, kata);
-      });
-  }, [packs, q, jenis]);
-
-  const jumlah = Object.fromEntries(TAHAP_KEYS.map((k) => [k, 0]));
-  cocok.forEach((r) => jumlah[r.tahap]++);
+  // Jumlah tiap tab dari server (pencarian & filter jenis hanya menyaring tab yang dibuka)
+  const jumlah = Object.fromEntries(
+    TAHAP_KEYS.map((k) => [
+      k,
+      hitung[k] == null ? '…' : hitung[k] >= BATAS_HITUNG ? `${BATAS_HITUNG}+` : hitung[k],
+    ]),
+  );
+  const totalBerkas = TAHAP_KEYS.reduce((s, k) => s + (hitung[k] || 0), 0);
 
   const rows = useMemo(() => {
-    const out = cocok.filter((r) => r.tahap === tab).map((r) => r.pack);
+    const kata = q.trim().toLowerCase();
+    const out = daftarTab.filter((r) => {
+      if (jenis && (jenis === 'perjadin') !== isPerjadin(r)) return false;
+      return cocokCari(r, kata);
+    });
     if (urut.key) {
       const arah = urut.arah === 'asc' ? 1 : -1;
-      const nilai = (p) => (urut.key === 'id' ? lpjIdOf(p) || '~' : pelaksanaOf(p)[0]?.nama || '~');
+      const nilai = (r) => (urut.key === 'id' ? lpjIdOf(r) || '~' : pelaksanaOf(r)[0]?.nama || '~');
       return out.sort((a, b) => nilai(a).localeCompare(nilai(b), 'id') * arah);
     }
     return out.sort((a, b) => tanggalUrut(b).localeCompare(tanggalUrut(a)));
-  }, [cocok, tab, urut]);
+  }, [daftarTab, q, jenis, urut]);
 
   const wadahRef = useMunculBerurutan(`${tab}|${rows.length > 0}|${loading}`);
 
@@ -127,10 +150,10 @@ export default function DaftarVerifikasi() {
       u.key === key ? { key, arah: u.arah === 'asc' ? 'desc' : 'asc' } : { key, arah: 'asc' },
     );
 
-  function aksi(pack, tahap) {
+  function aksi(r, tahap) {
     setInfo(null);
-    if (tahap === 'draft' || tahap === 'verif') navigate(`${BASE}/${pack.id}`);
-    else setJendela({ jenis: tahap, id: pack.id });
+    if (tahap === 'draft' || tahap === 'verif') navigate(`${BASE}/${r.id}`);
+    else setJendela({ jenis: tahap, id: r.id });
   }
 
   /** Berkas pindah ke tab berikutnya: sorot tab tujuan dan tampilkan pemberitahuan. */
@@ -143,16 +166,14 @@ export default function DaftarVerifikasi() {
   }
 
   const gagal = (err, pesan) => {
-    console.error(pesan, err);
-    showToast(err?.code?.startsWith('storage/') ? pesanGagalUnggah(err) : pesan, 'error');
+    showToast(pesanUnggah(err) || pesan, 'error');
     return false;
   };
 
   async function simpanNoSakti(pack, no) {
     try {
-      await simpanSakti(pack, no, user);
-      const ke = tahapBerkas({ ...pack, arsip: { ...pack.arsip, kwitansi: no } });
-      pindah(ke, {
+      await simpanSakti(pack.id, no, user.uid);
+      pindah('transfer', {
         judul: 'Nomor kwitansi SAKTI tersimpan',
         id: lpjIdLabel(pack),
         tambahan: no,
@@ -166,7 +187,7 @@ export default function DaftarVerifikasi() {
 
   async function kirimBukti(pack, file) {
     try {
-      await kirimTransfer(pack, file, user);
+      await kirimTransfer(pack.id, file, user.uid);
       pindah('arsip', { judul: 'Bukti transfer terkirim', id: lpjIdLabel(pack), dari: 'Transfer' });
       return true;
     } catch (err) {
@@ -174,22 +195,15 @@ export default function DaftarVerifikasi() {
     }
   }
 
-  async function arsipkan(pack, file) {
+  async function arsipkan(pack, file, drppMenunggu) {
     try {
-      const { autoDrppId } = await scanLpj({
-        pack,
-        file,
-        kwitansi: pack.arsip?.kwitansi || '',
-        uid: user.uid,
-        nama: user.nama,
-        drpps,
-      });
+      await arsipkanBerkas(pack.id, file, user.uid);
       setJendela(null);
       setInfo({
         key: Date.now(),
         judul: 'Berkas diarsipkan',
         id: lpjIdLabel(pack),
-        tambahan: autoDrppId ? `masuk ${autoDrppId}` : pack.arsip?.kwitansi || '',
+        tambahan: drppMenunggu ? `masuk ${drppMenunggu}` : '',
         dari: 'Arsip',
         ke: 'Menu Arsip',
       });
@@ -212,7 +226,6 @@ export default function DaftarVerifikasi() {
 
   const cur = TAHAP.find((t) => t.key === tab);
   const IkonKosong = IKON_TAHAP[tab];
-  const mPack = jendela ? packs.find((p) => p.id === jendela.id) : null;
   const ikonUrut = (key) =>
     urut.key !== key ? (
       <FaSort size={10} className="opacity-40" />
@@ -232,7 +245,11 @@ export default function DaftarVerifikasi() {
       </div>
     );
   } else if (error) {
-    isi = <p className={ADMIN.errorBanner}>{error}</p>;
+    isi = (
+      <p className={ADMIN.errorBanner}>
+        Daftar berkas tidak dapat dimuat. Muat ulang halaman; bila berulang, hubungi pemilik proyek.
+      </p>
+    );
   } else {
     isi = (
       <div
@@ -293,17 +310,17 @@ export default function DaftarVerifikasi() {
                 </td>
               </tr>
             )}
-            {rows.map((pack) => {
+            {rows.map((r) => {
               const draft = tab === 'draft';
-              const nomor = lpjIdOf(pack);
-              const nama = pelaksanaOf(pack).map((p) => p.nama);
+              const nomor = lpjIdOf(r);
+              const nama = pelaksanaOf(r).map((p) => p.nama);
               const Ikon = IKON_TAHAP[tab];
-              const fase = draft ? faseBerjalan(pack) : null;
+              const fase = draft ? faseBerjalan(r) : null;
               return (
                 <tr
-                  key={pack.id}
+                  key={r.id}
                   data-bertahap
-                  onClick={() => aksi(pack, tab)}
+                  onClick={() => aksi(r, tab)}
                   className={`cursor-pointer ${T.surface} ${T.hoverSurface2} max-md:grid max-md:grid-cols-[minmax(0,1fr)_auto] max-md:gap-y-1.5 max-md:p-3.5 max-md:rounded-2xl max-md:border ${T.border} max-md:shadow-[0_1px_2px_rgba(16,26,44,.07)]`}
                 >
                   <td
@@ -318,9 +335,9 @@ export default function DaftarVerifikasi() {
                       className={`inline-flex items-center gap-1.5 mt-1 max-md:mt-0 text-xs font-medium whitespace-nowrap ${T.inkMuted} max-md:px-2 max-md:py-[3px] max-md:rounded-full max-md:border max-md:text-[9.5px] ${T.border} max-md:bg-[#F3F5F8] dark:max-md:bg-[#16243A]`}
                     >
                       <i
-                        className={`w-[7px] h-[7px] rounded-full ${isPerjadin(pack) ? JENIS_DOT.perjadin : JENIS_DOT.non}`}
+                        className={`w-[7px] h-[7px] rounded-full ${isPerjadin(r) ? JENIS_DOT.perjadin : JENIS_DOT.non}`}
                       />
-                      {jenisLabel(pack) === 'Perjadin' ? 'Perjadin' : 'Non-Perjadin'}
+                      {jenisLabel(r) === 'Perjadin' ? 'Perjadin' : 'Non-Perjadin'}
                     </div>
                   </td>
                   <td className={`${TD} max-md:col-span-2`}>
@@ -339,9 +356,7 @@ export default function DaftarVerifikasi() {
                     <div
                       className={`text-[12.5px] leading-[1.45] md:max-w-[300px] line-clamp-2 ${T.ink2}`}
                     >
-                      {uraianOf(pack) || (
-                        <span className={`italic ${T.inkMuted}`}>Belum diisi</span>
-                      )}
+                      {uraianOf(r) || <span className={`italic ${T.inkMuted}`}>Belum diisi</span>}
                     </div>
                   </td>
                   <td
@@ -355,7 +370,7 @@ export default function DaftarVerifikasi() {
                     <span
                       className={`font-bold text-[13px] max-md:text-[15px] whitespace-nowrap ${T.ink}`}
                     >
-                      {rupiah(lpjRowTotal(pack))}
+                      {rupiah(nominalBaris(r))}
                     </span>
                   </td>
                   <td
@@ -381,7 +396,7 @@ export default function DaftarVerifikasi() {
                         className={`${BTN_AKSI} ${TONE[tab].solid}`}
                         onClick={(e) => {
                           e.stopPropagation();
-                          aksi(pack, tab);
+                          aksi(r, tab);
                         }}
                       >
                         <Ikon size={13} />
@@ -409,7 +424,7 @@ export default function DaftarVerifikasi() {
               Berkas Verifikasi
             </h1>
             <p className={`text-xs mt-0.5 ${T.inkMuted}`}>
-              {cocok.length} berkas · pilih tahap di bawah untuk melihat berkas yang perlu diproses
+              {totalBerkas} berkas · pilih tahap di bawah untuk melihat berkas yang perlu diproses
             </p>
           </div>
           <div className="flex flex-wrap gap-2 pt-3.5 pb-4">
@@ -434,12 +449,36 @@ export default function DaftarVerifikasi() {
               <option value="perjadin">Perjadin</option>
               <option value="non-perjadin">Non-Perjadin</option>
             </select>
+            <select
+              aria-label="Tahun anggaran"
+              value={tahun}
+              onChange={(e) => setTahun(Number(e.target.value))}
+              className={SELECT}
+            >
+              {daftarTahun().map((t) => (
+                <option key={t} value={t}>
+                  TA {t}
+                </option>
+              ))}
+            </select>
           </div>
 
           <TabTahap tab={tab} jumlah={jumlah} sorot={sorot} onPilih={pilihTab} />
           <div key={tab} className={ANIM.muncul}>
             {isi}
           </div>
+          {bisaLagi && (
+            <div className="flex justify-center mt-3">
+              <button
+                type="button"
+                className={ADMIN.btnGhost}
+                onClick={muatLagi}
+                disabled={memuatLagi}
+              >
+                {memuatLagi ? 'Memuat…' : 'Muat lebih banyak'}
+              </button>
+            </div>
+          )}
           {tab === 'draft' && rows.length > 0 && (
             <p className={`flex items-center gap-1.5 mt-3 text-xs ${T.inkMuted}`}>
               <FaRegEye size={11} /> Berkas Draft hanya bisa dilihat. Berkas masuk tab Verifikasi
@@ -455,16 +494,16 @@ export default function DaftarVerifikasi() {
         </section>
       </div>
 
-      {mPack && (
+      {jendela && (
         <JendelaAksi
           jenis={jendela.jenis}
-          pack={mPack}
+          berkasId={jendela.id}
           drpps={drpps}
           onClose={() => setJendela(null)}
-          onSalin={() => salin(mPack)}
-          onSakti={(no) => simpanNoSakti(mPack, no)}
-          onTransfer={(f) => kirimBukti(mPack, f)}
-          onArsip={(f) => arsipkan(mPack, f)}
+          onSalin={salin}
+          onSakti={simpanNoSakti}
+          onTransfer={kirimBukti}
+          onArsip={arsipkan}
         />
       )}
       <Pemberitahuan info={info} onClose={tutupInfo} />
@@ -472,24 +511,41 @@ export default function DaftarVerifikasi() {
   );
 }
 
-/** Jendela aksi tahap; memuat data MAK berkas (POK Terakhir) hanya saat jendela terbuka. */
-function JendelaAksi({ jenis, pack, drpps, onClose, onSalin, onSakti, onTransfer, onArsip }) {
-  const { mak } = useMakBerkas(pack);
-  const nom = nominalBerkas(pack, verifOf(pack), mak);
+/**
+ * Jendela aksi tahap: berkas lengkap & tahap Keuangannya dimuat saat jendela terbuka; nominal
+ * memakai POK yang dibekukan saat verifikasi (tanpa mengunduh pohon MAK).
+ */
+function JendelaAksi({ jenis, berkasId, drpps, onClose, onSalin, onSakti, onTransfer, onArsip }) {
+  const { berkas: pack } = useBerkas(berkasId);
+  const { keuangan } = useKeuanganBerkas(berkasId);
+  const { mak } = useMakBerkas(pack, keuangan);
+  if (!pack) return null;
+  const nom = nominalBerkas(pack, verifOf(keuangan), mak);
   if (jenis === 'sakti') {
     return (
-      <ModalSakti pack={pack} nom={nom} onSalin={onSalin} onClose={onClose} onSave={onSakti} />
+      <ModalSakti
+        pack={pack}
+        keuangan={keuangan}
+        nom={nom}
+        onSalin={() => onSalin(pack)}
+        onClose={onClose}
+        onSave={(no) => onSakti(pack, no)}
+      />
     );
   }
   if (jenis === 'transfer') {
-    return <ModalTransfer pack={pack} nom={nom} onClose={onClose} onSave={onTransfer} />;
+    return (
+      <ModalTransfer pack={pack} nom={nom} onClose={onClose} onSave={(f) => onTransfer(pack, f)} />
+    );
   }
+  const menunggu = drpps.find((d) => (d.berkasIds || []).includes(berkasId))?.id;
   return (
     <ModalArsip
       pack={pack}
-      pendingDrppId={lpjPendingDrpp(drpps, pack)?.id}
+      keuangan={keuangan}
+      pendingDrppId={menunggu}
       onClose={onClose}
-      onSave={onArsip}
+      onSave={(f) => onArsip(pack, f, menunggu)}
     />
   );
 }

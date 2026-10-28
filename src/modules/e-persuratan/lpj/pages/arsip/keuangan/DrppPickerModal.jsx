@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { FaArchive, FaCheck, FaPlus, FaSearch } from 'react-icons/fa';
 import Modal from '@/components/Modal';
-import { drppLocked, drppMembers, drppStatus } from '../../../utils/drppLogic';
+import { drppLocked, drppMasukIds, drppStatus } from '../../../utils/drppLogic';
 import { rupiah } from '../../../utils/lpjLogic';
 import Kwitansi from '../../../components/arsip/Kwitansi';
 import ModalKepala from './ModalKepala';
@@ -11,15 +11,7 @@ import { ADMIN, FONT, STATUS, T } from '@/utils/uiTokens';
  * Pilih DRPP tujuan untuk LPJ terpilih (DrppPickerModal purwarupa).
  * `rows` = barisLpj berkas terpilih; DRPP yang terkunci tidak bisa dipilih.
  */
-export default function DrppPickerModal({
-  rows,
-  drpps,
-  packs,
-  packsById,
-  onClose,
-  onConfirm,
-  onCreateNew,
-}) {
+export default function DrppPickerModal({ rows, drpps, onClose, onConfirm, onCreateNew }) {
   const [search, setSearch] = useState('');
   const [picked, setPicked] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -83,8 +75,8 @@ export default function DrppPickerModal({
         )}
         <div className="max-h-[240px] overflow-y-auto">
           {list.map((d) => {
-            const locked = drppLocked(packsById, packs, d);
-            const status = drppStatus(packsById, packs, d);
+            const locked = drppLocked(d);
+            const status = drppStatus(d);
             const sel = picked === d.id;
             return (
               <label
@@ -109,7 +101,7 @@ export default function DrppPickerModal({
                 <div className="min-w-0">
                   <div className={`${FONT.head} font-bold text-[13.5px] ${T.ink}`}>{d.id}</div>
                   <div className={`text-xs mt-0.5 ${T.inkMuted}`}>
-                    {drppMembers(packs, d).length} LPJ saat ini ·{' '}
+                    {drppMasukIds(d).length} LPJ saat ini ·{' '}
                     {status === 'lengkap'
                       ? 'Lengkap, tidak bisa ditambah lagi'
                       : locked

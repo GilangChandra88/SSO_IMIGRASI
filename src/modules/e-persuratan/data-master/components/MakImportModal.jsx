@@ -46,7 +46,8 @@ export default function MakImportModal({
           <FaExclamationTriangle size={12} className="shrink-0 mt-0.5" />
           <span>
             Gunakan template CSV yang disediakan. Format kode &amp; nama:{' '}
-            <strong>KODE - NAMA</strong>. Pagu diisi hanya di level paling bawah (umumnya Item).
+            <strong>KODE - NAMA</strong>. Kolom Tahun harus sama dengan tahun anggaran yang dipilih,
+            dan Pagu (rupiah bulat) hanya diisi di level Item.
             <button
               type="button"
               onClick={onDownloadTemplate}

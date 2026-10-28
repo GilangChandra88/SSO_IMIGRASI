@@ -1,10 +1,9 @@
 import React from 'react';
 import { FaCheck, FaChevronLeft } from 'react-icons/fa';
-import { NP_RINCIAN_DOCS, URAIAN_MAX } from '../../data/masterLpj';
-import { emptyTransaksi } from '../../utils/emptyModels';
-import { groupTransaksiByItem, parseNum } from '../../utils/lpjLogic';
-import { makItemsOfAkun } from '../../utils/makTree';
-import { catatMakHistory } from '../../services/makHistory';
+import { PANJANG } from '@/utils/batas';
+import { itemDiAkun } from '../../../makPohon';
+import { transaksiKosong } from '../../utils/modelKosong';
+import { groupTransaksiByItem, transaksiLengkap } from '../../utils/lpjLogic';
 import MakDropdowns from '../../components/MakDropdowns';
 import PegawaiPicker from '../../components/PegawaiPicker';
 import PegawaiCards from '../../components/PegawaiCards';
@@ -12,70 +11,48 @@ import TransaksiTable from '../../components/TransaksiTable';
 import Field from '../../ui/Field';
 import { BTN, FONT, FORM, LAYOUT, NAVY, STATUS, T } from '@/utils/uiTokens';
 
-function npValidateForm(np) {
+const URAIAN_MAX = PANJANG.uraianBerkas;
+
+function npValidateForm(spby, uraian) {
   const e = {};
-  if (!np.tanggal) e.tanggal = 'Wajib diisi';
-  if (np.pelaksana.length === 0) e.pelaksana = 'Pilih minimal satu pelaksana';
-  if (!np.mak?.akunNodeId) e.mak = 'Pilih hingga level Akun';
-  if (!np.uraian.trim()) e.uraian = 'Wajib diisi';
-  if (np.transaksi.every((t) => !t.itemNodeId && !t.jumlah))
-    e.transaksi = 'Tambahkan minimal satu transaksi';
+  if (!spby.tanggal) e.tanggal = 'Wajib diisi';
+  if (spby.pelaksana.length === 0) e.pelaksana = 'Pilih minimal satu pelaksana';
+  if (!spby.mak?.akunNodeId) e.mak = 'Pilih hingga level Akun';
+  if (!String(uraian || '').trim()) e.uraian = 'Wajib diisi';
+  if (!transaksiLengkap(spby.transaksi)) {
+    e.transaksi = 'Lengkapi setiap baris: pelaksana, item, dan jumlah lebih dari 0.';
+  }
   return e;
 }
 
-/** Fase 1 Non-Perjadin — data umum, kode MAK, dan detail transaksi. */
+/**
+ * Fase 1 Non-Perjadin — data umum, kode MAK, dan detail transaksi (bagian `spby`). "Selesai"
+ * menyimpan isi terakhir lalu memanggil Function selesaikanSpby: bagian dikunci, nomor LPJ terbit,
+ * dan realisasi MAK tercatat di server dalam satu transaksi.
+ */
 export default function StepRincianBayar({ ctx }) {
-  const {
-    pack,
-    pf,
-    setPf,
-    errors,
-    tandaiGalat,
-    persist,
-    askConfirm,
-    closeConfirm,
-    showToast,
-    mak,
-    user,
-  } = ctx;
-  const np = pf.np;
-  const updateNp = (patch) => setPf((prev) => ({ ...prev, np: { ...prev.np, ...patch } }));
+  const { pf, setPf, errors, tandaiGalat, persist, askConfirm, closeConfirm, showToast, mak } = ctx;
+  const np = pf.spby;
+  const updateNp = (patch) => setPf((prev) => ({ ...prev, spby: { ...prev.spby, ...patch } }));
   const akun = mak.byId[np.mak?.akunNodeId];
-  const akunItems = makItemsOfAkun(mak.nodes, np.mak?.akunNodeId);
+  const akunItems = itemDiAkun(mak.nodes, np.mak?.akunNodeId);
 
   function handleSelesai() {
-    const e = npValidateForm(np);
+    const e = npValidateForm(np, pf.uraian);
     if (tandaiGalat(e)) return;
     askConfirm({
       label: 'SPBy & Rincian Bayar',
       onYes: async () => {
-        const npDocs = { ...(np.npDocs || {}) };
-        NP_RINCIAN_DOCS.forEach((d) => {
-          if (d.perPelaksana) np.pelaksana.forEach((p) => (npDocs[`${d.key}_${p.id}`] = true));
-          else npDocs[d.key] = true;
+        const hasil = await persist(ctx.pfRef.current, {
+          quiet: true,
+          selesaikanSpby: true, // kunci + nomor LPJ + realisasi MAK (satu transaksi di server)
+          tahanLangkah: true,
         });
-        const ok = await persist(
-          (prev) => ({ ...prev, np: { ...prev.np, formLocked: true, npDocs } }),
-          // SPBy selesai → nomor LPJ terbit (satu transaksi)
-          { quiet: true, teks: 'menandai SPBy & Rincian Bayar selesai', beriNomor: true },
-        );
-        if (ok) {
-          try {
-            await catatMakHistory(pack, {
-              transaksi: np.transaksi,
-              mak: np.mak,
-              tanggal: np.tanggal,
-              pelaksana: np.pelaksana,
-              uid: user.uid,
-            });
-          } catch (err) {
-            console.error('catatMakHistory error:', err);
-            showToast('Data tersimpan, tetapi pencatatan History MAK gagal.', 'error');
-          }
-          showToast('SPBy & Rincian Bayar ditandai selesai. Nomor LPJ sudah terbit.');
-        }
         closeConfirm();
-        if (ok) ctx.keDetail();
+        if (hasil) {
+          showToast(`SPBy & Rincian Bayar selesai. Nomor LPJ ${hasil.nomorLpj || ''} terbit.`);
+          ctx.keDetail();
+        }
       },
       onNo: async () => {
         await persist(ctx.pfRef.current, { quiet: true });
@@ -139,7 +116,10 @@ export default function StepRincianBayar({ ctx }) {
                 onHapus={(p) =>
                   setPf((prev) => ({
                     ...prev,
-                    np: { ...prev.np, pelaksana: prev.np.pelaksana.filter((s) => s.id !== p.id) },
+                    spby: {
+                      ...prev.spby,
+                      pelaksana: prev.spby.pelaksana.filter((s) => s.pegawaiId !== p.pegawaiId),
+                    },
                   }))
                 }
               />
@@ -150,13 +130,13 @@ export default function StepRincianBayar({ ctx }) {
               id="np-uraian"
               rows={3}
               maxLength={URAIAN_MAX}
-              value={np.uraian}
+              value={pf.uraian}
               placeholder="Deskripsikan kegiatan yang dilaksanakan..."
-              onChange={(e) => updateNp({ uraian: e.target.value })}
+              onChange={(e) => setPf((prev) => ({ ...prev, uraian: e.target.value }))}
               className={`${FORM.textarea} ${errors.uraian ? FORM.borderErr : FORM.borderOk}`}
             />
             <p className="mt-[5px] text-[11.5px] text-right text-[#94a3b8]">
-              {(np.uraian || '').length}/{URAIAN_MAX}
+              {(pf.uraian || '').length}/{URAIAN_MAX}
             </p>
           </Field>
         </div>
@@ -178,11 +158,14 @@ export default function StepRincianBayar({ ctx }) {
           <MakDropdowns
             nodes={mak.nodes}
             byId={mak.byId}
-            loading={mak.loading}
+            loading={mak.memuat}
             mak={np.mak}
             bertahap
             onChange={(m) =>
-              setPf((prev) => ({ ...prev, np: { ...prev.np, mak: { ...prev.np.mak, ...m } } }))
+              setPf((prev) => ({
+                ...prev,
+                spby: { ...prev.spby, mak: { ...prev.spby.mak, ...m } },
+              }))
             }
           />
         </div>
@@ -200,7 +183,11 @@ export default function StepRincianBayar({ ctx }) {
           <TransaksiTable
             rows={np.transaksi}
             onChange={(transaksi) => updateNp({ transaksi })}
-            onTambah={() => updateNp({ transaksi: [...np.transaksi, emptyTransaksi()] })}
+            onTambah={() =>
+              updateNp({
+                transaksi: [...np.transaksi, transaksiKosong(np.pelaksana[0]?.pegawaiId || '')],
+              })
+            }
             pelaksana={np.pelaksana}
             items={akunItems}
             akunKode={akun?.kode || ''}
@@ -227,7 +214,7 @@ export default function StepRincianBayar({ ctx }) {
 function Rekap({ transaksi }) {
   const rows = groupTransaksiByItem(transaksi);
   if (!rows.length) return null;
-  const grandTotal = transaksi.reduce((s, t) => s + parseNum(t.jumlah), 0);
+  const grandTotal = transaksi.reduce((s, t) => s + (Number.isInteger(t.jumlah) ? t.jumlah : 0), 0);
   return (
     <div className={`mt-4 border-t pt-3.5 ${T.border}`}>
       <div className={`text-[11.5px] font-bold uppercase tracking-[.05em] mb-2 ${T.ink2}`}>

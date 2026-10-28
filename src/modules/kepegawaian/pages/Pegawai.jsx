@@ -1,337 +1,218 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { db, secondaryAuth } from '@/config/firebase';
+import {
+  FaBirthdayCake,
+  FaBriefcase,
+  FaKey,
+  FaMedal,
+  FaPen,
+  FaSave,
+  FaTimes,
+  FaUserCheck,
+  FaUserPlus,
+  FaUserShield,
+  FaUserSlash,
+  FaUserTie,
+  FaUsers,
+} from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
 import ToastViewport from '@/components/ToastViewport';
 import { showToast } from '@/utils/toastStore';
+import { PANJANG } from '@/utils/batas';
+import { pesanGagalUnggah } from '@/utils/berkasStorage';
+import { labelPeran, peranDariKlaim } from '@/utils/peran';
+import { adalahUltahHariIni } from '@/utils/ulangTahun';
+import { SEKSI } from '@/data/seksi';
 import {
-  MAKS_FOTO_ULTAH,
-  adalahUltahHariIni,
-  daftarFoto,
-  formatTanggal,
-  ultahMd,
-} from '@/utils/ulangTahun';
-import { hapusFotoPegawai, unggahFotoPegawai, validasiFoto } from '../services/fotoPegawai';
+  PEGAWAI_KOSONG,
+  idPegawaiBaru,
+  pantauMaster,
+  pantauPegawai,
+  pesanGalat,
+  simpanPegawai,
+} from '../services/pegawaiDb';
+import { hapusFotoPegawai, unggahFotoPegawai } from '../services/fotoPegawai';
+import AvatarPegawai from '../components/AvatarPegawai';
+import FotoPegawaiEditor from '../components/FotoPegawaiEditor';
+import ModalBuatAkun from '../components/ModalBuatAkun';
+import ModalAturPeran from '../components/ModalAturPeran';
 import ModalKejutanUltah from '../components/ModalKejutanUltah';
-import {
-  collection,
-  addDoc,
-  deleteDoc,
-  deleteField,
-  doc,
-  updateDoc,
-  onSnapshot,
-  query,
-} from 'firebase/firestore';
-import { createUserWithEmailAndPassword, signOut } from 'firebase/auth';
-import {
-  FaUserPlus,
-  FaTrash,
-  FaPen,
-  FaUsers,
-  FaMedal,
-  FaBriefcase,
-  FaSave,
-  FaTimes,
-  FaPlus,
-  FaKey,
-  FaStar,
-  FaBirthdayCake,
-  FaCamera,
-} from 'react-icons/fa';
+import ModalStatusPegawai from '../components/ModalStatusPegawai';
+import TabMaster from '../components/TabMaster';
+import TabPejabat from '../components/TabPejabat';
 
-export default function Pegawai() {
-  const [activeTab, setActiveTab] = useState('Pegawai');
-  const [PegawaiList, setPegawaiList] = useState([]);
-  const [pangkatList, setPangkatList] = useState([]);
-  const [jabatanList, setJabatanList] = useState([]);
-  const [loading, setLoading] = useState(true);
+const masukan =
+  'w-full text-sm py-2 px-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100';
+const labelKelas = 'block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1';
 
-  const [isAddingPegawai, setIsAddingPegawai] = useState(false);
-  const [editingPegawaiId, setEditingPegawaiId] = useState(null);
-  const [formPegawai, setFormPegawai] = useState({
-    nama: '',
-    nip: '',
-    pangkat: '',
-    jabatan: '',
-    role: 'Pegawai',
-    status_khusus: '',
-    tanggal_lahir: '',
+const formatTanggal = (iso) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return '';
+  const [t, b, h] = iso.split('-').map(Number);
+  return new Date(t, b - 1, h).toLocaleDateString('id-ID', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
   });
-  // Foto captcha ulang tahun: fotoLama = [{ path, url }] tersimpan & dipertahankan,
-  // fotoBaru = berkas yang akan diunggah, fotoDihapus = path tersimpan yang dibuang
-  const [fotoLama, setFotoLama] = useState([]);
+};
+
+/**
+ * Data pegawai, akun, peran, foto, dan pejabat penandatangan (docs/skema-database.md §5.1).
+ * Data pegawai ditulis langsung (rules memvalidasi); akun, peran, dan status aktif hanya lewat
+ * Cloud Function. Data Super Admin hanya bisa diubah Super Admin; akun sendiri tidak bisa diubah
+ * peran/statusnya. Foto diunggah dulu, lalu data disimpan, baru foto yang dibuang dihapus.
+ */
+export default function Pegawai() {
+  const navigate = useNavigate();
+  const { currentUser, userData, isSuperAdmin, isKepegawaian } = useAuth();
+  const uid = currentUser?.uid;
+  const [tab, setTab] = useState('pegawai');
+  const [daftar, setDaftar] = useState([]);
+  const [pangkat, setPangkat] = useState([]);
+  const [jabatan, setJabatan] = useState([]);
+  const [memuat, setMemuat] = useState(true);
+
+  const [form, setForm] = useState(null); // null = tertutup; { id?, ...data }
+  const [galatForm, setGalatForm] = useState('');
+  const [menyimpan, setMenyimpan] = useState(false);
+  // Foto di form: form.fotoPaths = foto tersimpan yang dipertahankan, fotoBaru = berkas yang akan
+  // diunggah, fotoDihapus = path tersimpan yang dibuang (dihapus setelah simpan berhasil)
   const [fotoBaru, setFotoBaru] = useState([]);
   const [fotoDihapus, setFotoDihapus] = useState([]);
-  const [menyimpan, setMenyimpan] = useState(false);
-  const [kejutanTarget, setKejutanTarget] = useState(null);
-  const pratinjauFoto = useMemo(() => fotoBaru.map((f) => URL.createObjectURL(f)), [fotoBaru]);
-  useEffect(() => () => pratinjauFoto.forEach((u) => URL.revokeObjectURL(u)), [pratinjauFoto]);
-  const jumlahFoto = fotoLama.length + fotoBaru.length;
-
-  const navigate = useNavigate();
-  const { currentUser, isAdmin } = useAuth();
-
-  const [isAddingMaster, setIsAddingMaster] = useState(false);
-  const [editingMasterId, setEditingMasterId] = useState(null);
-  const [formMasterName, setFormMasterName] = useState('');
-
-  const [accountModalOpen, setAccountModalOpen] = useState(false);
-  const [accountTarget, setAccountTarget] = useState(null);
-  const [accountPrefix, setAccountPrefix] = useState('');
-  const [accountPassword, setAccountPassword] = useState('');
-  const [accountLoading, setAccountLoading] = useState(false);
-  const [accountError, setAccountError] = useState('');
-
-  const PegawaiCol = collection(db, 'pegawai');
-  const pangkatCol = collection(db, 'master_pangkat');
-  const jabatanCol = collection(db, 'master_jabatan');
+  const [modal, setModal] = useState(null); // { jenis: 'akun'|'peran'|'status'|'ultah', pegawai }
 
   useEffect(() => {
-    const unsubPegawai = onSnapshot(query(PegawaiCol), (snapshot) => {
-      setPegawaiList(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-      setLoading(false);
-    });
-    const unsubPangkat = onSnapshot(query(pangkatCol), (snapshot) => {
-      setPangkatList(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-    });
-    const unsubJabatan = onSnapshot(query(jabatanCol), (snapshot) => {
-      setJabatanList(snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
-    });
-    return () => {
-      unsubPegawai();
-      unsubPangkat();
-      unsubJabatan();
-    };
+    const berhenti = [
+      pantauPegawai(
+        (d) => {
+          setDaftar(d);
+          setMemuat(false);
+        },
+        () => setMemuat(false),
+      ),
+      pantauMaster('pangkat', setPangkat),
+      pantauMaster('jabatan', setJabatan),
+    ];
+    return () => berhenti.forEach((f) => f());
   }, []);
 
-  const handleSavePegawai = async (e) => {
+  const dataSuperAdmin = (k) => (k.peran || []).includes('superadmin');
+  const bolehUbah = (k) => isKepegawaian && (isSuperAdmin || !dataSuperAdmin(k));
+  const akunSendiri = (k) => userData?.id === k.id;
+
+  function bukaForm(k) {
+    setGalatForm('');
+    setFotoBaru([]);
+    setFotoDihapus([]);
+    setForm(k ? { id: k.id, ...PEGAWAI_KOSONG, ...k } : { ...PEGAWAI_KOSONG });
+  }
+
+  function buangFotoTersimpan(path) {
+    setForm((f) => ({ ...f, fotoPaths: f.fotoPaths.filter((p) => p !== path) }));
+    setFotoDihapus((d) => [...d, path]);
+  }
+
+  function pilihMaster(jenis, id) {
+    const sumber = jenis === 'pangkat' ? pangkat : jabatan;
+    const m = sumber.find((x) => x.id === id);
+    setForm((f) => ({ ...f, [`${jenis}Id`]: m?.id || '', [`${jenis}Nama`]: m?.nama || '' }));
+  }
+
+  async function simpan(e) {
     e.preventDefault();
-    if (!formPegawai.nama || !formPegawai.nip) return;
-
+    const nama = form.nama.trim();
+    const nip = form.nip.trim();
+    if (!nama) return setGalatForm('Nama wajib diisi.');
+    if (nip && !/^\d{18}$/.test(nip))
+      return setGalatForm('NIP harus 18 digit angka (kosongkan untuk non-PNS).');
+    setGalatForm('');
+    setMenyimpan(true);
+    const id = form.id || idPegawaiBaru();
     try {
-      // Check if status_khusus is already held by someone else
-      let oldHolder = null;
-      if (['Bendahara', 'PPK', 'KPA'].includes(formPegawai.status_khusus)) {
-        oldHolder = PegawaiList.find(
-          (p) => p.status_khusus === formPegawai.status_khusus && p.id !== editingPegawaiId,
+      const hasil = await Promise.allSettled(fotoBaru.map((f) => unggahFotoPegawai(id, f, uid)));
+      const unggahan = hasil.filter((h) => h.status === 'fulfilled').map((h) => h.value);
+      const gagal = hasil.find((h) => h.status === 'rejected');
+      if (gagal) {
+        unggahan.forEach((p) => hapusFotoPegawai(p).catch(() => {}));
+        setGalatForm(
+          pesanGagalUnggah(gagal.reason, 'Foto gagal diproses atau diunggah. Coba foto lain.'),
         );
-        if (oldHolder) {
-          if (
-            !window.confirm(
-              `Status ${formPegawai.status_khusus} saat ini dipegang oleh ${oldHolder.nama}.\nApakah Anda ingin memindahkan status ini ke ${formPegawai.nama}?`,
-            )
-          ) {
-            return;
-          }
-        }
+        return;
       }
-
-      // If user agreed to reassign, clear it from the old holder
-      if (oldHolder) {
-        await updateDoc(doc(db, 'pegawai', oldHolder.id), { status_khusus: '' });
+      try {
+        await simpanPegawai(
+          { ...form, nama, nip, fotoPaths: [...form.fotoPaths, ...unggahan] },
+          id,
+          uid,
+          { baru: !form.id },
+        );
+      } catch (err) {
+        unggahan.forEach((p) => hapusFotoPegawai(p).catch(() => {}));
+        throw err;
       }
-
-      setMenyimpan(true);
-      // ultah_md ('MM-DD') dipakai untuk mencari siapa yang berulang tahun hari ini
-      const data = { ...formPegawai, ultah_md: ultahMd(formPegawai.tanggal_lahir) };
-      let id = editingPegawaiId;
-      if (id) {
-        await updateDoc(doc(db, 'pegawai', id), data);
-      } else {
-        id = (await addDoc(PegawaiCol, { ...data, createdAt: new Date().toISOString() })).id;
-      }
-      if (fotoBaru.length || fotoDihapus.length) {
-        try {
-          const unggahan = await Promise.all(fotoBaru.map((f) => unggahFotoPegawai(id, f)));
-          // `foto` tunggal (bentuk awal) dilebur ke `fotos`
-          await updateDoc(doc(db, 'pegawai', id), {
-            fotos: [...fotoLama, ...unggahan],
-            foto: deleteField(),
-          });
-          fotoDihapus.forEach((path) => hapusFotoPegawai(path).catch(() => {}));
-        } catch {
-          showToast('Data tersimpan, tetapi foto gagal diunggah. Periksa storage.rules.', 'error');
-        }
-      }
-      tutupFormPegawai();
-    } catch (error) {
-      console.error('Error saving:', error);
-      showToast('Gagal menyimpan data pegawai.', 'error');
+      fotoDihapus.forEach((p) => hapusFotoPegawai(p).catch(() => {}));
+      showToast(form.id ? 'Data pegawai diperbarui.' : 'Pegawai ditambahkan.');
+      setForm(null);
+    } catch (err) {
+      setGalatForm(pesanGalat(err, 'Data pegawai gagal disimpan.'));
     } finally {
       setMenyimpan(false);
     }
-  };
+  }
 
-  const tutupFormPegawai = () => {
-    setIsAddingPegawai(false);
-    setEditingPegawaiId(null);
-    setFormPegawai({
-      nama: '',
-      nip: '',
-      pangkat: '',
-      jabatan: '',
-      role: 'Pegawai',
-      status_khusus: '',
-      tanggal_lahir: '',
-    });
-    setFotoLama([]);
-    setFotoBaru([]);
-    setFotoDihapus([]);
-  };
+  /** Pilihan master: yang aktif, ditambah nilai yang sedang dipakai pegawai ini (bila dinonaktifkan). */
+  const opsiMaster = (sumber, idTerpilih) =>
+    sumber.filter((m) => m.aktif !== false || m.id === idTerpilih);
 
-  const pilihFoto = (e) => {
-    const files = [...(e.target.files || [])];
-    e.target.value = '';
-    const sah = files.filter((f) => !validasiFoto(f));
-    if (sah.length < files.length) showToast(validasiFoto(files.find(validasiFoto)), 'error');
-    const sisa = MAKS_FOTO_ULTAH - jumlahFoto;
-    if (sah.length > sisa) showToast(`Maksimal ${MAKS_FOTO_ULTAH} foto per pegawai.`, 'error');
-    if (sisa > 0 && sah.length) setFotoBaru((f) => [...f, ...sah.slice(0, sisa)]);
-  };
-
-  const buangFotoLama = (foto) => {
-    setFotoLama((d) => d.filter((f) => f !== foto));
-    if (foto.path) setFotoDihapus((d) => [...d, foto.path]);
-  };
-
-  const handleDeletePegawai = async (id) => {
-    if (!window.confirm('Yakin ingin menghapus Pegawai ini?')) return;
-    try {
-      await deleteDoc(doc(db, 'pegawai', id));
-    } catch (error) {
-      console.error('Error:', error);
-    }
-  };
-
-  const startEditPegawai = (k) => {
-    setFormPegawai({
-      nama: k.nama,
-      nip: k.nip,
-      pangkat: k.pangkat || '',
-      jabatan: k.jabatan || '',
-      role: k.role || 'Pegawai',
-      status_khusus: k.status_khusus || '',
-      tanggal_lahir: k.tanggal_lahir || '',
-    });
-    setFotoLama(daftarFoto(k));
-    setFotoBaru([]);
-    setFotoDihapus([]);
-    setEditingPegawaiId(k.id);
-    setIsAddingPegawai(true);
-  };
-
-  const handleSaveMaster = async (e, colRef, collectionName) => {
-    e.preventDefault();
-    if (!formMasterName.trim()) return;
-    try {
-      if (editingMasterId) {
-        await updateDoc(doc(db, collectionName, editingMasterId), { name: formMasterName });
-      } else {
-        await addDoc(colRef, { name: formMasterName, createdAt: new Date().toISOString() });
-      }
-      setIsAddingMaster(false);
-      setEditingMasterId(null);
-      setFormMasterName('');
-    } catch (error) {
-      console.error('Error:', error);
-    }
-  };
-
-  const handleDeleteMaster = async (id, collectionName) => {
-    if (!window.confirm('Hapus data master ini?')) return;
-    try {
-      await deleteDoc(doc(db, collectionName, id));
-    } catch (error) {
-      console.error('Error:', error);
-    }
-  };
-
-  const openAccountModal = (k) => {
-    setAccountTarget(k);
-    setAccountPrefix(k.nama.split(' ')[0].toLowerCase() || '');
-    setAccountPassword('');
-    setAccountError('');
-    setAccountModalOpen(true);
-  };
-
-  const handleCreateAccount = async (e) => {
-    e.preventDefault();
-    if (!accountPrefix || !accountPassword) return;
-    setAccountLoading(true);
-    setAccountError('');
-    try {
-      const email = accountPrefix.trim().toLowerCase() + '@imigrasi.com';
-      const userCredential = await createUserWithEmailAndPassword(
-        secondaryAuth,
-        email,
-        accountPassword,
-      );
-      await updateDoc(doc(db, 'pegawai', accountTarget.id), {
-        email: email,
-        authUid: userCredential.user.uid,
-      });
-      await signOut(secondaryAuth);
-      setAccountModalOpen(false);
-    } catch (err) {
-      setAccountError(err.message);
-    } finally {
-      setAccountLoading(false);
-    }
-  };
-
-  if (loading)
+  if (memuat)
     return (
       <div className="flex justify-center items-center h-screen bg-slate-50 dark:bg-slate-900">
         <div className="w-8 h-8 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
       </div>
     );
 
+  const tombolTab = (kunci, ikon, label) => (
+    <button
+      type="button"
+      onClick={() => setTab(kunci)}
+      className={`py-3 px-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 whitespace-nowrap ${
+        tab === kunci
+          ? 'border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400'
+          : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
+      }`}
+    >
+      {ikon} {label}
+    </button>
+  );
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-900 py-8 px-4 sm:px-8">
       <div className="max-w-6xl mx-auto">
-        <div className="mb-8 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
-              Data Pegawai
-            </h1>
-            <p className="text-slate-500 dark:text-slate-400 font-medium text-sm mt-1">
-              Kelola database pegawai, pangkat, jabatan, dan akun sistem.
-            </p>
-          </div>
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
+            Data Pegawai
+          </h1>
+          <p className="text-slate-500 dark:text-slate-400 font-medium text-sm mt-1">
+            Kelola data pegawai, pangkat, jabatan, akun sistem, peran, dan pejabat penandatangan.
+          </p>
         </div>
 
         <div className="flex gap-4 mb-6 border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
-          <button
-            onClick={() => setActiveTab('Pegawai')}
-            className={`py-3 px-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'Pegawai' ? 'border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 dark:text-slate-200'}`}
-          >
-            <FaUsers /> Pegawai
-          </button>
-          <button
-            onClick={() => setActiveTab('pangkat')}
-            className={`py-3 px-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'pangkat' ? 'border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 dark:text-slate-200'}`}
-          >
-            <FaMedal /> Master Pangkat
-          </button>
-          <button
-            onClick={() => setActiveTab('jabatan')}
-            className={`py-3 px-4 font-bold text-sm border-b-2 transition-colors flex items-center gap-2 ${activeTab === 'jabatan' ? 'border-indigo-600 dark:border-indigo-400 text-indigo-600 dark:text-indigo-400' : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 dark:text-slate-200'}`}
-          >
-            <FaBriefcase /> Master Jabatan
-          </button>
+          {tombolTab('pegawai', <FaUsers />, 'Pegawai')}
+          {tombolTab('pejabat', <FaUserTie />, 'Pejabat')}
+          {tombolTab('pangkat', <FaMedal />, 'Master Pangkat')}
+          {tombolTab('jabatan', <FaBriefcase />, 'Master Jabatan')}
         </div>
 
-        {activeTab === 'Pegawai' && (
+        {tab === 'pegawai' && (
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
-              <h2 className="font-bold text-slate-700 dark:text-slate-200">Daftar Pegawai</h2>
-              {!isAddingPegawai && (
+            <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center gap-3">
+              <h2 className="font-bold text-slate-700 dark:text-slate-200">
+                Daftar Pegawai ({daftar.length})
+              </h2>
+              {!form && isKepegawaian && (
                 <button
-                  onClick={() => {
-                    tutupFormPegawai();
-                    setIsAddingPegawai(true);
-                  }}
+                  type="button"
+                  onClick={() => bukaForm(null)}
                   className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2 shadow-sm transition-all"
                 >
                   <FaUserPlus /> Tambah Pegawai
@@ -339,177 +220,143 @@ export default function Pegawai() {
               )}
             </div>
 
-            {isAddingPegawai && (
+            {form && (
               <form
-                onSubmit={handleSavePegawai}
+                onSubmit={simpan}
                 className="p-4 border-b border-indigo-100 dark:border-indigo-900 bg-indigo-50/30 dark:bg-indigo-900/10 grid grid-cols-1 md:grid-cols-3 gap-4 items-end"
               >
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                  <label htmlFor="f-nama" className={labelKelas}>
                     NAMA
                   </label>
                   <input
+                    id="f-nama"
                     required
-                    type="text"
-                    value={formPegawai.nama}
-                    onChange={(e) => setFormPegawai({ ...formPegawai, nama: e.target.value })}
-                    className="w-full text-sm py-2 px-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                    maxLength={PANJANG.namaPegawai}
+                    value={form.nama}
+                    onChange={(e) => setForm({ ...form, nama: e.target.value })}
+                    className={masukan}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
-                    NIP
+                  <label htmlFor="f-nip" className={labelKelas}>
+                    NIP (18 digit, kosongkan bila non-PNS)
                   </label>
                   <input
-                    required
-                    type="text"
-                    value={formPegawai.nip}
-                    onChange={(e) => setFormPegawai({ ...formPegawai, nip: e.target.value })}
-                    className="w-full text-sm py-2 px-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                    id="f-nip"
+                    inputMode="numeric"
+                    maxLength={18}
+                    value={form.nip}
+                    onChange={(e) => setForm({ ...form, nip: e.target.value.replace(/\D/g, '') })}
+                    className={`${masukan} font-mono`}
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                  <label htmlFor="f-lahir" className={labelKelas}>
+                    TANGGAL LAHIR
+                  </label>
+                  <input
+                    id="f-lahir"
+                    type="date"
+                    value={form.tanggalLahir}
+                    onChange={(e) => setForm({ ...form, tanggalLahir: e.target.value })}
+                    className={`${masukan} dark:[color-scheme:dark]`}
+                  />
+                </div>
+                <div>
+                  <label htmlFor="f-pangkat" className={labelKelas}>
                     PANGKAT/GOL
                   </label>
                   <select
-                    value={formPegawai.pangkat}
-                    onChange={(e) => setFormPegawai({ ...formPegawai, pangkat: e.target.value })}
-                    className="w-full text-sm py-2 px-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                    id="f-pangkat"
+                    value={form.pangkatId}
+                    onChange={(e) => pilihMaster('pangkat', e.target.value)}
+                    className={masukan}
                   >
                     <option value="">-- Pilih --</option>
-                    {pangkatList.map((p) => (
-                      <option key={p.id} value={p.name}>
-                        {p.name}
+                    {opsiMaster(pangkat, form.pangkatId).map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.nama}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
+                  <label htmlFor="f-jabatan" className={labelKelas}>
                     JABATAN
                   </label>
                   <select
-                    value={formPegawai.jabatan}
-                    onChange={(e) => setFormPegawai({ ...formPegawai, jabatan: e.target.value })}
-                    className="w-full text-sm py-2 px-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
+                    id="f-jabatan"
+                    value={form.jabatanId}
+                    onChange={(e) => pilihMaster('jabatan', e.target.value)}
+                    className={masukan}
                   >
                     <option value="">-- Pilih --</option>
-                    {jabatanList.map((j) => (
-                      <option key={j.id} value={j.name}>
-                        {j.name}
+                    {opsiMaster(jabatan, form.jabatanId).map((j) => (
+                      <option key={j.id} value={j.id}>
+                        {j.nama}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
-                    HAK AKSES
+                  <label htmlFor="f-seksi" className={labelKelas}>
+                    SEKSI
                   </label>
                   <select
-                    value={formPegawai.role}
-                    onChange={(e) => setFormPegawai({ ...formPegawai, role: e.target.value })}
-                    className="w-full text-sm py-2 px-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 font-bold text-indigo-700 dark:text-indigo-400"
+                    id="f-seksi"
+                    value={form.seksi}
+                    onChange={(e) => setForm({ ...form, seksi: e.target.value })}
+                    className={masukan}
                   >
-                    <option value="Pegawai">Pegawai</option>
-                    <option value="Admin">Admin</option>
-                    <option value="Super Admin">Super Admin</option>
+                    <option value="">-- Pilih --</option>
+                    {SEKSI.map((s) => (
+                      <option key={s} value={s}>
+                        {s}
+                      </option>
+                    ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
-                    <FaStar className="text-amber-500" /> STATUS KHUSUS
-                  </label>
-                  <select
-                    value={formPegawai.status_khusus}
-                    onChange={(e) =>
-                      setFormPegawai({ ...formPegawai, status_khusus: e.target.value })
-                    }
-                    className="w-full text-sm py-2 px-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 font-bold text-slate-700 dark:text-slate-200"
-                  >
-                    <option value="">-- Tidak Ada --</option>
-                    <option value="Bendahara">Bendahara</option>
-                    <option value="PPK">Pejabat Pembuat Komitmen (PPK)</option>
-                    <option value="KPA">Kuasa Pengguna Anggaran (KPA)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
-                    <FaBirthdayCake className="text-amber-500" /> TANGGAL LAHIR
-                  </label>
-                  <input
-                    type="date"
-                    value={formPegawai.tanggal_lahir}
-                    onChange={(e) =>
-                      setFormPegawai({ ...formPegawai, tanggal_lahir: e.target.value })
-                    }
-                    className="w-full text-sm py-2 px-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 dark:[color-scheme:dark]"
+                <div className="md:col-span-3">
+                  <FotoPegawaiEditor
+                    tersimpan={form.fotoPaths}
+                    baru={fotoBaru}
+                    onBuangTersimpan={buangFotoTersimpan}
+                    onTambah={(files) => setFotoBaru((d) => [...d, ...files])}
+                    onBuangBaru={(i) => setFotoBaru((d) => d.filter((_, j) => j !== i))}
+                    disabled={menyimpan}
                   />
                 </div>
-                <div className="md:col-span-2">
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1 flex items-center gap-1">
-                    <FaCamera className="text-amber-500" /> FOTO UNTUK KEJUTAN ULANG TAHUN (
-                    {jumlahFoto}/{MAKS_FOTO_ULTAH})
-                  </label>
-                  <div className="flex flex-wrap items-center gap-2">
-                    {[
-                      ...fotoLama.map((f) => ({ url: f.url, buang: () => buangFotoLama(f) })),
-                      ...pratinjauFoto.map((url, i) => ({
-                        url,
-                        baru: true,
-                        buang: () => setFotoBaru((d) => d.filter((_, j) => j !== i)),
-                      })),
-                    ].map((f, i) => (
-                      <div key={f.url} className="relative">
-                        <img
-                          src={f.url}
-                          alt={`Foto ${i + 1}`}
-                          className={`w-12 h-12 rounded-lg object-cover border ${f.baru ? 'border-indigo-400 dark:border-indigo-500' : 'border-slate-300 dark:border-slate-700'}`}
-                        />
-                        <button
-                          type="button"
-                          onClick={f.buang}
-                          title="Buang foto"
-                          aria-label={`Buang foto ${i + 1}`}
-                          className="absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full bg-slate-700 hover:bg-rose-600 text-white flex items-center justify-center shadow"
-                        >
-                          <FaTimes size={9} />
-                        </button>
-                      </div>
-                    ))}
-                    {jumlahFoto < MAKS_FOTO_ULTAH && (
-                      <label className="cursor-pointer text-xs font-bold bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 flex items-center gap-1.5">
-                        <FaCamera /> Tambah Foto
-                        <input
-                          type="file"
-                          accept="image/*"
-                          multiple
-                          onChange={pilihFoto}
-                          className="sr-only"
-                        />
-                      </label>
-                    )}
-                  </div>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    JPG/PNG, maks. 2 MB per foto. Bisa pilih beberapa sekaligus; foto dipakai
-                    bergiliran di kotak captcha.
+                {galatForm && (
+                  <p
+                    role="alert"
+                    className="md:col-span-3 text-sm text-rose-600 dark:text-rose-300 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-900/50 rounded-lg px-3 py-2"
+                  >
+                    {galatForm}
                   </p>
-                </div>
-                <div className="md:col-span-3 flex justify-end gap-2 mt-2">
-                  <button
-                    type="button"
-                    onClick={tutupFormPegawai}
-                    className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2"
-                  >
-                    <FaTimes /> Batal
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={menyimpan}
-                    className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 flex items-center gap-2 shadow-sm"
-                  >
-                    <FaSave /> {menyimpan ? 'Menyimpan…' : 'Simpan'}
-                  </button>
+                )}
+                <div className="md:col-span-3 flex flex-wrap justify-between items-center gap-2 mt-1">
+                  <p className="text-[11px] text-slate-400">
+                    Akun login, peran, dan status aktif diatur dari tombol di daftar pegawai.
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setForm(null)}
+                      disabled={menyimpan}
+                      className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60 flex items-center gap-2"
+                    >
+                      <FaTimes /> Batal
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={menyimpan}
+                      className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 flex items-center gap-2 shadow-sm"
+                    >
+                      <FaSave />{' '}
+                      {menyimpan ? (fotoBaru.length ? 'Mengunggah foto…' : 'Menyimpan…') : 'Simpan'}
+                    </button>
+                  </div>
                 </div>
               </form>
             )}
@@ -519,16 +366,13 @@ export default function Pegawai() {
                 <thead>
                   <tr className="bg-slate-50 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700">
                     <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400">
-                      NAMA / HAK AKSES
+                      NAMA / PERAN
                     </th>
                     <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400">
                       NIP
                     </th>
                     <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400">
                       JABATAN & PANGKAT
-                    </th>
-                    <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400">
-                      STATUS KHUSUS
                     </th>
                     <th className="p-4 text-xs font-bold text-slate-500 dark:text-slate-400">
                       AKUN SISTEM
@@ -539,287 +383,168 @@ export default function Pegawai() {
                   </tr>
                 </thead>
                 <tbody>
-                  {PegawaiList.map((k) => (
-                    <tr
-                      key={k.id}
-                      className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group"
-                    >
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          {daftarFoto(k)[0] ? (
-                            <img
-                              src={daftarFoto(k)[0].url}
-                              alt=""
-                              className="w-9 h-9 rounded-full object-cover shrink-0 border border-slate-200 dark:border-slate-700"
-                            />
-                          ) : (
-                            <div className="w-9 h-9 rounded-full shrink-0 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 flex items-center justify-center text-sm font-bold">
-                              {(k.nama || '?')[0].toUpperCase()}
+                  {daftar.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="p-8 text-center text-sm text-slate-400">
+                        Belum ada data pegawai.
+                      </td>
+                    </tr>
+                  )}
+                  {daftar.map((k) => {
+                    const nonaktif = k.aktif === false;
+                    const sendiri = akunSendiri(k);
+                    return (
+                      <tr
+                        key={k.id}
+                        className={`border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${nonaktif ? 'opacity-60' : ''}`}
+                      >
+                        <td className="p-4">
+                          <div className="flex items-center gap-3">
+                            <AvatarPegawai pegawai={k} />
+                            <div>
+                              <div className="font-bold text-slate-800 dark:text-slate-100">
+                                {k.nama}{' '}
+                                {sendiri && (
+                                  <span className="text-[10px] font-semibold text-slate-400">
+                                    (Anda)
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
+                                  {labelPeran(peranDariKlaim({ peran: k.peran }))}
+                                </span>
+                                {k.seksi && (
+                                  <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400">
+                                    · {k.seksi}
+                                  </span>
+                                )}
+                                {nonaktif && (
+                                  <span className="text-[10px] font-bold bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-300 border border-rose-200 dark:border-rose-900/50 px-1.5 py-0.5 rounded">
+                                    Nonaktif
+                                  </span>
+                                )}
+                                {!nonaktif && adalahUltahHariIni(k.tanggalLahir) && (
+                                  <span className="text-[10px] font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 px-1.5 py-0.5 rounded">
+                                    🎂 Ulang tahun hari ini
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-4 text-slate-600 dark:text-slate-300 font-mono text-sm">
+                          {k.nip || '-'}
+                          {k.tanggalLahir && (
+                            <div className="font-sans text-xs text-slate-400 mt-0.5">
+                              Lahir {formatTanggal(k.tanggalLahir)}
                             </div>
                           )}
-                          <div>
-                            <div className="font-bold text-slate-800 dark:text-slate-100">
-                              {k.nama}
-                            </div>
-                            <div className="flex flex-wrap items-center gap-1.5 mt-1">
-                              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-500">
-                                {k.role || 'Pegawai'}
-                              </span>
-                              {adalahUltahHariIni(k.tanggal_lahir) && (
-                                <span className="text-[10px] font-bold bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 px-1.5 py-0.5 rounded">
-                                  🎂 Ulang tahun hari ini
-                                </span>
-                              )}
-                            </div>
+                        </td>
+                        <td className="p-4">
+                          <div className="text-slate-700 dark:text-slate-200 text-sm font-semibold">
+                            {k.jabatanNama || '-'}
                           </div>
-                        </div>
-                      </td>
-                      <td className="p-4 text-slate-600 dark:text-slate-300 font-mono text-sm">
-                        {k.nip}
-                        {k.tanggal_lahir && (
-                          <div className="font-sans text-xs text-slate-400 mt-0.5">
-                            Lahir {formatTanggal(k.tanggal_lahir)}
+                          <div className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
+                            {k.pangkatNama || '-'}
                           </div>
-                        )}
-                      </td>
-                      <td className="p-4">
-                        <div className="text-slate-700 dark:text-slate-200 text-sm font-semibold">
-                          {k.jabatan || '-'}
-                        </div>
-                        <div className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
-                          {k.pangkat || '-'}
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        {k.status_khusus && (
-                          <div className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 px-2.5 py-1 rounded-md text-xs font-bold">
-                            <FaStar size={10} className="text-amber-500" />
-                            {k.status_khusus === 'PPK' ? 'PPK' : k.status_khusus}
+                        </td>
+                        <td className="p-4">
+                          {k.authUid ? (
+                            <span className="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 px-2 py-1 rounded text-xs font-bold border border-emerald-200 dark:border-emerald-900/50 break-all">
+                              {k.email}
+                            </span>
+                          ) : (
+                            !nonaktif &&
+                            bolehUbah(k) && (
+                              <button
+                                type="button"
+                                onClick={() => setModal({ jenis: 'akun', pegawai: k })}
+                                className="text-xs font-bold bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900/50 hover:bg-indigo-100 flex items-center gap-1.5"
+                              >
+                                <FaKey /> Buat Akun
+                              </button>
+                            )
+                          )}
+                        </td>
+                        <td className="p-4">
+                          <div className="flex items-center justify-end gap-1">
+                            {isKepegawaian && !nonaktif && (
+                              <button
+                                type="button"
+                                onClick={() => setModal({ jenis: 'ultah', pegawai: k })}
+                                title="Kejutan ulang tahun"
+                                aria-label={`Kejutan ulang tahun ${k.nama}`}
+                                className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-lg"
+                              >
+                                <FaBirthdayCake size={14} />
+                              </button>
+                            )}
+                            {isSuperAdmin && k.authUid && !nonaktif && !sendiri && (
+                              <button
+                                type="button"
+                                onClick={() => setModal({ jenis: 'peran', pegawai: k })}
+                                title="Atur peran"
+                                aria-label={`Atur peran ${k.nama}`}
+                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg"
+                              >
+                                <FaUserShield size={14} />
+                              </button>
+                            )}
+                            {bolehUbah(k) && (
+                              <button
+                                type="button"
+                                onClick={() => bukaForm(k)}
+                                title="Ubah data"
+                                aria-label={`Ubah data ${k.nama}`}
+                                className="p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg"
+                              >
+                                <FaPen size={14} />
+                              </button>
+                            )}
+                            {bolehUbah(k) && !sendiri && (
+                              <button
+                                type="button"
+                                onClick={() => setModal({ jenis: 'status', pegawai: k })}
+                                title={nonaktif ? 'Aktifkan kembali' : 'Nonaktifkan'}
+                                aria-label={`${nonaktif ? 'Aktifkan kembali' : 'Nonaktifkan'} ${k.nama}`}
+                                className={`p-2 rounded-lg ${nonaktif ? 'text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10' : 'text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-500/10'}`}
+                              >
+                                {nonaktif ? <FaUserCheck size={14} /> : <FaUserSlash size={14} />}
+                              </button>
+                            )}
                           </div>
-                        )}
-                      </td>
-                      <td className="p-4">
-                        {k.email ? (
-                          <span className="bg-emerald-50 text-emerald-700 px-2 py-1 rounded text-xs font-bold border border-emerald-200">
-                            {k.email}
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => openAccountModal(k)}
-                            className="text-xs font-bold bg-indigo-50 text-indigo-600 dark:text-indigo-400 px-3 py-1.5 rounded-lg border border-indigo-200 hover:bg-indigo-100 flex items-center gap-1.5"
-                          >
-                            <FaKey /> Buat Akun
-                          </button>
-                        )}
-                      </td>
-                      <td className="p-4 text-right flex items-center justify-end gap-2">
-                        {isAdmin && (
-                          <button
-                            onClick={() => setKejutanTarget(k)}
-                            title="Kejutan ulang tahun"
-                            aria-label={`Kejutan ulang tahun ${k.nama}`}
-                            className="p-2 text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-lg"
-                          >
-                            <FaBirthdayCake size={14} />
-                          </button>
-                        )}
-                        <button
-                          onClick={() => startEditPegawai(k)}
-                          className="p-2 text-slate-400 hover:text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 rounded-lg"
-                        >
-                          <FaPen size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleDeletePegawai(k.id)}
-                          className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"
-                        >
-                          <FaTrash size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
           </div>
         )}
 
-        {/* Master Data omitted for brevity, adding simple ones */}
-        {(activeTab === 'pangkat' || activeTab === 'jabatan') && (
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden max-w-2xl mx-auto">
-            <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex justify-between items-center">
-              <h2 className="font-bold text-slate-700 dark:text-slate-200">
-                Data Master {activeTab}
-              </h2>
-              {!isAddingMaster && (
-                <button
-                  onClick={() => {
-                    setIsAddingMaster(true);
-                    setEditingMasterId(null);
-                    setFormMasterName('');
-                  }}
-                  className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2"
-                >
-                  <FaPlus /> Tambah Data
-                </button>
-              )}
-            </div>
-            {isAddingMaster && (
-              <form
-                onSubmit={(e) =>
-                  handleSaveMaster(
-                    e,
-                    activeTab === 'pangkat' ? pangkatCol : jabatanCol,
-                    activeTab === 'pangkat' ? 'master_pangkat' : 'master_jabatan',
-                  )
-                }
-                className="p-4 border-b border-indigo-100 dark:border-indigo-900 bg-indigo-50/30 dark:bg-indigo-900/10 flex gap-4 items-end"
-              >
-                <div className="flex-1">
-                  <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1">
-                    NAMA {activeTab.toUpperCase()}
-                  </label>
-                  <input
-                    required
-                    type="text"
-                    value={formMasterName}
-                    onChange={(e) => setFormMasterName(e.target.value)}
-                    className="w-full text-sm py-2 px-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="submit"
-                    className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700"
-                  >
-                    Simpan
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIsAddingMaster(false)}
-                    className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
-                  >
-                    Batal
-                  </button>
-                </div>
-              </form>
-            )}
-            <div className="overflow-x-auto">
-              <table className="w-full text-left border-collapse">
-                <tbody>
-                  {(activeTab === 'pangkat' ? pangkatList : jabatanList).map((m) => (
-                    <tr
-                      key={m.id}
-                      className="border-b border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800"
-                    >
-                      <td className="p-4 font-semibold text-slate-800 dark:text-slate-100">
-                        {m.name}
-                      </td>
-                      <td className="p-4 text-right">
-                        <button
-                          onClick={() =>
-                            handleDeleteMaster(
-                              m.id,
-                              activeTab === 'pangkat' ? 'master_pangkat' : 'master_jabatan',
-                            )
-                          }
-                          className="text-slate-400 hover:text-rose-600"
-                        >
-                          <FaTrash size={14} />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
+        {tab === 'pejabat' && <TabPejabat pegawai={daftar} uid={uid} bolehUbah={isKepegawaian} />}
+        {tab === 'pangkat' && <TabMaster jenis="pangkat" daftar={pangkat} uid={uid} />}
+        {tab === 'jabatan' && <TabMaster jenis="jabatan" daftar={jabatan} uid={uid} />}
       </div>
 
-      {accountModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md overflow-hidden">
-            <div className="p-5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
-              <h2 className="font-bold text-lg text-slate-800 dark:text-slate-100">
-                Buat Akun Pegawai
-              </h2>
-              <button
-                onClick={() => setAccountModalOpen(false)}
-                className="text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 p-2 rounded-lg"
-              >
-                <FaTimes />
-              </button>
-            </div>
-            <form onSubmit={handleCreateAccount} className="p-6 space-y-4">
-              {accountError && (
-                <div className="bg-rose-50 text-rose-600 p-3 rounded-lg text-sm border border-rose-100">
-                  {accountError}
-                </div>
-              )}
-              <div>
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-200 mb-1.5">
-                  Email Pegawai
-                </label>
-                <div className="flex items-center">
-                  <input
-                    type="text"
-                    required
-                    value={accountPrefix}
-                    onChange={(e) => setAccountPrefix(e.target.value.replace(/\s+/g, ''))}
-                    className="flex-1 px-4 py-2.5 border border-r-0 border-slate-300 dark:border-slate-700 rounded-l-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-800 dark:text-slate-100"
-                    placeholder="awalan.akun"
-                  />
-                  <div className="bg-slate-100 px-4 py-2.5 border border-slate-300 dark:border-slate-700 rounded-r-xl text-slate-500 dark:text-slate-400 font-semibold">
-                    @imigrasi.com
-                  </div>
-                </div>
-              </div>
-              <div>
-                <label className="block text-sm font-bold text-slate-700 dark:text-slate-200 mb-1.5">
-                  Password Awal
-                </label>
-                <input
-                  type="password"
-                  required
-                  minLength="6"
-                  value={accountPassword}
-                  onChange={(e) => setAccountPassword(e.target.value)}
-                  className="w-full px-4 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-indigo-500 focus:outline-none text-slate-800 dark:text-slate-100"
-                  placeholder="Minimal 6 karakter"
-                />
-                <p className="text-xs text-slate-400 mt-2">
-                  Password ini akan digunakan pegawai untuk login pertama kali.
-                </p>
-              </div>
-              <div className="pt-2 flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => setAccountModalOpen(false)}
-                  className="flex-1 py-2.5 rounded-xl text-slate-600 dark:text-slate-300 font-bold hover:bg-slate-100 dark:hover:bg-slate-800"
-                >
-                  Batal
-                </button>
-                <button
-                  type="submit"
-                  disabled={accountLoading}
-                  className="flex-1 bg-indigo-600 text-white font-bold py-2.5 rounded-xl hover:bg-indigo-700 disabled:opacity-50"
-                >
-                  {accountLoading ? 'Membuat...' : 'Buat Akun'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {kejutanTarget && (
+      {modal?.jenis === 'ultah' && (
         <ModalKejutanUltah
-          pegawai={kejutanTarget}
-          olehEmail={currentUser?.email || ''}
-          onUji={() => navigate(`/?uji-ultah=${kejutanTarget.id}`)}
-          onClose={() => setKejutanTarget(null)}
+          pegawai={modal.pegawai}
+          uid={uid}
+          onUji={() => navigate(`/?uji-ultah=${modal.pegawai.id}`)}
+          onClose={() => setModal(null)}
         />
+      )}
+      {modal?.jenis === 'akun' && (
+        <ModalBuatAkun pegawai={modal.pegawai} onClose={() => setModal(null)} />
+      )}
+      {modal?.jenis === 'peran' && (
+        <ModalAturPeran pegawai={modal.pegawai} onClose={() => setModal(null)} />
+      )}
+      {modal?.jenis === 'status' && (
+        <ModalStatusPegawai pegawai={modal.pegawai} onClose={() => setModal(null)} />
       )}
       <ToastViewport />
     </div>

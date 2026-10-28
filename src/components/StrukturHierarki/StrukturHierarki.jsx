@@ -23,20 +23,24 @@ const MAKS_HASIL = 120;
 
 /**
  * @param {object} props
- * @param {object[]} props.nodes            node { id, kode, name, type, parentId, pagu? }
+ * @param {object[]} props.nodes            node { id, kode, name, type, parentId, pagu?, aktif?, nameAsli? }
+ *   name = teks tampilan; nameAsli = nama yang disunting bila berbeda dari tampilan (mis. "… · nonaktif")
  * @param {string[]} props.hierarchy        urutan tingkat, mis. ['Tahun', ..., 'Item']
  * @param {boolean} [props.denganPagu]      tingkat terakhir punya Pagu (MAK)
+ * @param {boolean} [props.denganStatus]    jendela Edit punya pilihan Aktif/nonaktif (MAK)
  * @param {{key,label,icon,render}[]} [props.viewTambahan]  tampilan sebelum Pohon (render(indeks))
  * @param {(ctx:{view:string, mencari:boolean}) => React.ReactNode} [props.slotToolbar]
  * @param {(node) => [string, React.ReactNode][]} [props.detailKolom]
- * @param {(data) => Promise<void>} props.onSimpan  data { mode, id, parentId, type, kode, name, pagu }
- * @param {(ids: string[]) => Promise<void>} props.onHapus
+ * @param {(data) => Promise<void>} props.onSimpan  data { mode, id, parentId, type, kode, name, pagu, aktif }
+ * @param {(ids: string[]) => Promise<string|void>} props.onHapus  boleh mengembalikan pesan sukses
+ *   onSimpan/onHapus boleh melempar galat ber-`pesan` untuk ditampilkan apa adanya di toast
  * @param {string} [props.pesanPohonKosong]
  */
 export default function StrukturHierarki({
   nodes,
   hierarchy,
   denganPagu = false,
+  denganStatus = false,
   viewTambahan = [],
   slotToolbar,
   detailKolom,
@@ -88,7 +92,16 @@ export default function StrukturHierarki({
 
   const aksi = {
     tambah: (parentId, type) =>
-      setModal({ mode: 'add', parentId, type, kode: '', name: '', pagu: '', error: false }),
+      setModal({
+        mode: 'add',
+        parentId,
+        type,
+        kode: '',
+        name: '',
+        pagu: '',
+        aktif: true,
+        error: false,
+      }),
     ubah: (id) => {
       const n = indeks.byId.get(id);
       if (!n) return;
@@ -98,8 +111,9 @@ export default function StrukturHierarki({
         parentId: n.parentId ?? null,
         type: n.type,
         kode: n.kode || '',
-        name: n.name || '',
+        name: n.nameAsli ?? n.name ?? '',
         pagu: n.pagu ?? '',
+        aktif: n.aktif !== false,
         error: false,
       });
     },
@@ -108,11 +122,11 @@ export default function StrukturHierarki({
     hapus: async (id) => {
       setSibuk(true);
       try {
-        await onHapus([id, ...idKeturunan(indeks, id)]);
+        const pesan = await onHapus([id, ...idKeturunan(indeks, id)]);
         setPendingHapus(null);
-        showToast('Data berhasil dihapus.');
-      } catch {
-        showToast('Gagal menghapus data.', 'error');
+        showToast(typeof pesan === 'string' ? pesan : 'Data berhasil dihapus.');
+      } catch (err) {
+        showToast(err?.pesan || 'Gagal menghapus data.', 'error');
       } finally {
         setSibuk(false);
       }
@@ -134,6 +148,7 @@ export default function StrukturHierarki({
         kode: modal.kode.trim(),
         name: modal.name.trim(),
         pagu: Number(modal.pagu) || 0,
+        aktif: modal.aktif !== false,
       });
       if (modal.mode === 'add' && modal.parentId) bukaCabang([modal.parentId]);
       showToast(
@@ -142,8 +157,8 @@ export default function StrukturHierarki({
           : `${modal.type} baru berhasil ditambahkan.`,
       );
       setModal(null);
-    } catch {
-      showToast('Gagal menyimpan data.', 'error');
+    } catch (err) {
+      showToast(err?.pesan || 'Gagal menyimpan data.', 'error');
     } finally {
       setSibuk(false);
     }
@@ -269,6 +284,7 @@ export default function StrukturHierarki({
           data={modal}
           setData={setModal}
           denganPagu={denganPagu && modal.type === tipeAkhir}
+          denganStatus={denganStatus && modal.mode === 'edit'}
           onTutup={() => setModal(null)}
           onSimpan={simpanModal}
           sibuk={sibuk}

@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { FaCheck } from 'react-icons/fa';
 import { T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
-import { daftarFoto } from '@/utils/ulangTahun';
 import FotoWajah from './FotoWajah';
 import Kapibara from './Kapibara';
 import { goyang } from './animasiUltah';
@@ -40,11 +39,14 @@ const acak = (arr) => {
 /** Tahap 2: captcha "pilih semua gambar yang berisi WNI yang umurnya nambah hari ini". */
 export default function TahapCaptcha({ pegawai, selfie, onLanjut }) {
   const [kotak] = useState(() => {
-    // Foto kamera di urutan pertama agar pasti muncul; sisanya foto dari Kepegawaian
-    const sumber = [...(selfie ? [selfie] : []), ...acak(daftarFoto(pegawai).map((f) => f.url))];
+    // Foto kamera di urutan pertama agar pasti muncul; sisanya foto dari Kepegawaian (path Storage)
+    const sumber = [
+      ...(selfie ? [{ url: selfie }] : []),
+      ...acak(pegawai?.fotoPaths || []).map((path) => ({ path })),
+    ];
     const foto = acak(VARIAN)
       .slice(0, JUMLAH_FOTO)
-      .map((v, i) => ({ ...v, url: sumber.length ? sumber[i % sumber.length] : undefined }));
+      .map((v, i) => ({ ...v, ...(sumber.length ? sumber[i % sumber.length] : {}) }));
     return acak([...foto, ...KAPIBARA]);
   });
   const [dipilih, setDipilih] = useState(() => new Set());
@@ -124,6 +126,7 @@ export default function TahapCaptcha({ pegawai, selfie, onLanjut }) {
                   <FotoWajah
                     pegawai={pegawai}
                     url={v.url}
+                    path={v.path}
                     varian={v.kelas}
                     className={`w-full h-full motion-safe:transition-[scale] motion-safe:duration-200 ${aktif ? 'scale-[.8]' : ''}`}
                   />

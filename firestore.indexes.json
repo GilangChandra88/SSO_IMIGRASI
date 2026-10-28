@@ -1,65 +1,241 @@
 {
   "indexes": [
     {
-      "collectionGroup": "surat_items",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "assigned_to", "order": "ASCENDING" },
-        { "fieldPath": "is_blocked", "order": "ASCENDING" },
-        { "fieldPath": "updated_at", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "surat_items",
-      "queryScope": "COLLECTION_GROUP",
-      "fields": [
-        { "fieldPath": "assigned_to", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "updated_at", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "lpj_packs",
+      "collectionGroup": "lpj_ringkas",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "pegawai_uids", "arrayConfig": "CONTAINS" },
-        { "fieldPath": "created_at", "order": "DESCENDING" }
+        {
+          "fieldPath": "anggotaUids",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "tahunAnggaran",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dibuatPada",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
-      "collectionGroup": "lpj_packs",
+      "collectionGroup": "lpj_ringkas",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "created_at", "order": "DESCENDING" }
+        {
+          "fieldPath": "anggotaUids",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "tahunAnggaran",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tahap",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dibuatPada",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
-      "collectionGroup": "MAK_History",
+      "collectionGroup": "lpj_ringkas",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "makNodeId", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" },
-        { "fieldPath": "tanggal", "order": "DESCENDING" }
+        {
+          "fieldPath": "tahunAnggaran",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dibuatPada",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
-      "collectionGroup": "MAK_History",
+      "collectionGroup": "lpj_ringkas",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "tahun", "order": "ASCENDING" },
-        { "fieldPath": "bulan", "order": "ASCENDING" },
-        { "fieldPath": "status", "order": "ASCENDING" }
+        {
+          "fieldPath": "tahunAnggaran",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tahap",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dibuatPada",
+          "order": "DESCENDING"
+        }
       ]
     },
     {
-      "collectionGroup": "MAK_History",
+      "collectionGroup": "lpj_drpp",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "suratRef.packId", "order": "ASCENDING" },
-        { "fieldPath": "suratRef.suratItemId", "order": "ASCENDING" }
+        {
+          "fieldPath": "tahunAnggaran",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dibuatPada",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "lpj_drpp",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "anggotaUids",
+          "arrayConfig": "CONTAINS"
+        },
+        {
+          "fieldPath": "tahunAnggaran",
+          "order": "ASCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "mak_realisasi",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tahunAnggaran",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dibuatPada",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "mak_realisasi",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "tahunAnggaran",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "bulan",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "dibuatPada",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "surat_nomor",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "sumber",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "tahun",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "nomorUrut",
+          "order": "DESCENDING"
+        }
       ]
     }
   ],
-  "fieldOverrides": []
+  "fieldOverrides": [
+    {
+      "collectionGroup": "lpj_berkas",
+      "fieldPath": "sp",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "lpj_berkas",
+      "fieldPath": "tte",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "lpj_berkas",
+      "fieldPath": "spd",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "lpj_berkas",
+      "fieldPath": "lpj",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "lpj_berkas",
+      "fieldPath": "laporan",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "lpj_berkas",
+      "fieldPath": "spby",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "lpj_berkas",
+      "fieldPath": "lampiran",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "lpj_berkas",
+      "fieldPath": "dicetak",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "mak_rekap",
+      "fieldPath": "item",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "lpj_drpp",
+      "fieldPath": "masuk",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "lpj_drpp",
+      "fieldPath": "dokumen",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "keuangan",
+      "fieldPath": "verifikasi",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "keuangan",
+      "fieldPath": "pokBeku",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "keuangan",
+      "fieldPath": "pejabatBeku",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "inventory_saldo",
+      "fieldPath": "masuk",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "inventory_saldo",
+      "fieldPath": "keluar",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "inventory_saldo",
+      "fieldPath": "bulan",
+      "indexes": []
+    }
+  ]
 }

@@ -13,16 +13,8 @@
 
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import {
-  FaTh,
-  FaProjectDiagram,
-  FaSync,
-  FaDatabase,
-  FaExclamationCircle,
-  FaLock,
-  FaBolt,
-} from 'react-icons/fa';
-import { useSuratDefinitions } from '../hooks/useSuratDefinitions';
+import { FaTh, FaProjectDiagram, FaLock } from 'react-icons/fa';
+import { SURAT_REGISTRY } from '@/data/surat';
 import { useAuth } from '@/context/AuthContext';
 import CardView from '../components/CardView';
 import FlowView from '../components/FlowView';
@@ -31,15 +23,14 @@ import SuratPreviewModal from '@/components/SuratPreview/SuratPreviewModal';
 
 export default function Persuratan() {
   const navigate = useNavigate();
-  const { isAdmin, isSuperAdmin } = useAuth();
-  const canSeeFlow = isAdmin || isSuperAdmin;
+  const { isKeuangan } = useAuth();
+  const canSeeFlow = isKeuangan;
 
-  const { suratList, loading, error, syncToFirestore, isSynced } = useSuratDefinitions();
+  // Definisi surat adalah kode (SURAT_REGISTRY); tidak ada salinan di Firestore.
+  const suratList = SURAT_REGISTRY;
 
   const [activeTab, setActiveTab] = useState('kartu');
   const [highlightId, setHighlightId] = useState(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [syncMsg, setSyncMsg] = useState('');
   const [previewSurat, setPreviewSurat] = useState(null);
 
   // Klik "Buka" di card
@@ -54,25 +45,6 @@ export default function Persuratan() {
     setActiveTab('flow');
     setTimeout(() => setHighlightId(null), 3000);
   };
-
-  // Sync data registry lokal → Firestore
-  const handleSync = async () => {
-    setIsSyncing(true);
-    setSyncMsg('');
-    try {
-      await syncToFirestore();
-      setSyncMsg('✓ Berhasil disinkronkan ke database!');
-      setTimeout(() => setSyncMsg(''), 4000);
-    } catch {
-      setSyncMsg('✗ Gagal sinkronisasi. Coba lagi.');
-    } finally {
-      setIsSyncing(false);
-    }
-  };
-
-  // Hitung stats global
-  const totalAktif = suratList.reduce((acc, s) => acc + (s.stats?.active || 0), 0);
-  const totalBulanIni = suratList.reduce((acc, s) => acc + (s.stats?.thisMonth || 0), 0);
 
   return (
     <div className="flex flex-col h-full bg-slate-50 dark:bg-slate-900">
@@ -90,79 +62,7 @@ export default function Persuratan() {
                 : 'Lihat semua jenis surat yang tersedia di sistem.'}
             </p>
           </div>
-
-          {/* Aksi header — hanya untuk Admin */}
-          {canSeeFlow && (
-            <div className="flex items-center gap-3">
-              {/* Alert: ada surat aktif */}
-              {totalAktif > 0 && (
-                <span
-                  className="flex items-center gap-1.5 text-xs text-amber-700 font-semibold
-                                 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl"
-                >
-                  <FaBolt size={10} />
-                  {totalAktif} surat sedang berjalan
-                </span>
-              )}
-
-              {/* Status sync */}
-              {!isSynced && !loading && (
-                <span
-                  className="flex items-center gap-1.5 text-xs text-amber-600 font-semibold
-                                 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-xl"
-                >
-                  <FaDatabase size={10} />
-                  Data lokal (belum disimpan ke DB)
-                </span>
-              )}
-              {isSynced && (
-                <span
-                  className="flex items-center gap-1.5 text-xs text-emerald-600 font-semibold
-                                 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl"
-                >
-                  <FaDatabase size={10} />
-                  Tersinkron
-                </span>
-              )}
-
-              {!isSynced && (
-                <button
-                  onClick={handleSync}
-                  disabled={isSyncing}
-                  className="flex items-center gap-2 text-sm font-bold px-4 py-2 bg-slate-800 text-white
-                             rounded-lg hover:bg-slate-900 disabled:opacity-50 transition-colors shadow-sm"
-                >
-                  <FaSync size={12} className={isSyncing ? 'animate-spin' : ''} />
-                  {isSyncing ? 'Menyinkronkan...' : 'Simpan ke Database'}
-                </button>
-              )}
-            </div>
-          )}
         </div>
-
-        {/* Pesan sync */}
-        {syncMsg && (
-          <div
-            className={`max-w-7xl mx-auto mt-3 text-xs font-semibold px-3 py-2 rounded-xl ${
-              syncMsg.startsWith('✓')
-                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                : 'bg-rose-50 text-rose-700 border border-rose-200'
-            }`}
-          >
-            {syncMsg}
-          </div>
-        )}
-
-        {/* Error */}
-        {error && (
-          <div
-            className="max-w-7xl mx-auto mt-3 flex items-center gap-2 text-xs font-semibold
-                          px-3 py-2 rounded-xl bg-amber-50 text-amber-700 border border-amber-200"
-          >
-            <FaExclamationCircle size={11} />
-            {error}
-          </div>
-        )}
 
         {/* ── Tab Switcher ── */}
         <div className="max-w-7xl mx-auto mt-4 flex items-center gap-6">
@@ -187,14 +87,6 @@ export default function Persuratan() {
               }`}
             >
               <FaProjectDiagram size={14} /> Flow Visual
-              {totalAktif > 0 && (
-                <span
-                  className="bg-amber-400 text-white text-[9px] font-bold
-                                 px-1.5 py-0.5 rounded-full leading-none"
-                >
-                  {totalAktif}
-                </span>
-              )}
             </button>
           ) : (
             <div
@@ -213,30 +105,8 @@ export default function Persuratan() {
       {/* ── Konten ── */}
       <div className="flex-1 overflow-hidden p-6">
         <div className="max-w-7xl mx-auto h-full flex flex-col">
-          {/* Loading skeleton */}
-          {loading && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-              {[1, 2, 3, 4, 5, 6].map((i) => (
-                <div
-                  key={i}
-                  className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-200 dark:border-slate-700 p-4 h-44 animate-pulse"
-                >
-                  <div className="flex gap-3 mb-3">
-                    <div className="w-10 h-10 bg-slate-100 dark:bg-slate-800/50 rounded-xl shrink-0" />
-                    <div className="flex-1">
-                      <div className="h-2.5 bg-slate-100 dark:bg-slate-800/50 rounded w-16 mb-1.5" />
-                      <div className="h-3.5 bg-slate-100 dark:bg-slate-800/50 rounded w-3/4" />
-                    </div>
-                  </div>
-                  <div className="h-2 bg-slate-100 dark:bg-slate-800/50 rounded w-full mb-1.5" />
-                  <div className="h-2 bg-slate-100 dark:bg-slate-800/50 rounded w-2/3" />
-                </div>
-              ))}
-            </div>
-          )}
-
           {/* CardView — semua user */}
-          {!loading && activeTab === 'kartu' && (
+          {activeTab === 'kartu' && (
             <div className={`flex-1 min-h-0 flex flex-col ${ANIM.muncul}`}>
               <CardView
                 suratList={suratList}
@@ -248,7 +118,7 @@ export default function Persuratan() {
           )}
 
           {/* FlowView — admin only */}
-          {!loading && activeTab === 'flow' && canSeeFlow && (
+          {activeTab === 'flow' && canSeeFlow && (
             <div className={`flex-1 min-h-0 flex flex-col ${ANIM.pudar}`}>
               <FlowView
                 suratList={suratList}
@@ -266,39 +136,26 @@ export default function Persuratan() {
       )}
 
       {/* ── Stats Footer ── */}
-      {!loading && (
-        <div className="bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 px-6 py-3 print:hidden">
-          <div className="max-w-7xl mx-auto flex items-center gap-6 flex-wrap">
-            <Stat value={suratList.length} label="Jenis Surat" />
-            <Stat
-              value={suratList.filter((s) => s.status === 'active').length}
-              label="Aktif"
-              color="text-emerald-600"
-            />
-            <Stat
-              value={suratList.filter((s) => s.status === 'draft').length}
-              label="Draft"
-              color="text-amber-600"
-            />
-            <Stat
-              value={suratList.reduce((a, s) => a + (s.connections?.length || 0), 0)}
-              label="Total Koneksi"
-              color="text-indigo-600"
-            />
-            {canSeeFlow && (
-              <>
-                <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
-                <Stat value={totalAktif} label="Sedang Berjalan" color="text-amber-600" />
-                <Stat
-                  value={totalBulanIni}
-                  label="Dibuat Bulan Ini"
-                  color="text-slate-600 dark:text-slate-300"
-                />
-              </>
-            )}
-          </div>
+      <div className="bg-white dark:bg-slate-800 border-t border-slate-100 dark:border-slate-800 px-6 py-3 print:hidden">
+        <div className="max-w-7xl mx-auto flex items-center gap-6 flex-wrap">
+          <Stat value={suratList.length} label="Jenis Surat" />
+          <Stat
+            value={suratList.filter((s) => s.status === 'active').length}
+            label="Aktif"
+            color="text-emerald-600"
+          />
+          <Stat
+            value={suratList.filter((s) => s.status === 'draft').length}
+            label="Draft"
+            color="text-amber-600"
+          />
+          <Stat
+            value={suratList.reduce((a, s) => a + (s.connections?.length || 0), 0)}
+            label="Total Koneksi"
+            color="text-indigo-600"
+          />
         </div>
-      )}
+      </div>
     </div>
   );
 }

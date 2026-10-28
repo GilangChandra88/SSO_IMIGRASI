@@ -1,12 +1,13 @@
 /**
- * Daftar LPJ (BerkasListPage purwarupa) — semua berkas yang boleh dilihat pengguna. Klik baris
- * untuk membuka Detail LPJ (ringkasan transaksi & progres ada di sana).
+ * Daftar LPJ (BerkasListPage purwarupa) — berkas yang boleh dilihat pengguna pada satu tahun
+ * anggaran, dibaca dari `lpj_ringkas` (50 per halaman). Klik baris untuk membuka Detail LPJ.
  */
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FaChevronDown, FaFilter, FaPlus, FaRegTrashAlt, FaSearch } from 'react-icons/fa';
-import { deleteLPJPack, useLPJPacks } from '../hooks/useLPJ';
+import { useDaftarBerkas } from '../hooks/useBerkas';
+import { hapusBerkas as hapusBerkasServer } from '../services/berkasDb';
 import { useLpjUser } from '../hooks/useLpjUser';
 import {
   isPerjadin,
@@ -26,8 +27,11 @@ import HapusBerkasModal from '../components/HapusBerkasModal';
 import { AngkaBerjalan, Lipat } from '@/components/animasi';
 import { ANIM, animasiHapus, animasiMasuk, jedaKe } from '@/utils/animasi';
 import { bukaBerkas } from '../../animasiHalaman';
+import { tahunIni } from '@/utils/nilai';
+import { pesanGalat } from '@/utils/pesanGalat';
 import { useToast } from '@/utils/toastStore';
 import { FONT, LAYOUT, STATUS, T } from '@/utils/uiTokens';
+import { daftarTahun } from '../../tahunAnggaran';
 
 const FILTER_LABEL = { all: 'Filter', baru: 'Baru', draft: 'Draft', selesai: 'Selesai' };
 const GRID = 'grid grid-cols-[130px_160px_minmax(0,1fr)_120px_140px_52px]';
@@ -39,11 +43,9 @@ const CHIP_ON = 'bg-[#0E2340] text-[#EAF0FA] dark:bg-[#081524]';
 
 export function TahapPill({ pack }) {
   const d = lpjTahapDisplay(pack);
-  const cls = d.legacy
-    ? `${T.surface2} ${T.inkMuted} ${T.border}`
-    : d.done
-      ? STATUS.doneOn
-      : 'bg-[#eff6ff] text-[#1d4ed8] border-[#bfdbfe] dark:bg-[rgba(57,135,229,.18)] dark:text-[#7DB6F3] dark:border-[rgba(125,182,243,.35)]';
+  const cls = d.done
+    ? STATUS.doneOn
+    : 'bg-[#eff6ff] text-[#1d4ed8] border-[#bfdbfe] dark:bg-[rgba(57,135,229,.18)] dark:text-[#7DB6F3] dark:border-[rgba(125,182,243,.35)]';
   return (
     <span
       className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-full border whitespace-nowrap ${cls}`}
@@ -57,8 +59,16 @@ export default function BerkasListPage() {
   const navigate = useNavigate();
   const showToast = useToast();
   const user = useLpjUser();
-  const { uid, nama, isAdmin, pegawaiLogin } = user;
-  const { packs, loading, error } = useLPJPacks({ isAdmin, userUid: uid });
+  const { uid, isAdmin, pegawaiLogin } = user;
+  const [tahun, setTahun] = useState(tahunIni);
+  const {
+    berkas: packs,
+    memuat: loading,
+    galat: error,
+    bisaLagi,
+    memuatLagi,
+    muatLagi,
+  } = useDaftarBerkas({ uid, semua: isAdmin, tahunAnggaran: tahun });
 
   const [q, setQ] = useState('');
   const [type, setType] = useState('all');
@@ -170,18 +180,19 @@ export default function BerkasListPage() {
     setType('all');
     setStatus('all');
     setBaru({ id });
-    // Cadangan: bila berkas tidak kunjung muncul di daftar, jangan biarkan barisnya tertahan
+    // Cadangan: bila berkas tidak kunjung muncul di daftar (ringkasan ditulis pemicu server),
+    // jangan biarkan barisnya tertahan
     clearTimeout(cadanganTimer.current);
     cadanganTimer.current = setTimeout(() => {
       if (!aktifRef.current || masukRef.current === id) return;
       masukRef.current = id;
       setBaru(null);
       bukaLangsung(id);
-    }, 4000);
+    }, 6000);
   }
 
   /** Konfirmasi → baris memudar & menyusut → baru data dihapus; bila gagal baris kembali. */
-  async function hapusBerkas(pack) {
+  async function jalankanHapus(pack, alasan) {
     setHapusPack(null);
     // Kebalikan animasi masuk: glitch merah → luruh kiri → kanan jadi debu merah → celah menutup
     const anim = animasiHapus({
@@ -190,20 +201,16 @@ export default function BerkasListPage() {
     });
     await anim.tutup;
     try {
-      await deleteLPJPack(pack, { superAdmin: user.isSuperAdmin });
+      await hapusBerkasServer(pack.id, alasan);
       showToast(`Berkas ${lpjIdOf(pack) || `"${uraianOf(pack)}"`} dihapus.`);
     } catch (err) {
-      console.error('deleteLPJPack error:', err);
       anim.pulihkan();
       setKeluarIds((s) => {
         const n = new Set(s);
         n.delete(pack.id);
         return n;
       });
-      showToast(
-        err?.message?.includes('bernomor') ? err.message : 'Gagal menghapus berkas.',
-        'error',
-      );
+      showToast(pesanGalat(err, 'Gagal menghapus berkas.'), 'error');
     }
   }
 
@@ -263,6 +270,19 @@ export default function BerkasListPage() {
               ))}
             </div>
             <div className="ml-auto flex items-center gap-2.5">
+              <select
+                aria-label="Tahun anggaran"
+                title="Tahun anggaran"
+                value={tahun}
+                onChange={(e) => setTahun(Number(e.target.value))}
+                className={`h-[34px] px-2.5 rounded-full text-[12.5px] font-semibold border border-transparent cursor-pointer ${T.surface2} ${T.ink2}`}
+              >
+                {daftarTahun().map((t) => (
+                  <option key={t} value={t}>
+                    TA {t}
+                  </option>
+                ))}
+              </select>
               <div className="relative">
                 <button
                   type="button"
@@ -317,7 +337,7 @@ export default function BerkasListPage() {
             <p
               className={`mb-3 px-3 py-2 rounded-lg text-[12.5px] ${STATUS.critBg} ${STATUS.critInk}`}
             >
-              {error}
+              Daftar LPJ tidak dapat dimuat. Muat ulang halaman; bila berulang, hubungi admin.
             </p>
           )}
 
@@ -363,6 +383,18 @@ export default function BerkasListPage() {
               ))}
             </div>
           </div>
+          {bisaLagi && (
+            <div className="flex justify-center mt-4">
+              <button
+                type="button"
+                onClick={muatLagi}
+                disabled={memuatLagi}
+                className={`px-4 py-2 rounded-full text-[12.5px] font-semibold ${T.surface2} ${T.ink2} ${T.hoverSurfaceHover}`}
+              >
+                {memuatLagi ? 'Memuat…' : 'Muat lebih banyak'}
+              </button>
+            </div>
+          )}
         </section>
       </div>
 
@@ -370,14 +402,14 @@ export default function BerkasListPage() {
         <HapusBerkasModal
           pack={hapusPack}
           onClose={() => setHapusPack(null)}
-          onYa={() => hapusBerkas(hapusPack)}
+          onYa={(alasan) => jalankanHapus(hapusPack, alasan)}
         />
       )}
 
       {showCreate && (
         <CreatePackModal
           uid={uid}
-          nama={nama}
+          tahunAnggaran={tahun}
           pegawaiLogin={pegawaiLogin}
           onClose={() => setShowCreate(false)}
           onCreated={berkasDibuat}

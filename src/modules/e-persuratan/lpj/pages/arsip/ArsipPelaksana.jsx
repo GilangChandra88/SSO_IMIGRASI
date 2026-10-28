@@ -4,11 +4,12 @@
  * (daftar) dan /e-persuratan/arsip/:drppId (detail) memakai satu komponen ini sehingga filter
  * tetap tersimpan saat kembali dari detail.
  *
- * Sumber data: berkas LPJ milik pengguna (`lpj_packs`, field `arsip` diisi Keuangan) digabung
- * dengan koleksi `drpp`. Hanya LPJ yang sudah dipindai & masuk DRPP yang tampil.
+ * Sumber data (per tahun anggaran): ringkasan berkas yang mencantumkan pengguna dan sudah masuk
+ * DRPP (`lpj_ringkas`, tahap `selesai`) digabung dengan DRPP yang memuat berkasnya (`lpj_drpp`).
+ * Pindaian berkas (`keuangan/status.arsip.berkas`) baru dibaca saat dibuka/dicetak.
  */
 
-import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   FaArchive,
@@ -20,20 +21,21 @@ import {
   FaSearch,
   FaTimes,
 } from 'react-icons/fa';
-import { useLPJPacks } from '../../hooks/useLPJ';
-import { useDrppList } from '../../hooks/useDrpp';
+import { useDaftarBerkas, useDaftarDrpp } from '../../hooks/useBerkas';
 import { useLpjUser } from '../../hooks/useLpjUser';
-import { usePegawaiList } from '../../hooks/usePegawaiList';
-import { bukaBerkas } from '../../services/lpjStorage';
+import { ambilBerkasArsip, ambilDrpp } from '../../services/keuanganDb';
 import { DRPP_DOCS, drppListForPelaksana, lpjMatches, pelaksanaText } from '../../utils/drppLogic';
 import { rupiah } from '../../utils/lpjLogic';
 import { formatTanggalPendek } from '../../utils/formatTanggal';
+import { daftarTahun } from '../../../tahunAnggaran';
 import Kwitansi from '../../components/arsip/Kwitansi';
 import Sorot from '../../components/arsip/Sorot';
 import Pager from '../../components/arsip/Pager';
 import DrppDocChips from '../../components/arsip/DrppDocChips';
 import LinkBack from '../../ui/LinkBack';
 import ArsipLpjModal from './ArsipLpjModal';
+import { bukaBerkas, pesanGagalUnggah } from '@/utils/berkasStorage';
+import { tahunIni } from '@/utils/nilai';
 import { useToast } from '@/utils/toastStore';
 import { BTN, FONT, LAYOUT, NAVY, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, jedaKe, munculBerurutan } from '@/utils/animasi';
@@ -54,7 +56,7 @@ const BULAN = [
   'Desember',
 ];
 const PAGE_SIZE = 10;
-const FILTER_AWAL = { q: '', bulan: 'all', tahun: 'all', urut: 'terbaru' };
+const FILTER_AWAL = { q: '', bulan: 'all', urut: 'terbaru' };
 
 const sumTotal = (rows) => rows.reduce((s, r) => s + r.total, 0);
 const lpjMatch = (r, q) => lpjMatches(r, q, true);
@@ -76,16 +78,35 @@ export default function ArsipPelaksana() {
   const parts = (useParams()['*'] || '').split('/').filter(Boolean);
   const drppId = parts[0] === 'drpp' && parts[1] ? decodeURIComponent(parts[1]) : '';
   const { uid } = useLpjUser();
-  // Hanya berkas yang mencantumkan pengguna (pembuat atau pelaksana)
-  const { packs, loading: loadingPacks, error: errPacks } = useLPJPacks({ userUid: uid });
-  const { list, loading: loadingDrpp, error: errDrpp } = useDrppList({ uid });
-  const { pegawai } = usePegawaiList();
+  const [tahun, setTahun] = useState(tahunIni);
+  // Hanya berkas yang mencantumkan pengguna (pembuat atau pelaksana) dan sudah masuk DRPP
+  const daftar = useDaftarBerkas({ uid, tahunAnggaran: tahun, tahap: 'selesai' });
+  const {
+    list,
+    memuat: memuatDrpp,
+    galat: galatDrpp,
+  } = useDaftarDrpp({
+    uid,
+    tahunAnggaran: tahun,
+  });
   const [filters, setFilters] = useState(FILTER_AWAL);
-  const drppList = useMemo(() => drppListForPelaksana(list, packs), [list, packs]);
+  const drppList = useMemo(() => drppListForPelaksana(list, daftar.berkas), [list, daftar.berkas]);
 
-  const loading = loadingPacks || loadingDrpp;
-  const error = errDrpp || errPacks;
+  const loading = daftar.memuat || memuatDrpp;
+  const error = daftar.galat || galatDrpp;
   const detail = drppId ? drppList.find((d) => d.id === drppId) : null;
+  const adaDetail = !!detail;
+
+  // Tautan langsung ke DRPP tahun anggaran lain: baca DRPP-nya sekali lalu pindah tahun
+  const dicari = useRef('');
+  useEffect(() => {
+    if (!drppId || loading || error || adaDetail || dicari.current === drppId) return;
+    dicari.current = drppId;
+    ambilDrpp(drppId).then(
+      (d) => d?.tahunAnggaran && d.tahunAnggaran !== tahun && setTahun(d.tahunAnggaran),
+      () => {},
+    );
+  }, [drppId, loading, error, adaDetail, tahun]);
 
   return (
     <div className={`min-h-full ${T.ground}`}>
@@ -99,7 +120,7 @@ export default function ArsipPelaksana() {
           <p
             className={`mt-4 rounded-[10px] px-3.5 py-3 text-[12.5px] ${STATUS.critBg} ${STATUS.critInk}`}
           >
-            {error}
+            Arsip tidak dapat dimuat. Muat ulang halaman; bila berulang, hubungi admin.
           </p>
         )}
 
@@ -115,7 +136,6 @@ export default function ArsipPelaksana() {
             <ArsipDetail
               key={detail.id}
               drpp={detail}
-              pegawai={pegawai}
               onBack={() => navigate('/e-persuratan/arsip')}
             />
           ) : (
@@ -131,6 +151,9 @@ export default function ArsipPelaksana() {
             drppList={drppList}
             filters={filters}
             setFilters={setFilters}
+            tahun={tahun}
+            setTahun={setTahun}
+            lanjutan={daftar}
             onOpen={(id) => navigate('/e-persuratan/arsip/drpp/' + encodeURIComponent(id))}
           />
         )}
@@ -140,23 +163,16 @@ export default function ArsipPelaksana() {
 }
 
 /* ───────────── DAFTAR DRPP ───────────── */
-function ArsipList({ drppList, filters, setFilters, onOpen }) {
-  const { q, bulan, tahun, urut } = filters;
+function ArsipList({ drppList, filters, setFilters, tahun, setTahun, lanjutan, onOpen }) {
+  const { q, bulan, urut } = filters;
   const query = q.trim().toLowerCase();
   const set = (patch) => setFilters({ ...filters, ...patch });
-  const filtered = !!(query || bulan !== 'all' || tahun !== 'all');
-
-  const years = useMemo(() => {
-    const ys = new Set();
-    drppList.forEach((d) => d.lpj.forEach((r) => r.tanggalLPJ && ys.add(r.tanggalLPJ.slice(0, 4))));
-    return [...ys].sort().reverse();
-  }, [drppList]);
+  const filtered = !!(query || bulan !== 'all');
 
   const items = useMemo(() => {
     const out = [];
     drppList.forEach((d) => {
       let rows = d.lpj;
-      if (tahun !== 'all') rows = rows.filter((r) => r.tanggalLPJ.slice(0, 4) === tahun);
       if (bulan !== 'all') rows = rows.filter((r) => r.tanggalLPJ.slice(5, 7) === bulan);
       if (!rows.length) return;
       const idHit = query && d.id.toLowerCase().includes(query);
@@ -164,14 +180,14 @@ function ArsipList({ drppList, filters, setFilters, onOpen }) {
         rows = rows.filter((r) => lpjMatch(r, query));
         if (!rows.length) return;
       }
-      out.push({ d, rows, showMatches: (query && !idHit) || bulan !== 'all' || tahun !== 'all' });
+      out.push({ d, rows, showMatches: (query && !idHit) || bulan !== 'all' });
     });
     out.sort((a, b) => {
       const c = a.d.tanggalDibuat.localeCompare(b.d.tanggalDibuat) || a.d.id.localeCompare(b.d.id);
       return urut === 'terlama' ? c : -c;
     });
     return out;
-  }, [drppList, query, bulan, tahun, urut]);
+  }, [drppList, query, bulan, urut]);
 
   const nLpj = items.reduce((s, it) => s + it.rows.length, 0);
   // Kartu DRPP muncul berurutan (diulang saat filter berganti)
@@ -207,14 +223,13 @@ function ArsipList({ drppList, filters, setFilters, onOpen }) {
           </select>
           <select
             className={SELECT}
-            aria-label="Filter tahun"
+            aria-label="Tahun anggaran"
             value={tahun}
-            onChange={(e) => set({ tahun: e.target.value })}
+            onChange={(e) => setTahun(Number(e.target.value))}
           >
-            <option value="all">Tahun</option>
-            {years.map((y) => (
-              <option key={y} value={y}>
-                {y}
+            {daftarTahun().map((t) => (
+              <option key={t} value={t}>
+                TA {t}
               </option>
             ))}
           </select>
@@ -241,7 +256,7 @@ function ArsipList({ drppList, filters, setFilters, onOpen }) {
           <button
             type="button"
             className={`inline-flex items-center gap-[5px] text-[12.5px] font-bold ${T.ink2} hover:text-[#101A2C] dark:hover:text-[#EAF0F8]`}
-            onClick={() => setFilters({ ...filters, q: '', bulan: 'all', tahun: 'all' })}
+            onClick={() => setFilters({ ...filters, q: '', bulan: 'all' })}
           >
             <FaTimes size={11} /> Reset filter
           </button>
@@ -316,17 +331,30 @@ function ArsipList({ drppList, filters, setFilters, onOpen }) {
           <div className={`text-center px-2.5 py-11 text-[13.5px] ${T.inkMuted}`}>
             <FaSearch size={30} className="block mx-auto mb-3 opacity-40" />
             {drppList.length === 0
-              ? 'Anda belum memiliki berkas LPJ yang diarsipkan.'
+              ? `Belum ada berkas LPJ Anda yang masuk DRPP pada TA ${tahun}.`
               : 'Tidak ada berkas yang cocok. Coba kata kunci lain atau reset filter.'}
           </div>
         )}
       </div>
+      {lanjutan.bisaLagi && (
+        <div className="flex flex-col items-center gap-1.5 mt-3.5">
+          <span className={`text-xs ${T.inkMuted}`}>Sebagian berkas lama belum dimuat.</span>
+          <button
+            type="button"
+            className={BTN.sm}
+            onClick={lanjutan.muatLagi}
+            disabled={lanjutan.memuatLagi}
+          >
+            {lanjutan.memuatLagi ? 'Memuat…' : 'Muat lebih banyak'}
+          </button>
+        </div>
+      )}
     </div>
   );
 }
 
 /* ───────────── DETAIL DRPP ───────────── */
-function ArsipDetail({ drpp, pegawai, onBack }) {
+function ArsipDetail({ drpp, onBack }) {
   const showToast = useToast();
   const [q, setQ] = useState('');
   const [page, setPage] = useState(1);
@@ -344,19 +372,21 @@ function ArsipDetail({ drpp, pegawai, onBack }) {
   // Ambil baris terbaru dari data langsung supaya modal ikut ter-update
   const lihat = lihatId ? rows.find((r) => r.id === lihatId) : null;
 
-  const cetakFile = (file) => {
-    bukaBerkas(file);
-    showToast('Berkas dibuka di tab baru — cetak dari penampil (Ctrl+P).');
-  };
+  const gagalBuka = (err) => showToast(pesanGagalUnggah(err, 'Berkas gagal dibuka.'), 'error');
+  const lihatFile = (file) => bukaBerkas(file).catch(gagalBuka);
+  const cetakFile = (file) =>
+    bukaBerkas(file).then((dibuka) => {
+      if (dibuka) showToast('Berkas dibuka di tab baru — cetak dari penampil (Ctrl+P).');
+      return dibuka;
+    }, gagalBuka);
 
-  const cetakLpj = (r) => {
-    if (r.scan) {
-      cetakFile(r.scan);
-      return;
-    }
-    setLihatId(r.id);
-    showToast('Scan dari Keuangan belum ada. Cetak dokumen satu per satu dari daftar ini.');
-  };
+  // Pindaian dibaca saat ditekan (1 dokumen); tab dibuka saat itu juga supaya tidak diblokir
+  const cetakLpj = (r) =>
+    cetakFile(ambilBerkasArsip(r.packId)).then((dibuka) => {
+      if (dibuka !== false) return;
+      setLihatId(r.id);
+      showToast('Scan dari Keuangan belum ada. Cetak dokumen satu per satu dari daftar ini.');
+    });
 
   return (
     <>
@@ -405,12 +435,12 @@ function ArsipDetail({ drpp, pegawai, onBack }) {
                 <div className="flex-1 min-w-0">
                   <div className={`text-[13px] font-semibold ${T.ink}`}>{label}</div>
                   <div className={`text-[11px] mt-px break-all ${T.inkMuted}`}>
-                    {file ? file.name : 'Belum tersedia'}
+                    {file ? file.nama : 'Belum tersedia'}
                   </div>
                 </div>
                 {file && (
                   <div className="flex gap-2 ml-[46px] w-[calc(100%-46px)]">
-                    <button type="button" className={BTN.xs} onClick={() => bukaBerkas(file)}>
+                    <button type="button" className={BTN.xs} onClick={() => lihatFile(file)}>
                       <FaRegEye size={11} /> Lihat
                     </button>
                     <button type="button" className={BTN.xs} onClick={() => cetakFile(file)}>
@@ -523,7 +553,7 @@ function ArsipDetail({ drpp, pegawai, onBack }) {
         />
       </div>
 
-      {lihat && <ArsipLpjModal row={lihat} pegawai={pegawai} onClose={() => setLihatId(null)} />}
+      {lihat && <ArsipLpjModal row={lihat} onClose={() => setLihatId(null)} />}
     </>
   );
 }

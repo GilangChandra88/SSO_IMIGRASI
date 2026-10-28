@@ -18,15 +18,14 @@ import {
   FaRegFileAlt,
   FaUndo,
 } from 'react-icons/fa';
-import { usePegawaiList } from '../../hooks/usePegawaiList';
+import { usePegawaiRingkas } from '@/context/usePegawaiRingkas';
+import { usePejabat } from '@/context/usePejabat';
+import { keDate } from '@/utils/nilai';
+import { pesanGalat } from '@/utils/pesanGalat';
 import { useDokumenLpj } from '../../hooks/useDokumenLpj';
-import {
-  selesaikanVerifikasi,
-  simpanNominal,
-  ubahDokumen,
-  useMakBerkas,
-} from '../../hooks/useVerifikasi';
-import { resolveDokumen } from '../../utils/dokumenLpj';
+import { useMakBerkas } from '../../hooks/useMakBerkas';
+import { selesaikanVerifikasi, simpanKoreksi, ubahDokumen } from '../../services/keuanganDb';
+import { resolveDokumen, tanggalPejabat } from '../../utils/dokumenLpj';
 import { cetakGabungan } from '../../utils/cetakPdf';
 import {
   faseAktifLabel,
@@ -36,15 +35,16 @@ import {
   pelaksanaOf,
   rupiah,
 } from '../../utils/lpjLogic';
-import { formatTanggal } from '../../utils/formatTanggal';
+import { formatTanggalDate } from '../../utils/formatTanggal';
 import {
   dokDicetak,
   dokLengkap,
   kelompokDokumen,
   labelTahap,
   nominalBerkas,
+  pokUntukDibekukan,
   semuaDokumen,
-  tahapBerkas,
+  tahapDariKeuangan,
   verifOf,
 } from '../../utils/verifikasiLogic';
 import LinkBack from '../../ui/LinkBack';
@@ -75,12 +75,24 @@ const PANDUAN = [
   ['ulang', FaUndo, 'Ulang', 'Batalkan pilihan jika keliru'],
 ];
 
-export default function HalamanVerifikasi({ pack, user }) {
+/**
+ * @param {{ pack: object, keuangan: object|null, user: object }} props  keuangan = dokumen
+ *   keuangan/status (null sebelum Keuangan memulai verifikasi)
+ */
+export default function HalamanVerifikasi({ pack, keuangan, user }) {
   const navigate = useNavigate();
   const showToast = useToast();
-  const { pegawai } = usePegawaiList();
-  const { mak, opsiItem } = useMakBerkas(pack);
-  const dok = useDokumenLpj({ pack, pegawai, showToast, mak });
+  const { semua: pegawai } = usePegawaiRingkas();
+  const { pejabatPada } = usePejabat();
+  const { mak, opsiItem } = useMakBerkas(pack, keuangan);
+  const verif = verifOf(keuangan);
+  const dok = useDokumenLpj({
+    pack,
+    showToast,
+    mak,
+    pejabat: keuangan?.pejabatBeku,
+    verifikasi: verif,
+  });
 
   const [detailBuka, setDetailBuka] = useState(true);
   const [edit, setEdit] = useState(false);
@@ -92,9 +104,8 @@ export default function HalamanVerifikasi({ pack, user }) {
   const isiRef = useRef(null);
   useLayoutEffect(() => munculBerurutan(isiRef.current), []);
 
-  const tahap = tahapBerkas(pack);
+  const tahap = tahapDariKeuangan(keuangan);
   const kunci = tahap !== 'verif';
-  const verif = verifOf(pack);
   const kelompok = kelompokDokumen(pack);
   const docs = semuaDokumen(kelompok);
   const nLengkap = docs.filter((d) => dokLengkap(verif, d.key)).length;
@@ -121,19 +132,19 @@ export default function HalamanVerifikasi({ pack, user }) {
       await janji;
       return true;
     } catch (err) {
-      console.error(pesanGagal, err);
-      showToast(pesanGagal, 'error');
+      showToast(pesanGalat(err, pesanGagal), 'error');
       return false;
     }
   }
+
+  const ubah = (keys, ke) => ubahDokumen(pack.id, keys, ke, user.uid);
 
   const act = {
     kunci,
     cetak: async (d) => {
       if (d.cetak.jenis === 'files') setLampiran({ label: d.nama, files: d.cetak.files });
       else await dok.cetak(d.cetak.item);
-      if (!kunci)
-        jalankan(ubahDokumen(pack, [d.key], { dicetak: true }), 'Gagal mencatat dokumen dicetak.');
+      if (!kunci) jalankan(ubah([d.key], { dicetak: true }), 'Gagal mencatat dokumen dicetak.');
     },
     // Selama belum terkunci, yang dicetak hanya dokumen yang belum dicentang.
     cetakSemua: (label, list) =>
@@ -143,8 +154,7 @@ export default function HalamanVerifikasi({ pack, user }) {
       }),
     centang: (list) =>
       jalankan(
-        ubahDokumen(
-          pack,
+        ubah(
           list.map((d) => d.key),
           { lengkap: true },
         ),
@@ -152,8 +162,7 @@ export default function HalamanVerifikasi({ pack, user }) {
       ),
     ulang: (list) =>
       jalankan(
-        ubahDokumen(
-          pack,
+        ubah(
           list.map((d) => d.key),
           { lengkap: false, dicetak: false },
         ),
@@ -163,19 +172,17 @@ export default function HalamanVerifikasi({ pack, user }) {
 
   async function cetakDaftar(list) {
     const siap = list
-      .map((d) => resolveDokumen(pack, d.cetak.item, pegawai, mak))
+      .map((d) => resolveDokumen(pack, d.cetak.item, dok.konteks))
       .filter((r) => r.kind === 'pdf');
     try {
       await cetakGabungan(siap);
-    } catch (err) {
-      console.error('cetakGabungan error:', err);
+    } catch {
       showToast('Gagal menyiapkan dokumen untuk dicetak.', 'error');
       return;
     }
     if (!kunci) {
       await jalankan(
-        ubahDokumen(
-          pack,
+        ubah(
           list.map((d) => d.key),
           { dicetak: true },
         ),
@@ -185,9 +192,12 @@ export default function HalamanVerifikasi({ pack, user }) {
     setCetakSemua(null);
   }
 
-  async function simpanEdit(n) {
+  async function simpanEdit(koreksi) {
     setMenyimpan(true);
-    const ok = await jalankan(simpanNominal(pack, n), 'Gagal menyimpan detail transaksi.');
+    const ok = await jalankan(
+      simpanKoreksi(pack.id, koreksi, user.uid),
+      'Gagal menyimpan detail transaksi.',
+    );
     setMenyimpan(false);
     if (ok) {
       setEdit(false);
@@ -195,14 +205,36 @@ export default function HalamanVerifikasi({ pack, user }) {
     }
   }
 
+  /** PPK & Bendahara yang sudah dibekukan, atau yang berlaku pada tanggal dokumen berkas. */
+  function pejabatSaatSelesai() {
+    const beku = keuangan?.pejabatBeku || {};
+    const tanggal = tanggalPejabat(pack);
+    return {
+      ppk: beku.ppk || pejabatPada('ppk', tanggal),
+      bendahara: beku.bendahara || pejabatPada('bendahara', tanggal),
+    };
+  }
+
   async function selesai() {
     const belum = docs.filter((d) => !dokLengkap(verif, d.key)).map((d) => d.key);
+    // POK & pejabat dibekukan: Lembar Verifikasi tidak berubah walau pagu/pejabat berganti
+    const pejabatBeku = Object.fromEntries(
+      Object.entries(pejabatSaatSelesai()).filter(([, orang]) => orang),
+    );
     const ok = await jalankan(
-      selesaikanVerifikasi(pack, { semuaKeys: belum, uid: user.uid, nama: user.nama }),
+      selesaikanVerifikasi(
+        pack.id,
+        {
+          semuaKeys: belum,
+          pokBeku: pokUntukDibekukan(pack, verif, mak),
+          pejabatBeku,
+        },
+        user.uid,
+      ),
       'Gagal menyelesaikan verifikasi.',
     );
     if (!ok) return false;
-    const ke = tahapBerkas({ ...pack, verifikasi: { ...verif, selesai: true } });
+    const ke = 'sakti';
     navigate(`${BASE}?tab=${ke}`, {
       state: {
         pemberitahuan: {
@@ -219,7 +251,7 @@ export default function HalamanVerifikasi({ pack, user }) {
   }
 
   const pct = docs.length ? Math.round((nLengkap / docs.length) * 100) : 0;
-  const oleh = verif.oleh?.nama;
+  const oleh = verif.selesaiOleh ? pegawai.find((p) => p.authUid === verif.selesaiOleh)?.nama : '';
 
   return (
     <div className={`min-h-full ${T.ground}`}>
@@ -267,9 +299,9 @@ export default function HalamanVerifikasi({ pack, user }) {
               <FaCheck size={13} className="mt-0.5 shrink-0" />
               <span>
                 Verifikasi selesai{oleh ? ` oleh ${oleh}` : ''}
-                {verif.selesaiAt ? ` pada ${formatTanggal(verif.selesaiAt)}` : ''}. Berkas kini di
-                tahap <b>{tahap ? labelTahap(tahap) : 'Arsip'}</b>; dokumen dan Lembar Verifikasi
-                masih bisa dicetak.
+                {verif.selesaiPada ? ` pada ${formatTanggalDate(keDate(verif.selesaiPada))}` : ''}.
+                Berkas kini di tahap <b>{tahap ? labelTahap(tahap) : 'Arsip'}</b>; dokumen dan
+                Lembar Verifikasi masih bisa dicetak.
               </span>
             </div>
           )}
@@ -515,6 +547,9 @@ export default function HalamanVerifikasi({ pack, user }) {
           pack={pack}
           belum={docs.length - nLengkap}
           total={docs.length}
+          tanpaPejabat={Object.entries(pejabatSaatSelesai())
+            .filter(([, orang]) => !orang)
+            .map(([jenis]) => (jenis === 'ppk' ? 'PPK' : 'Bendahara'))}
           onClose={() => setKonfirmasi(false)}
           onConfirm={selesai}
         />

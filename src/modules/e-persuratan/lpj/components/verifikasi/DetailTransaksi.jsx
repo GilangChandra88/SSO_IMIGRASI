@@ -117,7 +117,8 @@ export function RpInput({ id, value, onChange, invalid, label, placeholder = '0'
 /**
  * Edit Detail Transaksi di tempat (PgvTxEdit purwarupa): Item boleh diganti (Item lain di Akun
  * yang sama), nominal & POK Terakhir boleh diubah; Sisa Anggaran = POK − nominal (otomatis).
- * Yang disimpan hanya perubahan: onSave({ lines, codes, poks }).
+ * Yang disimpan hanya perubahan, berkunci Item asli (`verifikasi.koreksi`):
+ * onSave({ [itemAsli]: { jumlah?, itemNodeId?, itemKode?, itemNama?, pok? } }).
  */
 export function EditTransaksi({ nom, mak, opsiItem, onSave, onBatal, menyimpan }) {
   const awal = (f) => Object.fromEntries(nom.lines.map((l) => [l.key, f(l)]));
@@ -130,7 +131,7 @@ export function EditTransaksi({ nom, mak, opsiItem, onSave, onBatal, menyimpan }
   const total = nom.lines.reduce((a, l) => a + (vals[l.key] ?? 0), 0);
   const opsi = (l) => {
     const ada = opsiItem.some((o) => o.id === codes[l.key]);
-    return ada ? opsiItem : [{ id: codes[l.key], kode: l.kode, name: l.label }, ...opsiItem];
+    return ada ? opsiItem : [{ id: codes[l.key], kode: l.kode, nama: l.label }, ...opsiItem];
   };
 
   function gantiItem(key, baru) {
@@ -156,16 +157,25 @@ export function EditTransaksi({ nom, mak, opsiItem, onSave, onBatal, menyimpan }
       gulirKeGalat(akarRef.current);
       return;
     }
-    const lines = {};
-    const cds = {};
-    const pks = {};
+    const koreksi = {};
     nom.lines.forEach((l) => {
-      if (vals[l.key] !== l.asli) lines[l.key] = vals[l.key];
-      if (codes[l.key] !== l.codeAsli) cds[l.key] = codes[l.key];
-      if (poks[l.key] != null && poks[l.key] !== pokItem(mak, codes[l.key]))
-        pks[l.key] = poks[l.key];
+      const k = {};
+      if (vals[l.key] !== l.asli) k.jumlah = Math.round(vals[l.key]);
+      if (codes[l.key] !== l.codeAsli) {
+        // Salinan kode/nama Item pengganti: dipakai setelah pohon MAK tidak dimuat lagi
+        const o = opsi(l).find((x) => x.id === codes[l.key]);
+        Object.assign(k, {
+          itemNodeId: codes[l.key],
+          itemKode: o?.kode || '',
+          itemNama: o?.nama || '',
+        });
+      }
+      if (poks[l.key] != null && poks[l.key] !== pokItem(mak, codes[l.key])) {
+        k.pok = Math.round(poks[l.key]);
+      }
+      if (Object.keys(k).length) koreksi[l.key] = k;
     });
-    onSave({ lines, codes: cds, poks: pks });
+    onSave(koreksi);
   }
 
   function kembalikan() {
@@ -207,7 +217,7 @@ export function EditTransaksi({ nom, mak, opsiItem, onSave, onBatal, menyimpan }
                 >
                   {opsi(l).map((o) => (
                     <option key={o.id} value={o.id}>
-                      {[o.kode, o.name].filter(Boolean).join(' — ')}
+                      {[o.kode, o.nama].filter(Boolean).join(' — ')}
                     </option>
                   ))}
                 </select>
