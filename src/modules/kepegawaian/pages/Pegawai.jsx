@@ -31,7 +31,7 @@ import {
 } from '@/utils/dataPegawai';
 import { pantauKontak, pantauMaster, pantauPegawai } from '../services/pegawaiDb';
 import AvatarPegawai from '../components/AvatarPegawai';
-import FormPegawai from '../components/FormPegawai';
+import ModalFormPegawai from '../components/ModalFormPegawai';
 import ModalBuatAkun from '../components/ModalBuatAkun';
 import ModalAturPeran from '../components/ModalAturPeran';
 import ModalImporPegawai from '../components/ModalImporPegawai';
@@ -186,7 +186,7 @@ export default function Pegawai() {
                 Daftar Pegawai ({tampil.length}
                 {tampil.length !== daftar.length && ` dari ${daftar.length}`})
               </h2>
-              {!form && isKepegawaian && (
+              {isKepegawaian && (
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="button"
@@ -205,19 +205,6 @@ export default function Pegawai() {
                 </div>
               )}
             </div>
-
-            {form && (
-              <FormPegawai
-                key={form.pegawai?.id || 'baru'}
-                pegawai={form.pegawai}
-                kontak={form.pegawai ? kontak[form.pegawai.id] : undefined}
-                pangkat={pangkat}
-                jabatan={jabatan}
-                unit={unit}
-                uid={uid}
-                onTutup={() => setForm(null)}
-              />
-            )}
 
             <div className="p-3 sm:p-4 border-b border-slate-100 dark:border-slate-800 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-[1fr_14rem_10rem_auto] gap-2 items-center">
               <label className="relative block">
@@ -472,6 +459,18 @@ export default function Pegawai() {
         {tab === 'jabatan' && <TabMaster jenis="jabatan" daftar={jabatan} uid={uid} />}
       </div>
 
+      {form && (
+        <ModalFormPegawai
+          key={form.pegawai?.id || 'baru'}
+          pegawai={form.pegawai}
+          kontak={form.pegawai ? kontak[form.pegawai.id] : undefined}
+          pangkat={pangkat}
+          jabatan={jabatan}
+          unit={unit}
+          uid={uid}
+          onTutup={() => setForm(null)}
+        />
+      )}
       {modal?.jenis === 'impor' && (
         <ModalImporPegawai
           pegawai={daftar}
