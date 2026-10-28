@@ -7,20 +7,26 @@ import {
   FaRegTrashAlt,
   FaUpload,
 } from 'react-icons/fa';
-import {
-  LAP_FOTO_MAX_BYTES,
-  LAP_FOTO_MAX_COUNT,
-  LAP_PENUTUP_BAKU,
-  LAP_SECTIONS,
-} from '../../data/masterLpj';
+import { formatUkuran } from '@/utils/berkasStorage';
+import { PANJANG } from '@/utils/batas';
+import { LAP_PENUTUP_BAKU, LAP_SECTIONS } from '../../data/masterLpj';
 import { formatTanggal } from '../../utils/formatTanggal';
-import { lpjIdOf } from '../../utils/lpjLogic';
-import { deleteLpjFile, pesanGagalUnggah, uploadLpjFile } from '../../services/lpjStorage';
+import {
+  ATURAN_UNGGAHAN,
+  DAFTAR_GAMBAR,
+  hapusGambar,
+  pesanUnggah,
+  tambahGambar,
+} from '../../services/unggahan';
+import FotoBerkas from '../../components/FotoBerkas';
 import PegawaiPicker from '../../components/PegawaiPicker';
 import PegawaiCards from '../../components/PegawaiCards';
 import Field from '../../ui/Field';
 import { BTN, FORM, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, hapusBaris } from '@/utils/animasi';
+
+const MAKS_FOTO = DAFTAR_GAMBAR.laporan.maks;
+const UKURAN_FOTO = formatUkuran(ATURAN_UNGGAHAN.laporan.maksByte);
 
 // Petunjuk singkat di bawah isian Laporan Kegiatan
 const HINT_LAP = {
@@ -28,7 +34,10 @@ const HINT_LAP = {
   penutup: 'Boleh dikosongkan — dicetak kalimat penutup baku seperti contoh di kolom',
 };
 
-/** Fase 4 — Laporan Kegiatan + foto dokumentasi, lalu berkas diselesaikan. */
+/**
+ * Fase 4 — Laporan Kegiatan + foto dokumentasi, lalu berkas diselesaikan. Foto langsung tersimpan
+ * begitu terunggah (diperkecil otomatis); teks laporan ikut simpan otomatis form.
+ */
 export default function StepLaporan({ ctx }) {
   const {
     pack,
@@ -45,95 +54,53 @@ export default function StepLaporan({ ctx }) {
     pegawai,
     loadingPeg,
   } = ctx;
-  const { sp, spd, lap } = pf;
-  const fotos = lap.fotos || [];
-  const fotoRoom = LAP_FOTO_MAX_COUNT - fotos.length;
+  // Surat Perintah & SPD sudah final; foto selalu dari berkas live
+  const sp = pack.sp || {};
+  const spd = pack.spd || {};
+  const lap = pf.laporan;
+  const fotos = pack.laporan?.foto || [];
+  const fotoRoom = MAKS_FOTO - fotos.length;
   const [uploading, setUploading] = useState(false);
-  const setLap = (patch) => setPf((prev) => ({ ...prev, lap: { ...prev.lap, ...patch } }));
+  const setLap = (patch) => setPf((prev) => ({ ...prev, laporan: { ...prev.laporan, ...patch } }));
 
   async function handleFotoFiles(fileList) {
     const files = Array.from(fileList || []);
     if (!files.length) return;
-    const room = LAP_FOTO_MAX_COUNT - (ctx.pfRef.current.lap.fotos || []).length;
-    if (room <= 0) {
-      setErrors({
-        ...errors,
-        fotoData: `Sudah mencapai batas maksimal ${LAP_FOTO_MAX_COUNT} foto.`,
-      });
+    if (fotoRoom <= 0) {
+      setErrors({ ...errors, fotoData: `Sudah mencapai batas maksimal ${MAKS_FOTO} foto.` });
       return;
     }
-    let skippedType = false;
-    let skippedSize = false;
-    let skippedRoom = false;
-    const toAdd = [];
-    files.forEach((f) => {
-      if (toAdd.length >= room) {
-        skippedRoom = true;
-        return;
-      }
-      if (!f.type.startsWith('image/')) {
-        skippedType = true;
-        return;
-      }
-      if (f.size > LAP_FOTO_MAX_BYTES) {
-        skippedSize = true;
-        return;
-      }
-      toAdd.push(f);
-    });
+    const gambar = files.filter((f) => ATURAN_UNGGAHAN.laporan.tipe.includes(f.type));
+    const toAdd = gambar.slice(0, fotoRoom);
     if (!toAdd.length) {
-      setErrors({
-        ...errors,
-        fotoData: skippedSize
-          ? 'Ukuran foto melebihi 200KB.'
-          : skippedType
-            ? 'File harus berupa gambar (JPG/PNG).'
-            : 'Tidak ada foto yang bisa ditambahkan.',
-      });
+      setErrors({ ...errors, fotoData: 'File harus berupa gambar (JPG/PNG).' });
       return;
     }
 
     setUploading(true);
-    try {
-      const metas = [];
-      for (const f of toAdd) {
-        metas.push(await uploadLpjFile(pack.id, 'laporan-foto', f, user.uid));
+    let gagal = '';
+    for (const f of toAdd) {
+      try {
+        await tambahGambar(pack.id, 'laporan', f, user.uid);
+      } catch (err) {
+        gagal = pesanUnggah(err);
       }
-      await persist(
-        (prev) => ({
-          ...prev,
-          lap: { ...prev.lap, fotos: [...(prev.lap.fotos || []), ...metas] },
-        }),
-        { quiet: true, teks: `mengunggah ${metas.length} foto kegiatan` },
-      );
-      setErrors({
-        ...errors,
-        fotoData:
-          skippedRoom || skippedType || skippedSize
-            ? 'Sebagian file dilewati (format/ukuran/slot tidak sesuai).'
-            : undefined,
-      });
-    } catch (err) {
-      console.error('upload foto error:', err);
-      setErrors({ ...errors, fotoData: pesanGagalUnggah(err) });
-    } finally {
-      setUploading(false);
     }
+    setUploading(false);
+    const dilewati = toAdd.length < files.length;
+    setErrors({
+      ...errors,
+      fotoData:
+        gagal ||
+        (dilewati ? 'Sebagian file dilewati (bukan JPG/PNG atau melebihi slot).' : undefined),
+    });
   }
 
   async function hapusFoto(foto) {
     try {
-      await deleteLpjFile(foto.path);
-      await persist(
-        (prev) => ({
-          ...prev,
-          lap: { ...prev.lap, fotos: (prev.lap.fotos || []).filter((f) => f.path !== foto.path) },
-        }),
-        { quiet: true },
-      );
+      await hapusGambar(pack.id, 'laporan', foto, user.uid);
     } catch (err) {
-      console.error('hapus foto error:', err);
-      showToast('Gagal menghapus foto.', 'error');
+      showToast(pesanUnggah(err), 'error');
     }
   }
 
@@ -148,19 +115,12 @@ export default function StepLaporan({ ctx }) {
     askConfirm({
       label: 'Laporan Kegiatan',
       onYes: async () => {
-        const ok = await persist(
-          (prev) => ({
-            ...prev,
-            lap: { ...prev.lap, locked: true },
-            selesai: { ...prev.selesai, laporan: true },
-          }),
-          {
-            quiet: true,
-            teks: `menyelesaikan berkas ${lpjIdOf(pack)}`,
-            extra: { status: 'selesai' },
-            tahanLangkah: true, // tetap di form ini sampai pindah ke Detail LPJ
-          },
-        );
+        // Bagian terakhir dikunci → status berkas "selesai" ditulis Function
+        const ok = await persist(ctx.pfRef.current, {
+          quiet: true,
+          kunci: 'laporan',
+          tahanLangkah: true, // tetap di form ini sampai pindah ke Detail LPJ
+        });
         closeConfirm();
         if (ok) {
           showToast('Berkas LPJ berhasil diselesaikan.');
@@ -193,7 +153,7 @@ export default function StepLaporan({ ctx }) {
           </span>
           <span>
             <span className={T.inkMuted}>Pelaksana:</span>{' '}
-            <strong>{sp.kepada.map((p) => p.nama).join(', ') || '—'}</strong>
+            <strong>{(sp.kepada || []).map((p) => p.nama).join(', ') || '—'}</strong>
           </span>
         </div>
       </div>
@@ -231,6 +191,7 @@ export default function StepLaporan({ ctx }) {
             <textarea
               id={`lap-${key}`}
               value={lap[key] || ''}
+              maxLength={PANJANG.teksLaporan}
               placeholder={key === 'penutup' ? LAP_PENUTUP_BAKU : undefined}
               onChange={(e) => setLap({ [key]: e.target.value })}
               className={`${FORM.textarea} !min-h-[90px] field-sizing-content ${errors[key] ? FORM.borderErr : FORM.borderOk}`}
@@ -254,9 +215,7 @@ export default function StepLaporan({ ctx }) {
           <div className="mb-3.5">
             <PegawaiCards
               list={[lap.penandatangan]}
-              onHapus={() =>
-                setPf((prev) => ({ ...prev, lap: { ...prev.lap, penandatangan: null } }))
-              }
+              onHapus={() => setLap({ penandatangan: null })}
             />
           </div>
         )}
@@ -265,8 +224,8 @@ export default function StepLaporan({ ctx }) {
       <div className={FORM.card}>
         <h3 className={`${FORM.cardTitle} mb-1`}>Lampiran Foto Kegiatan</h3>
         <p className={`text-xs mb-3.5 ${T.ink2}`}>
-          Unggah foto dokumentasi kegiatan · JPG/PNG · maks. 200KB per foto · maksimal{' '}
-          {LAP_FOTO_MAX_COUNT} foto ({fotos.length}/{LAP_FOTO_MAX_COUNT})
+          Unggah foto dokumentasi kegiatan · JPG/PNG · diperkecil otomatis ke maks. {UKURAN_FOTO}{' '}
+          per foto · maksimal {MAKS_FOTO} foto ({fotos.length}/{MAKS_FOTO})
         </p>
         {fotos.length > 0 && (
           <div
@@ -277,16 +236,14 @@ export default function StepLaporan({ ctx }) {
                 key={f.path}
                 className={`relative rounded-[10px] border overflow-hidden ${ANIM.meletup} ${T.border} ${T.surface2}`}
               >
-                <a href={f.url} target="_blank" rel="noreferrer">
-                  <img src={f.url} alt={f.name} className="block w-full h-24 object-cover" />
-                </a>
-                <div className={`px-1.5 py-[5px] text-[10.5px] truncate ${T.ink2}`} title={f.name}>
-                  {f.name}
+                <FotoBerkas foto={f} />
+                <div className={`px-1.5 py-[5px] text-[10.5px] truncate ${T.ink2}`} title={f.nama}>
+                  {f.nama}
                 </div>
                 <button
                   type="button"
                   title="Hapus foto"
-                  aria-label={`Hapus foto ${f.name}`}
+                  aria-label={`Hapus foto ${f.nama}`}
                   onClick={(e) =>
                     hapusBaris(e.currentTarget.parentElement, () => hapusFoto(f), { geser: false })
                   }
@@ -306,7 +263,7 @@ export default function StepLaporan({ ctx }) {
           >
             <input
               type="file"
-              accept="image/*"
+              accept="image/jpeg,image/png"
               multiple
               hidden
               disabled={uploading}
@@ -330,12 +287,12 @@ export default function StepLaporan({ ctx }) {
                   : 'Klik untuk upload foto kegiatan'}
             </div>
             <div className={`text-xs mt-1 ${T.inkMuted}`}>
-              JPG atau PNG, maksimal 200KB per foto — bisa pilih beberapa sekaligus
+              JPG atau PNG, diperkecil otomatis — bisa pilih beberapa sekaligus
             </div>
           </label>
         ) : (
           <p className={`text-[11.5px] ${T.inkMuted}`}>
-            Sudah mencapai batas maksimal {LAP_FOTO_MAX_COUNT} foto.
+            Sudah mencapai batas maksimal {MAKS_FOTO} foto.
           </p>
         )}
         {errors.fotoData && <p className={FORM.err}>{errors.fotoData}</p>}

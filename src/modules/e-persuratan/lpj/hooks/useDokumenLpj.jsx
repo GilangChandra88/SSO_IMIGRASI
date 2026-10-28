@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import SuratPreviewModal from '@/components/SuratPreview/SuratPreviewModal';
-import { resolveDokumen } from '../utils/dokumenLpj';
+import { usePejabat } from '@/context/usePejabat';
+import { useDipa } from '../../useDipa';
+import { resolveDokumen, tanggalPejabat } from '../utils/dokumenLpj';
 import { cetakPdf, pdfGabungan } from '../utils/cetakPdf';
 import DocPreviewPopup from '../ui/DocPreviewPopup';
 import LampiranViewer from '../components/LampiranViewer';
@@ -13,25 +15,40 @@ import PdfGabunganModal from '../components/PdfGabunganModal';
  * - Belum ada template → pratinjau placeholder (seperti purwarupa).
  * - `cetakSemua(items, label)` → dokumen ber-template PDF & berkas unggahan digabung jadi satu
  *   PDF dan ditampilkan di popup (Cetak / Unduh).
- * `mak` (opsional, dari useMakBerkas) mengisi POK & Sisa Anggaran di Lembar Verifikasi.
- * Render `modal` di halaman pemanggil.
+ * `mak` & `verifikasi` (opsional) mengisi Lembar Verifikasi (POK/Sisa, centang dokumen, koreksi
+ * nominal); `pejabat` (opsional, `{ ppk, bendahara }` salinan Orang yang dibekukan saat
+ * verifikasi) mengisi tanda tangan PPK/Bendahara; yang kosong diisi pejabat yang berlaku pada
+ * tanggal dokumen (`pegawai_pejabat`, lihat tanggalPejabat), dan SPD memakai PPK pada tanggal SPD.
+ * Teks DIPA dibaca dari `mak_dipa` tahun anggaran berkas. Render `modal` di halaman pemanggil.
  */
-export function useDokumenLpj({ pack, pegawai, showToast, mak }) {
+export function useDokumenLpj({ pack, showToast, mak, pejabat, verifikasi }) {
   const [preview, setPreview] = useState(null);
   const urutGabungan = useRef(0); // abaikan hasil penyusunan yang popupnya sudah ditutup
+  const { dipa } = useDipa(pack?.tahunAnggaran);
+  const { pejabatPada } = usePejabat();
+  const tanggal = tanggalPejabat(pack);
+  const konteks = {
+    dipa,
+    pejabat: {
+      ppk: pejabat?.ppk || pejabatPada('ppk', tanggal),
+      bendahara: pejabat?.bendahara || pejabatPada('bendahara', tanggal),
+      ppkSpd: pejabatPada('ppk', pack?.spd?.tanggal || tanggal),
+    },
+    mak,
+    verifikasi,
+  };
 
-  const lihat = (item) => setPreview(resolveDokumen(pack, item, pegawai, mak));
+  const lihat = (item) => setPreview(resolveDokumen(pack, item, konteks));
 
   const cetak = async (item) => {
-    const r = resolveDokumen(pack, item, pegawai, mak);
+    const r = resolveDokumen(pack, item, konteks);
     if (r.kind !== 'pdf') {
       setPreview(r);
       return;
     }
     try {
       await cetakPdf(r);
-    } catch (err) {
-      console.error('cetakPdf error:', err);
+    } catch {
       showToast?.('Gagal menyiapkan dokumen untuk dicetak.', 'error');
     }
   };
@@ -42,7 +59,7 @@ export function useDokumenLpj({ pack, pegawai, showToast, mak }) {
    */
   const cetakSemua = async (items, label = 'Cetak Semua') => {
     const siap = items
-      .map((item) => resolveDokumen(pack, item, pegawai, mak))
+      .map((item) => resolveDokumen(pack, item, konteks))
       .filter((r) => r.kind === 'pdf' || (r.kind === 'files' && r.files.length > 0));
     if (!siap.length) {
       showToast?.('Belum ada dokumen yang bisa dicetak.', 'error');
@@ -60,8 +77,7 @@ export function useDokumenLpj({ pack, pegawai, showToast, mak }) {
           'error',
         );
       }
-    } catch (err) {
-      console.error('pdfGabungan error:', err);
+    } catch {
       if (urutGabungan.current === ke) setPreview(null);
       showToast?.('Gagal menyiapkan dokumen untuk dicetak.', 'error');
     }
@@ -98,5 +114,5 @@ export function useDokumenLpj({ pack, pegawai, showToast, mak }) {
     modal = <DocPreviewPopup label={preview.label} onClose={close} />;
   }
 
-  return { lihat, cetak, cetakSemua, modal };
+  return { lihat, cetak, cetakSemua, modal, konteks };
 }

@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { FaDoorOpen } from 'react-icons/fa';
 import { FONT } from '@/utils/uiTokens';
 import { ANIM, jedaKe } from '@/utils/animasi';
-import { mdDari, tahunIni } from '@/utils/ulangTahun';
+import { tanggalIso } from '@/utils/nilai';
 import FotoWajah from './FotoWajah';
 import { hentakCap, konfeti } from './animasiUltah';
 
@@ -24,7 +24,8 @@ export default function TahapVisa({ pegawai, selfie, onSelesai }) {
   const tanggalCap = hariIni
     .toLocaleDateString('id-ID', { day: '2-digit', month: 'short', year: 'numeric' })
     .toUpperCase();
-  const nomor = `ULT-${tahunIni()}-${mdDari(hariIni).replace('-', '')}`;
+  const iso = tanggalIso(hariIni);
+  const nomor = `ULT-${iso.slice(0, 4)}-${iso.slice(5).replace('-', '')}`;
   const mrz = `V<IDN${nama.replace(/[^A-Z]+/g, '<')}`.padEnd(44, '<').slice(0, 44);
 
   useEffect(() => {

@@ -1,10 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { FaMoneyCheckAlt, FaBoxes, FaUserTie, FaSignOutAlt, FaChevronRight } from 'react-icons/fa';
+import {
+  FaMoneyCheckAlt,
+  FaBoxes,
+  FaUserTie,
+  FaSignOutAlt,
+  FaChevronRight,
+  FaKey,
+} from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
-import { signOut } from 'firebase/auth';
-import { auth } from '@/config/firebase';
 import ToastViewport from '@/components/ToastViewport';
+import { showToast } from '@/utils/toastStore';
 import {
   adalahUltahHariIni,
   ambilPegawai,
@@ -13,10 +19,11 @@ import {
 } from '@/utils/ulangTahun';
 import KejutanUltah from '../ulang-tahun/KejutanUltah';
 import BannerUltah from '../ulang-tahun/BannerUltah';
+import { keluarAkun } from '@/utils/keluarAkun';
 
 export default function Portal() {
   const navigate = useNavigate();
-  const { currentUser, userData, userRole, isAdmin } = useAuth();
+  const { currentUser, userData, isKepegawaian } = useAuth();
   const [params, setParams] = useSearchParams();
   const ujiId = params.get('uji-ultah');
   // { pegawai, uji }: captcha ulang tahun yang sedang tampil
@@ -24,7 +31,7 @@ export default function Portal() {
 
   // Pegawai yang berulang tahun hari ini & belum menyelesaikan captcha tahun ini
   useEffect(() => {
-    if (ujiId || !userData?.id || !adalahUltahHariIni(userData.tanggal_lahir)) return undefined;
+    if (ujiId || !userData?.id || !adalahUltahHariIni(userData.tanggalLahir)) return undefined;
     let batal = false;
     perluKejutan(userData.id)
       .then((perlu) => {
@@ -38,7 +45,7 @@ export default function Portal() {
 
   // Pratinjau admin dari Kepegawaian: /?uji-ultah=<id pegawai>
   useEffect(() => {
-    if (!ujiId || !isAdmin) return undefined;
+    if (!ujiId || !isKepegawaian) return undefined;
     let batal = false;
     ambilPegawai(ujiId)
       .then((p) => {
@@ -48,7 +55,7 @@ export default function Portal() {
     return () => {
       batal = true;
     };
-  }, [ujiId, isAdmin]);
+  }, [ujiId, isKepegawaian]);
 
   const selesaiKejutan = () => {
     if (kejutan?.uji) setParams({}, { replace: true });
@@ -56,9 +63,7 @@ export default function Portal() {
     setKejutan(null);
   };
 
-  const handleLogout = async () => {
-    await signOut(auth);
-  };
+  const handleLogout = keluarAkun;
 
   const apps = [
     {
@@ -88,7 +93,8 @@ export default function Portal() {
       path: '/kepegawaian',
       iconContainerClass:
         'bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20',
-      badge: 'Pengembangan',
+      badge: isKepegawaian ? 'Pengembangan' : 'Khusus Kepegawaian',
+      terkunci: !isKepegawaian,
     },
   ];
 
@@ -119,7 +125,15 @@ export default function Portal() {
             </div>
           </div>
 
-          <div className="relative z-10 shrink-0">
+          <div className="relative z-10 shrink-0 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/ganti-sandi')}
+              className="bg-slate-800 hover:bg-cyan-500/20 border border-slate-700 hover:border-cyan-500/50 text-slate-300 hover:text-cyan-300 rounded-xl p-3 px-5 flex items-center gap-3 transition-all shadow-lg active:scale-95"
+            >
+              <FaKey size={14} />
+              <span className="font-bold text-sm">Ganti Kata Sandi</span>
+            </button>
             <button
               onClick={handleLogout}
               className="bg-slate-800 hover:bg-rose-500/20 border border-slate-700 hover:border-rose-500/50 text-slate-300 hover:text-rose-400 rounded-xl p-3 px-6 flex items-center gap-3 transition-all shadow-lg active:scale-95"
@@ -145,8 +159,12 @@ export default function Portal() {
           {apps.map((app) => (
             <div
               key={app.id}
-              onClick={() => navigate(app.path)}
-              className="group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 hover:shadow-lg hover:border-cyan-400/50 dark:hover:border-cyan-500/50 transition-all cursor-pointer relative overflow-hidden flex flex-col h-full"
+              onClick={() =>
+                app.terkunci
+                  ? showToast('Modul ini khusus peran Kepegawaian.', 'error')
+                  : navigate(app.path)
+              }
+              className={`group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 hover:shadow-lg hover:border-cyan-400/50 dark:hover:border-cyan-500/50 transition-all cursor-pointer relative overflow-hidden flex flex-col h-full ${app.terkunci ? 'opacity-60' : ''}`}
             >
               <div className="flex justify-between items-start mb-6">
                 <div

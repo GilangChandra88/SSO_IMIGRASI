@@ -29,17 +29,17 @@ const BRAND = {
 };
 
 function ProtectedRoute({ children, requireRole }) {
-  const { currentUser, isSuperAdmin, isAdmin } = useAuth();
+  const { currentUser, isSuperAdmin, isKeuangan } = useAuth();
   if (!currentUser) return <Navigate to="/login" />;
 
-  if (requireRole === 'Super Admin' && !isSuperAdmin) return <Navigate to="/e-persuratan" />;
-  if (requireRole === 'Admin' && !isAdmin && !isSuperAdmin) return <Navigate to="/e-persuratan" />;
+  if (requireRole === 'superadmin' && !isSuperAdmin) return <Navigate to="/e-persuratan" />;
+  if (requireRole === 'keuangan' && !isKeuangan) return <Navigate to="/e-persuratan" />;
 
   return children;
 }
 
 export default function AppModule() {
-  const { isSuperAdmin, isAdmin } = useAuth();
+  const { isSuperAdmin, isKeuangan } = useAuth();
 
   const renderNav = ({ isCollapsed, navItemClass, isActive, path }) => (
     <>
@@ -94,16 +94,15 @@ export default function AppModule() {
             <FaEnvelope size={16} className="shrink-0" />
             <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Persuratan</span>
           </Link>
-          {isAdmin && (
-            <Link
-              to="/e-persuratan/nomor-surat-kanim"
-              title="Nomor Surat"
-              className={navItemClass(path === '/e-persuratan/nomor-surat-kanim')}
-            >
-              <FaFileAlt size={16} className="shrink-0" />
-              <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Nomor Surat</span>
-            </Link>
-          )}
+          {/* Semua pegawai bisa meminta nomor surat; tab Hierarki & Pengaturan khusus Keuangan */}
+          <Link
+            to="/e-persuratan/nomor-surat-kanim"
+            title="Nomor Surat"
+            className={navItemClass(path === '/e-persuratan/nomor-surat-kanim')}
+          >
+            <FaFileAlt size={16} className="shrink-0" />
+            <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Nomor Surat</span>
+          </Link>
         </div>
       </div>
 
@@ -125,7 +124,7 @@ export default function AppModule() {
             <FaFolderOpen size={16} className="shrink-0" />
             <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Berkas LPJ</span>
           </Link>
-          {(isSuperAdmin || isAdmin) && (
+          {(isSuperAdmin || isKeuangan) && (
             <Link
               to="/e-persuratan/verifikasi"
               title="Berkas Verifikasi"
@@ -145,7 +144,7 @@ export default function AppModule() {
             <FaArchive size={16} className="shrink-0" />
             <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Arsip</span>
           </Link>
-          {(isSuperAdmin || isAdmin) && (
+          {(isSuperAdmin || isKeuangan) && (
             <Link
               to="/e-persuratan/scanner"
               title="Scanner"
@@ -159,7 +158,7 @@ export default function AppModule() {
       </div>
 
       {/* Menu PENGATURAN */}
-      {(isSuperAdmin || isAdmin) && (
+      {(isSuperAdmin || isKeuangan) && (
         <div>
           {(!isCollapsed || window.innerWidth < 768) && (
             <p
@@ -169,7 +168,7 @@ export default function AppModule() {
             </p>
           )}
           <div className="space-y-1">
-            {isSuperAdmin && (
+            {(isSuperAdmin || isKeuangan) && (
               <Link
                 to="/e-persuratan/mak-setup"
                 title="MAK Setup"
@@ -179,7 +178,7 @@ export default function AppModule() {
                 <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>MAK Setup</span>
               </Link>
             )}
-            {(isSuperAdmin || isAdmin) && (
+            {(isSuperAdmin || isKeuangan) && (
               <Link
                 to="/e-persuratan/mak-history"
                 title="History MAK"
@@ -216,7 +215,7 @@ export default function AppModule() {
           <Route
             path="/verifikasi"
             element={
-              <ProtectedRoute requireRole="Admin">
+              <ProtectedRoute requireRole="keuangan">
                 <VerifikasiPage />
               </ProtectedRoute>
             }
@@ -224,7 +223,7 @@ export default function AppModule() {
           <Route
             path="/verifikasi/:packId"
             element={
-              <ProtectedRoute requireRole="Admin">
+              <ProtectedRoute requireRole="keuangan">
                 <VerifikasiPage />
               </ProtectedRoute>
             }
@@ -232,7 +231,7 @@ export default function AppModule() {
           <Route
             path="/mak-setup"
             element={
-              <ProtectedRoute requireRole="Super Admin">
+              <ProtectedRoute requireRole="keuangan">
                 <MakSetup />
               </ProtectedRoute>
             }
@@ -240,7 +239,7 @@ export default function AppModule() {
           <Route
             path="/mak-history"
             element={
-              <ProtectedRoute requireRole="Admin">
+              <ProtectedRoute requireRole="keuangan">
                 <MakHistory />
               </ProtectedRoute>
             }
@@ -248,19 +247,12 @@ export default function AppModule() {
           <Route
             path="/scanner"
             element={
-              <ProtectedRoute requireRole="Admin">
+              <ProtectedRoute requireRole="keuangan">
                 <ScannerPage />
               </ProtectedRoute>
             }
           />
-          <Route
-            path="/nomor-surat-kanim"
-            element={
-              <ProtectedRoute requireRole="Admin">
-                <NomorSuratKanim />
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/nomor-surat-kanim" element={<NomorSuratKanim />} />
         </Routes>
       </TransisiHalaman>
     </AppLayout>

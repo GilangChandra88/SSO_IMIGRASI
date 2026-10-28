@@ -1,64 +1,86 @@
 /**
- * History MAK (MakHistoryPage purwarupa admin): log realisasi anggaran dari `MAK_History`,
- * dengan filter bulan/tahun/status, total transaksi aktif, dan Batalkan/Pulihkan (Super Admin).
+ * History MAK (MakHistoryPage purwarupa admin): log realisasi anggaran dari `mak_realisasi`
+ * (ditulis Cloud Function saat SPBy selesai), dengan filter tahun anggaran/bulan/status, total
+ * transaksi aktif (dari `mak_rekap`), dan Batalkan/Pulihkan lewat Function (Super Admin).
  */
 import React, { useMemo, useState } from 'react';
-import { doc, updateDoc } from 'firebase/firestore';
 import { FaCheck, FaHistory, FaSearch, FaTimes } from 'react-icons/fa';
-import { db } from '@/config/firebase';
 import { formatRupiah } from '@/components/StrukturHierarki/hierarkiUtils';
 import ToastViewport from '@/components/ToastViewport';
 import { useAuth } from '@/context/AuthContext';
+import { usePegawaiRingkas } from '@/context/usePegawaiRingkas';
+import { tahunIni } from '@/utils/nilai';
+import { pesanGalat } from '@/utils/pesanGalat';
 import { showToast } from '@/utils/toastStore';
 import { ADMIN, FONT, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, jedaKe } from '@/utils/animasi';
 import { AngkaBerjalan } from '@/components/animasi';
-import { useMakHistory } from '../hooks/useMakData';
+import ModalBatalRealisasi from '../components/ModalBatalRealisasi';
+import { useRealisasi, useRekapMak } from '../hooks/useMakData';
+import { batalkanRealisasi, pulihkanRealisasi } from '../services/makDb';
 import { BULAN_NAMES, formatTanggalID } from '../utils/makUtils';
 
 const PILL =
   'inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-[.03em] px-[9px] py-[3px] rounded-full whitespace-nowrap';
 const AKSI_BTN = `w-[30px] h-[30px] rounded-lg grid place-items-center mx-auto cursor-pointer ${T.hoverSurface2}`;
+const JENIS = { perjadin: 'Perjalanan Dinas', nonperjadin: 'Non-Perjalanan Dinas' };
 
 export default function MakHistory() {
   const { isSuperAdmin } = useAuth();
-  const { data: history, loading } = useMakHistory();
-  const now = new Date();
-  const [filterMonth, setFilterMonth] = useState(now.getMonth() + 1);
-  const [filterYear, setFilterYear] = useState(now.getFullYear());
+  const { byId: pegawaiById } = usePegawaiRingkas();
+  const [tahun, setTahun] = useState(tahunIni);
+  const [tahunTeks, setTahunTeks] = useState(() => String(tahunIni()));
+  const [filterMonth, setFilterMonth] = useState(0);
   const [filterStatus, setFilterStatus] = useState('all');
   const [search, setSearch] = useState('');
   const [prosesId, setProsesId] = useState(null);
+  const [batal, setBatal] = useState(null); // realisasi yang sedang dibatalkan
+
+  const { realisasi, memuat, bisaLagi, memuatLagi, muatLagi, ubahBaris } = useRealisasi({
+    tahunAnggaran: tahun,
+    bulan: filterMonth,
+  });
+  const { rekap } = useRekapMak(tahun);
+
+  const namaPelaksana = (id) => pegawaiById[id]?.nama || '-';
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
-    return history.filter((item) => {
-      if (filterMonth !== 0 && item.bulan !== filterMonth) return false;
-      if (filterYear && item.tahun !== filterYear) return false;
-      if (filterStatus !== 'all' && item.status !== filterStatus) return false;
-      if (q) {
-        const s =
-          `${item.makString} ${item.itemName} ${item.uraian} ${item.suratRef?.pegawai || ''} ${item.suratRef?.kode || ''}`.toLowerCase();
-        if (!s.includes(q)) return false;
-      }
-      return true;
+    return realisasi.filter((r) => {
+      if (filterStatus !== 'all' && r.status !== filterStatus) return false;
+      if (!q) return true;
+      const s = r.salinan || {};
+      const nama = pegawaiById[r.pelaksanaId]?.nama || '';
+      return `${s.makKode} ${s.itemKode} ${s.itemNama} ${s.uraian} ${r.nomorLpj} ${nama}`
+        .toLowerCase()
+        .includes(q);
     });
-  }, [history, filterMonth, filterYear, filterStatus, search]);
+  }, [realisasi, filterStatus, search, pegawaiById]);
 
-  const total = filtered
-    .filter((h) => h.status === 'active')
-    .reduce((s, h) => s + (Number(h.jumlah) || 0), 0);
+  // Tanpa pencarian, total dibaca dari rekap server (mencakup baris yang belum dimuat)
+  const pakaiRekap = !search.trim() && filterStatus !== 'batal';
+  const total = pakaiRekap
+    ? Object.values(rekap?.item || {}).reduce(
+        (s, e) => s + (Number(filterMonth ? e.real?.[filterMonth] : e.total) || 0),
+        0,
+      )
+    : filtered.filter((r) => r.status === 'aktif').reduce((s, r) => s + (r.jumlah || 0), 0);
 
-  const ubahStatus = async (item, status) => {
-    setProsesId(item.id);
+  const ubahTahun = (teks) => {
+    setTahunTeks(teks);
+    if (/^\d{4}$/.test(teks) && Number(teks) >= 2024) setTahun(Number(teks));
+  };
+
+  const jalankan = async (r, aksi, pesanSukses, keStatus) => {
+    setProsesId(r.id);
     try {
-      await updateDoc(doc(db, 'MAK_History', item.id), {
-        status,
-        updatedAt: new Date().toISOString(),
-      });
-      showToast(status === 'cancelled' ? 'Transaksi dibatalkan.' : 'Transaksi dipulihkan.');
-    } catch {
-      showToast('Gagal mengubah status transaksi.', 'error');
+      await aksi();
+      ubahBaris(r.id, { status: keStatus });
+      showToast(pesanSukses);
+      return true;
+    } catch (err) {
+      showToast(pesanGalat(err, 'Gagal mengubah status transaksi.'), 'error');
+      return false;
     } finally {
       setProsesId(null);
     }
@@ -76,7 +98,7 @@ export default function MakHistory() {
               History MAK
             </h1>
             <p className={`text-[13.5px] mt-[5px] ${T.inkMuted}`}>
-              Log pencatatan realisasi anggaran dari surat/transaksi.
+              Log realisasi anggaran yang tercatat saat SPBy berkas LPJ selesai.
             </p>
           </div>
 
@@ -86,13 +108,22 @@ export default function MakHistory() {
               <input
                 type="search"
                 className={ADMIN.searchInput}
-                placeholder="Cari uraian, pegawai, MAK..."
+                placeholder="Cari uraian, pelaksana, MAK, nomor LPJ..."
                 aria-label="Cari history MAK"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
             <div className="flex flex-wrap items-center gap-[7px] shrink-0">
+              <input
+                type="number"
+                min={2024}
+                aria-label="Tahun anggaran"
+                title="Tahun anggaran"
+                className={`${ADMIN.control} w-[86px]`}
+                value={tahunTeks}
+                onChange={(e) => ubahTahun(e.target.value)}
+              />
               <select
                 aria-label="Pilih bulan"
                 className={ADMIN.control}
@@ -106,13 +137,6 @@ export default function MakHistory() {
                   </option>
                 ))}
               </select>
-              <input
-                type="number"
-                aria-label="Pilih tahun"
-                className={`${ADMIN.control} w-[78px]`}
-                value={filterYear}
-                onChange={(e) => setFilterYear(Number(e.target.value))}
-              />
               <select
                 aria-label="Filter status"
                 className={ADMIN.control}
@@ -120,8 +144,8 @@ export default function MakHistory() {
                 onChange={(e) => setFilterStatus(e.target.value)}
               >
                 <option value="all">Semua Status</option>
-                <option value="active">Aktif</option>
-                <option value="cancelled">Dibatalkan</option>
+                <option value="aktif">Aktif</option>
+                <option value="batal">Dibatalkan</option>
               </select>
             </div>
           </div>
@@ -139,7 +163,7 @@ export default function MakHistory() {
               <thead>
                 <tr>
                   <th className={ADMIN.th}>Tanggal</th>
-                  <th className={ADMIN.th}>Sumber / Pegawai</th>
+                  <th className={ADMIN.th}>Nomor LPJ / Pelaksana</th>
                   <th className={ADMIN.th}>MAK / Item</th>
                   <th className={ADMIN.th}>Uraian</th>
                   <th className={`${ADMIN.thBase} text-right`}>Jumlah (Rp)</th>
@@ -148,7 +172,7 @@ export default function MakHistory() {
                 </tr>
               </thead>
               <tbody>
-                {loading ? (
+                {memuat ? (
                   <tr>
                     <td colSpan={kolom} className={ADMIN.emptyRow}>
                       Memuat history transaksi...
@@ -161,40 +185,43 @@ export default function MakHistory() {
                     </td>
                   </tr>
                 ) : (
-                  filtered.map((item, i) => {
-                    const aktif = item.status === 'active';
+                  filtered.map((r, i) => {
+                    const aktif = r.status === 'aktif';
+                    const s = r.salinan || {};
                     return (
                       <tr
-                        key={item.id}
+                        key={r.id}
                         className={`${ADMIN.tr} ${ANIM.muncul} ${jedaKe(i)} ${aktif ? '' : 'opacity-55'}`}
                       >
                         <td className={ADMIN.td}>
-                          <span className={ADMIN.mono}>{formatTanggalID(item.tanggal)}</span>
+                          <span className={ADMIN.mono}>{formatTanggalID(r.tanggal)}</span>
                         </td>
                         <td className={ADMIN.td}>
-                          <div className="font-semibold">{item.suratRef?.kode || 'Manual'}</div>
+                          <div className={`${FONT.mono} text-[12px] font-semibold`}>
+                            {r.nomorLpj || '-'}
+                          </div>
                           <div
                             className={`text-[11.5px] mt-0.5 max-w-[220px] truncate ${T.inkMuted}`}
-                            title={item.suratRef?.pegawai}
+                            title={`${JENIS[r.jenis] || ''} · ${namaPelaksana(r.pelaksanaId)}`}
                           >
-                            {item.suratRef?.pegawai || '-'}
+                            {namaPelaksana(r.pelaksanaId)}
                           </div>
                         </td>
                         <td className={ADMIN.td}>
                           <div
                             className={`${FONT.mono} text-[10px] mb-0.5 max-w-[230px] truncate ${T.inkMuted}`}
-                            title={item.makString}
+                            title={s.makKode}
                           >
-                            {item.makString}
+                            {s.makKode}
                           </div>
                           <span className={ADMIN.tag}>
-                            {item.itemKode} - {item.itemName}
+                            {s.itemKode} - {s.itemNama}
                           </span>
                         </td>
-                        <td className={`${ADMIN.td} max-w-[230px]`}>{item.uraian || '-'}</td>
+                        <td className={`${ADMIN.td} max-w-[230px]`}>{s.uraian || '-'}</td>
                         <td className={`${ADMIN.td} text-right`}>
                           <span className={`${FONT.mono} font-bold whitespace-nowrap`}>
-                            {formatRupiah(item.jumlah)}
+                            {formatRupiah(r.jumlah)}
                           </span>
                         </td>
                         <td className={`${ADMIN.td} text-center`}>
@@ -209,6 +236,7 @@ export default function MakHistory() {
                           ) : (
                             <span
                               key="batal"
+                              title={r.alasanBatal ? `Alasan: ${r.alasanBatal}` : undefined}
                               className={`${PILL} ${ANIM.meletup} ${STATUS.critBg} ${STATUS.critInk}`}
                             >
                               <FaTimes size={8} />
@@ -224,8 +252,8 @@ export default function MakHistory() {
                                 className={`${AKSI_BTN} ${STATUS.critInk}`}
                                 title="Batalkan Transaksi"
                                 aria-label="Batalkan Transaksi"
-                                disabled={prosesId === item.id}
-                                onClick={() => ubahStatus(item, 'cancelled')}
+                                disabled={prosesId === r.id}
+                                onClick={() => setBatal(r)}
                               >
                                 <FaTimes size={12} />
                               </button>
@@ -235,8 +263,15 @@ export default function MakHistory() {
                                 className={`${AKSI_BTN} ${STATUS.goodInk}`}
                                 title="Pulihkan Transaksi"
                                 aria-label="Pulihkan Transaksi"
-                                disabled={prosesId === item.id}
-                                onClick={() => ubahStatus(item, 'active')}
+                                disabled={prosesId === r.id}
+                                onClick={() =>
+                                  jalankan(
+                                    r,
+                                    () => pulihkanRealisasi(r.id),
+                                    'Transaksi dipulihkan.',
+                                    'aktif',
+                                  )
+                                }
                               >
                                 <FaCheck size={12} />
                               </button>
@@ -250,8 +285,36 @@ export default function MakHistory() {
               </tbody>
             </table>
           </div>
+          {bisaLagi && (
+            <div className="flex justify-center mt-4">
+              <button
+                type="button"
+                className={ADMIN.btnGhost}
+                onClick={muatLagi}
+                disabled={memuatLagi}
+              >
+                {memuatLagi ? 'Memuat...' : 'Muat lebih banyak'}
+              </button>
+            </div>
+          )}
         </section>
       </div>
+      {batal && (
+        <ModalBatalRealisasi
+          realisasi={batal}
+          sibuk={prosesId === batal.id}
+          onClose={() => setBatal(null)}
+          onSubmit={async (alasan) => {
+            const ok = await jalankan(
+              batal,
+              () => batalkanRealisasi(batal.id, alasan),
+              'Transaksi dibatalkan.',
+              'batal',
+            );
+            if (ok) setBatal(null);
+          }}
+        />
+      )}
       <ToastViewport />
     </div>
   );

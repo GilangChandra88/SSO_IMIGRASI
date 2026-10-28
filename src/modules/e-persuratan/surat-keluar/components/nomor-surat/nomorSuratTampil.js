@@ -28,3 +28,19 @@ export const kodeLanjutan = (row) =>
     .map((k) => k.kode)
     .filter(Boolean)
     .join('.') || '-';
+
+/** Label sumber nomor (`surat_nomor.sumber`). */
+export const LABEL_SUMBER = Object.freeze({
+  register: 'Daftar Nomor',
+  form: 'Form Surat',
+  srikandi: 'SP Srikandi (LPJ)',
+});
+
+/**
+ * Keterangan nomor boleh diubah pemohon atau Keuangan selama belum batal; nomor SP Srikandi tidak
+ * (sama dengan firestore.rules).
+ */
+export const bolehUbahNomor = (row, { uid, isKeuangan }) =>
+  row.status === 'aktif' &&
+  ['register', 'form'].includes(row.sumber) &&
+  (isKeuangan || (!!uid && row.dibuatOleh === uid));

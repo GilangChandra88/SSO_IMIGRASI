@@ -1,0 +1,7 @@
+[
+  {
+    "origin": ["http://localhost:5173", "https://sso-imigrasi.vercel.app"],
+    "method": ["GET", "HEAD"],
+    "maxAgeSeconds": 3600
+  }
+]

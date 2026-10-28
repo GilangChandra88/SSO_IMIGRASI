@@ -127,6 +127,8 @@ export async function cetakGabungan(daftar) {
 /**
  * Cetak PDF (`blob`) lewat bingkai tersembunyi: dialog cetak browser muncul tanpa membuka tab baru.
  * Melempar galat bila browser tidak mengizinkan (pemanggil bisa membuka tab baru sebagai cadangan).
+ * Bingkai tanpa `sandbox` (memblokir penampil PDF & cetak) karena isinya hanya blob PDF buatan
+ * aplikasi sendiri (K26).
  */
 export function cetakBlob(blob) {
   return new Promise((resolve, reject) => {

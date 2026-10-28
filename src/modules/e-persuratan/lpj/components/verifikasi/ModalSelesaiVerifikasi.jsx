@@ -5,9 +5,17 @@ import { ADMIN, T } from '@/utils/uiTokens';
 
 /**
  * Konfirmasi "Selesaikan Verifikasi?" (PgvConfirmModal purwarupa). Bila masih ada dokumen yang
- * belum dicentang, semuanya ditandai tercentang. `onConfirm()` mengembalikan true bila tersimpan.
+ * belum dicentang, semuanya ditandai tercentang. `tanpaPejabat` = label pejabat (PPK/Bendahara)
+ * yang belum ditetapkan di Kepegawaian. `onConfirm()` mengembalikan true bila tersimpan.
  */
-export default function ModalSelesaiVerifikasi({ pack, belum, total, onClose, onConfirm }) {
+export default function ModalSelesaiVerifikasi({
+  pack,
+  belum,
+  total,
+  tanpaPejabat = [],
+  onClose,
+  onConfirm,
+}) {
   const [sibuk, setSibuk] = useState(false);
 
   async function ya() {
@@ -34,6 +42,15 @@ export default function ModalSelesaiVerifikasi({ pack, belum, total, onClose, on
           <span>
             Masih ada {belum} dari {total} dokumen yang belum dicentang. Kalau dilanjutkan, semuanya
             ditandai sudah dicentang.
+          </span>
+        </div>
+      )}
+      {tanpaPejabat.length > 0 && (
+        <div className={`${ADMIN.warnBanner} mb-1`}>
+          <FaExclamationTriangle size={13} className="mt-0.5 shrink-0" />
+          <span>
+            {tanpaPejabat.join(' dan ')} belum ditetapkan di Kepegawaian (tab Pejabat). Kalau
+            dilanjutkan, Lembar Verifikasi dibekukan tanpa nama {tanpaPejabat.join(' dan ')}.
           </span>
         </div>
       )}

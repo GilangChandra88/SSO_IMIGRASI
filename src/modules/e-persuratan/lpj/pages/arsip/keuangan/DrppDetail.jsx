@@ -1,6 +1,7 @@
 import React, { useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
   FaArchive,
+  FaBan,
   FaCheck,
   FaCircleNotch,
   FaClock,
@@ -10,11 +11,11 @@ import {
   FaRegEdit,
   FaRegEye,
   FaRegFileAlt,
-  FaRegTrashAlt,
   FaSearch,
   FaUpload,
 } from 'react-icons/fa';
-import { bukaBerkas, validasiBerkas } from '../../../services/lpjStorage';
+import { useRingkasPerId } from '../../../hooks/useBerkas';
+import { cekBerkasDipilih } from '../../../services/unggahan';
 import {
   DRPP_DOCS,
   barisLpj,
@@ -22,9 +23,10 @@ import {
   drppExpectedRows,
   drppLocked,
   drppLockNote,
-  drppMembers,
+  drppMasukIds,
   drppProgress,
   drppStatus,
+  drppTotal,
   lpjMatches,
 } from '../../../utils/drppLogic';
 import { rupiah } from '../../../utils/lpjLogic';
@@ -35,6 +37,8 @@ import Pager from '../../../components/arsip/Pager';
 import ArsipPill, { DrppStatusPill } from '../../../components/arsip/ArsipPill';
 import LinkBack from '../../../ui/LinkBack';
 import ProgressBar from '../../../ui/ProgressBar';
+import { usePegawaiRingkas } from '@/context/usePegawaiRingkas';
+import { bukaBerkas, pesanGagalUnggah } from '@/utils/berkasStorage';
 import { useToast } from '@/utils/toastStore';
 import { BTN, FONT, LAYOUT, NAVY, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, jedaKe, munculBerurutan } from '@/utils/animasi';
@@ -49,69 +53,89 @@ const LINK = `inline-flex items-center gap-[5px] text-[12.5px] font-bold ${STATU
 /**
  * Detail satu DRPP (DrppDetail purwarupa): dokumen (pindai), progres daftar LPJ, tabel LPJ dengan
  * cari/filter/paginasi. Dipasang dengan key={drpp.id} sehingga filter reset saat ganti DRPP.
+ * Progres & total dari `masuk` DRPP; ringkasan berkas yang tidak ada di `packsById` (daftar
+ * termuat halaman Arsip) dibaca sekali per ID.
  */
 export default function DrppDetail({
   drpp: d,
-  packs,
-  packsById,
+  packsById: termuat,
   onBack,
   onScanDoc,
   onEditList,
   onGoAssign,
   onLihat,
-  onHapus,
+  onBatal,
 }) {
   const showToast = useToast();
+  const { semua: pegawai } = usePegawaiRingkas();
+  const oleh = (d.dibuatOleh && pegawai.find((p) => p.authUid === d.dibuatOleh)?.nama) || '';
+  const idDaftar = drppExpectedRows({}, d).map((e) => e.packId);
+  const tambahan = useRingkasPerId(idDaftar.filter((id) => !termuat[id]));
+  const packsById = useMemo(() => {
+    const m = { ...termuat };
+    Object.entries(tambahan).forEach(([id, r]) => {
+      if (r && !m[id]) m[id] = r;
+    });
+    return m;
+  }, [termuat, tambahan]);
   const [q0, setQ] = useState('');
   const [status, setStatus] = useState('all');
   const [page, setPage] = useState(1);
   const q = q0.trim().toLowerCase();
 
-  const st = drppStatus(packsById, packs, d);
+  const st = drppStatus(d);
   // Saat dibuka, isi mengalir dari atas ke bawah
   const kartuRef = useRef(null);
   useLayoutEffect(() => munculBerurutan(kartuRef.current), []);
-  const anggota = drppMembers(packs, d);
-  const total = anggota.reduce((s, p) => s + barisLpj(p).total, 0);
-  const prog = drppProgress(packsById, packs, d);
-  const locked = drppLocked(packsById, packs, d);
+  const nMasuk = drppMasukIds(d).length;
+  const total = drppTotal(d);
+  const prog = drppProgress(d);
+  const locked = drppLocked(d);
   const pct = prog.total ? Math.round((prog.done / prog.total) * 100) : 0;
 
   const all = useMemo(
     () =>
-      drppExpectedRows(packsById, packs, d).map((e) => ({
+      drppExpectedRows(packsById, d).map((e) => ({
         ...e,
         row: e.pack ? barisLpj(e.pack) : null,
-        key: e.masuk ? 'masuk' : e.pack && !e.pack.arsip?.scan ? 'menunggu' : 'belum',
+        // belum dimuat (undefined) vs tidak ditemukan (null)
+        hilang: !e.pack && tambahan[e.packId] === null,
+        key: e.masuk ? 'masuk' : e.pack && !barisLpj(e.pack).diarsip ? 'menunggu' : 'belum',
       })),
-    [packsById, packs, d],
+    [packsById, tambahan, d],
   );
   const cnt = { masuk: 0, menunggu: 0, belum: 0 };
   all.forEach((e) => cnt[e.key]++);
   const filtered = all.filter((e) => {
     if (status !== 'all' && e.key !== status) return false;
-    return !q || (e.row ? lpjMatches(e.row, q, true) : e.packId.toLowerCase().includes(q));
+    return (
+      !q ||
+      (e.row ? lpjMatches(e.row, q, true) : (e.nomorLpj || e.packId).toLowerCase().includes(q))
+    );
   });
   const pages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const cur = Math.min(page, pages);
   const pageRows = filtered.slice((cur - 1) * PAGE_SIZE, cur * PAGE_SIZE);
 
-  const cetak = (file) => {
-    bukaBerkas(file);
-    showToast('Berkas dibuka di tab baru — cetak dari penampil (Ctrl+P).');
-  };
+  const gagalBuka = (err) => showToast(pesanGagalUnggah(err, 'Berkas gagal dibuka.'), 'error');
+  const lihatFile = (file) => bukaBerkas(file).catch(gagalBuka);
+  const cetak = (file) =>
+    bukaBerkas(file).then(
+      (dibuka) => dibuka && showToast('Berkas dibuka di tab baru — cetak dari penampil (Ctrl+P).'),
+      gagalBuka,
+    );
 
   return (
     <>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <LinkBack onClick={onBack}>Kembali ke Daftar DRPP</LinkBack>
-        {onHapus && (
+        {onBatal && (
           <button
             type="button"
             className={`inline-flex items-center gap-1.5 px-3.5 py-[7px] rounded-lg border text-[12.5px] cursor-pointer ${T.surface} ${T.border} ${STATUS.critInk} ${T.hoverSurface2}`}
-            onClick={() => onHapus(d)}
+            onClick={() => onBatal(d)}
           >
-            <FaRegTrashAlt size={12} /> Hapus DRPP
+            <FaBan size={12} /> Batalkan DRPP
           </button>
         )}
       </div>
@@ -128,8 +152,8 @@ export default function DrppDetail({
           <div className="flex-1 min-w-[200px]">
             <div className={`${FONT.head} font-bold text-lg ${T.ink}`}>{d.id}</div>
             <div className={`text-xs mt-0.5 ${T.inkMuted}`}>
-              Dibuat {formatTanggalPendek(d.tanggalDibuat)}
-              {d.dibuatOleh ? ` oleh ${d.dibuatOleh.split(',')[0]}` : ''}
+              Dibuat {formatTanggalPendek(d.tanggal)}
+              {oleh ? ` oleh ${oleh}` : ''}
             </div>
             <div className="mt-2">
               <span key={st} className={`inline-block ${ANIM.meletup}`}>
@@ -148,8 +172,7 @@ export default function DrppDetail({
               {rupiah(total)}
             </span>
             <span className={`text-xs whitespace-nowrap ${T.inkMuted}`}>
-              <b className={T.ink2}>{anggota.length} LPJ</b> masuk · {prog.done}/{prog.total} sesuai
-              daftar
+              <b className={T.ink2}>{nMasuk} LPJ</b> masuk · {prog.done}/{prog.total} sesuai daftar
             </span>
           </div>
         </div>
@@ -162,7 +185,7 @@ export default function DrppDetail({
               label={label}
               file={docsOf(d)[key]}
               onScan={(f) => onScanDoc(d, key, f)}
-              onLihat={bukaBerkas}
+              onLihat={lihatFile}
               onCetak={cetak}
             />
           ))}
@@ -193,7 +216,7 @@ export default function DrppDetail({
             className={`flex items-center gap-2.5 mb-3.5 px-3.5 py-[11px] rounded-[11px] text-[12.5px] font-semibold ${ANIM.meletup} ${STATUS.doneBg} ${STATUS.doneInk}`}
           >
             <FaCheck size={13} className="shrink-0" />
-            <span>{drppLockNote(packsById, packs, d)}</span>
+            <span>{drppLockNote(d)}</span>
           </div>
         )}
 
@@ -267,15 +290,17 @@ export default function DrppDetail({
                       >
                         <td className={TD}>
                           <div className={`${FONT.mono} font-bold text-[12.5px] whitespace-nowrap`}>
-                            <Sorot text={r ? r.id : e.packId} q={q} />
+                            <Sorot text={r ? r.id : e.nomorLpj || e.packId} q={q} />
                           </div>
                           {r && <Kwitansi value={r.kwitansi} />}
                         </td>
                         <td className={`${TD} md:min-w-[220px]`}>
                           {r ? (
                             <Sorot text={r.uraian} q={q} />
-                          ) : (
+                          ) : e.hilang ? (
                             <span className={STATUS.critInk}>(Berkas LPJ tidak ditemukan)</span>
+                          ) : (
+                            <span className={`animate-pulse ${T.inkMuted}`}>Memuat…</span>
                           )}
                         </td>
                         <td className={TD}>
@@ -284,7 +309,7 @@ export default function DrppDetail({
                         </td>
                         <td className={`${TD} ${FONT.mono} font-semibold whitespace-nowrap`}>
                           <span className={`${MOBILE_LABEL} ${FONT.body}`}>Total</span>
-                          {r ? rupiah(r.total) : '—'}
+                          {r ? rupiah(r.total) : e.masuk ? rupiah(d.masuk[e.packId]?.total) : '—'}
                         </td>
                         <td className={TD}>
                           <span className={MOBILE_LABEL}>Status</span>
@@ -303,7 +328,7 @@ export default function DrppDetail({
                           )}
                         </td>
                         <td className={`${TD} text-right max-md:text-left`}>
-                          {e.masuk && (
+                          {e.masuk && r && (
                             <button type="button" className={BTN.sm} onClick={() => onLihat(r)}>
                               <FaRegEye size={12} /> Lihat
                             </button>
@@ -337,7 +362,7 @@ function BarisDokumen({ label, file, onScan, onLihat, onCetak }) {
 
   async function pilih(f) {
     if (!f) return;
-    const pesan = validasiBerkas(f);
+    const pesan = cekBerkasDipilih('keuangan', f);
     if (pesan) {
       showToast(pesan, 'error');
       return;
@@ -373,7 +398,7 @@ function BarisDokumen({ label, file, onScan, onLihat, onCetak }) {
       <div className="flex-1 min-w-[180px]">
         <div className={`text-[13px] font-semibold ${T.ink}`}>{label}</div>
         <div className={`text-[11px] mt-px break-all ${T.inkMuted}`}>
-          {file ? file.name : 'Belum di-scan'}
+          {file ? file.nama : 'Belum di-scan'}
         </div>
       </div>
       <div className="flex flex-wrap gap-2 shrink-0">

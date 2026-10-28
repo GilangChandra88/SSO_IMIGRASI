@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { FaArchive, FaCircleNotch } from 'react-icons/fa';
 import { lpjIdLabel } from '../../utils/lpjLogic';
 import { BERKAS_LABEL } from '../../utils/drppLogic';
-import { validasiBerkas } from '../../services/lpjStorage';
+import { cekBerkasDipilih } from '../../services/unggahan';
 import Kwitansi from '../arsip/Kwitansi';
 import SlotBerkas from '../arsip/SlotBerkas';
 import ModalTahap, { KotakNilai } from './ModalTahap';
@@ -13,15 +13,15 @@ import { ADMIN, T } from '@/utils/uiTokens';
  * dokumen gabungan. Setelah diarsipkan berkas pindah ke menu Arsip (status "Belum Masuk DRPP",
  * atau langsung masuk DRPP yang mencantumkannya). `onSave(file)` mengembalikan true bila tersimpan.
  */
-export default function ModalArsip({ pack, pendingDrppId, onClose, onSave }) {
+export default function ModalArsip({ pack, keuangan, pendingDrppId, onClose, onSave }) {
   const [file, setFile] = useState(null);
   const [err, setErr] = useState('');
   const [sibuk, setSibuk] = useState(false);
-  const no = pack.arsip?.kwitansi || '';
+  const no = keuangan?.sakti?.nomorKwitansi || '';
 
   function pilih(f) {
     if (!f) return;
-    const pesan = validasiBerkas(f);
+    const pesan = cekBerkasDipilih('keuangan', f);
     setErr(pesan);
     setFile(pesan ? null : f);
   }

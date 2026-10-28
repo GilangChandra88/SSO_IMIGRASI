@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
 import { FaArchive, FaCircleNotch } from 'react-icons/fa';
 import Modal from '@/components/Modal';
-import { validasiBerkas } from '../../../services/lpjStorage';
+import { cekBerkasDipilih } from '../../../services/unggahan';
 import { DRPP_DOCS } from '../../../utils/drppLogic';
 import SlotBerkas from '../../../components/arsip/SlotBerkas';
 import LpjChecklist from './LpjChecklist';
 import ModalKepala from './ModalKepala';
-import { ADMIN, T } from '@/utils/uiTokens';
+import { JUMLAH } from '@/utils/batas';
+import { ADMIN, STATUS, T } from '@/utils/uiTokens';
 
 /**
  * Buat DRPP baru (CreateDrppModal purwarupa): pindai dokumen DRPP/SPM/SP2D (boleh menyusul) lalu
- * pilih LPJ yang tertera di dokumen DRPP. `onSubmit({ files, expectedIds })` → true bila berhasil.
+ * pilih LPJ yang tertera di dokumen DRPP (1–100 LPJ). `onSubmit({ files, expectedIds })` → true
+ * bila berhasil; dokumen diunggah setelah nomor DRPP terbit.
  */
 export default function CreateDrppModal({
   rows,
@@ -26,20 +28,27 @@ export default function CreateDrppModal({
   );
   const [search, setSearch] = useState('');
   const [busy, setBusy] = useState(false);
+  const [errDaftar, setErrDaftar] = useState('');
 
   function pilih(key, f) {
     if (!f) return;
-    const pesan = validasiBerkas(f);
+    const pesan = cekBerkasDipilih('keuangan', f);
     setErrs((e) => ({ ...e, [key]: pesan }));
     if (!pesan) setFiles((x) => ({ ...x, [key]: f }));
   }
 
   async function submit() {
+    const expectedIds = Object.keys(expected).filter((k) => expected[k]);
+    if (!expectedIds.length || expectedIds.length > JUMLAH.berkasDrpp) {
+      setErrDaftar(
+        expectedIds.length
+          ? `Satu DRPP memuat paling banyak ${JUMLAH.berkasDrpp} LPJ.`
+          : 'Pilih minimal satu LPJ yang tertera di dokumen DRPP.',
+      );
+      return;
+    }
     setBusy(true);
-    const ok = await onSubmit({
-      files,
-      expectedIds: Object.keys(expected).filter((k) => expected[k]),
-    });
+    const ok = await onSubmit({ files, expectedIds });
     if (!ok) setBusy(false);
   }
 
@@ -79,8 +88,14 @@ export default function CreateDrppModal({
           search={search}
           onSearch={setSearch}
           currentDrppId={null}
-          onToggle={(id, v) => setExpected((m) => ({ ...m, [id]: v }))}
+          onToggle={(id, v) => {
+            setErrDaftar('');
+            setExpected((m) => ({ ...m, [id]: v }));
+          }}
         />
+        {errDaftar && (
+          <p className={`text-xs mt-1.5 font-semibold ${STATUS.critInk}`}>{errDaftar}</p>
+        )}
         <p className={`text-[11.5px] mt-3 ${T.inkMuted}`}>
           DRPP baru dianggap lengkap setelah ketiga dokumen terpindai dan seluruh LPJ pada daftar
           ini sudah masuk (dari tab Berkas LPJ).

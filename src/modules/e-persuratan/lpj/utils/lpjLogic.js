@@ -1,10 +1,13 @@
 /**
- * Logika inti berkas LPJ — port dari src/utils/lpjLogic.js purwarupa, disesuaikan ke
- * dokumen Firestore `lpj_packs` skema 2 (bagian sp/spd/lpj/lap/np dalam satu dokumen).
- * Semua fungsi murni (tanpa Firestore/DOM) supaya dipakai bersama oleh Daftar, Detail,
- * form, dan Dashboard.
+ * Logika inti berkas LPJ — port lpjLogic.js purwarupa untuk dokumen `lpj_berkas` skema 1
+ * (docs/skema-database.md §5.2). Fungsi murni (tanpa Firestore/DOM) untuk Daftar, Detail, form,
+ * dan Dashboard.
+ *
+ * Status dokumen = status kunci bagiannya: bagian terkunci (fase "Selesai", final) berarti semua
+ * dokumennya selesai. Bagian selalu terkunci berurutan (dijaga rules), sehingga fungsi yang sama
+ * juga bisa dipakai pada dokumen ringkas `lpj_ringkas` (kunci dibaca dari `progres.selesai`).
  */
-import { LPJ_DOCS, NP_PACK_DOCS, NP_RINCIAN_DOCS } from '../data/masterLpj';
+import { BAGIAN, LPJ_DOCS, NP_PACK_DOCS, NP_RINCIAN_DOCS } from '../data/masterLpj';
 
 export const STAGE_STATUS_LABEL = {
   selesai: 'Selesai',
@@ -14,22 +17,33 @@ export const STAGE_STATUS_LABEL = {
   terkunci: 'Terkunci',
 };
 
-// Berkas format lama (skema 1) memakai `type` dan `judul`; skema 2 memakai `jenis` dan `uraian`
-export const isPerjadin = (pack) => (pack?.jenis || pack?.type) === 'perjadin';
-export const isSkemaBaru = (pack) => pack?.skema === 2;
-export const jenisLabel = (pack) => (isPerjadin(pack) ? 'Perjadin' : 'NON-Perjadin');
-export const uraianOf = (pack) => pack?.uraian || pack?.judul || pack?.perihal || '';
+export const isPerjadin = (b) => b?.jenis === 'perjadin';
+export const jenisLabel = (b) => (isPerjadin(b) ? 'Perjadin' : 'NON-Perjadin');
+export const uraianOf = (b) => b?.uraian || '';
+/** Dokumen ringkas (`lpj_ringkas`) — tidak memuat isi bagian. */
+export const isRingkas = (b) => !!b && 'progres' in b;
 
-/** Pelaksana berkas: "Kepada" Surat Perintah (Perjadin) atau pelaksana Non-Perjadin. */
-export function pelaksanaOf(pack) {
-  if (!pack) return [];
-  if (!isSkemaBaru(pack)) return pack.pegawai_list || [];
-  return (isPerjadin(pack) ? pack.sp?.kepada : pack.np?.pelaksana) || [];
+/** Bagian sudah dikunci (final). */
+export function terkunci(b, bagian) {
+  if (!b) return false;
+  if (isRingkas(b)) {
+    const urutan = BAGIAN[isPerjadin(b) ? 'perjadin' : 'nonperjadin'];
+    const i = urutan.indexOf(bagian);
+    return i >= 0 && i < (b.progres?.selesai || 0);
+  }
+  return b[bagian]?.terkunci === true;
+}
+
+/** Pelaksana (Orang[]): "Kepada" Surat Perintah (Perjadin) atau pelaksana SPBy (Non-Perjadin). */
+export function pelaksanaOf(b) {
+  if (!b) return [];
+  if (isRingkas(b)) return b.pelaksana || [];
+  return (isPerjadin(b) ? b.sp?.kepada : b.spby?.pelaksana) || [];
 }
 
 // ─── Angka & transaksi ───────────────────────────────────────────────────────
 
-/** "1.500.000" → 1500000 */
+/** "1.500.000" / 1500000 → 1500000 */
 export const parseNum = (val) => Number(String(val ?? '').replace(/[^0-9]/g, '')) || 0;
 
 /** 1500000 / "1500000" → "1.500.000" (kosong bila bukan angka) */
@@ -40,69 +54,76 @@ export function formatNum(val) {
 
 export const rupiah = (n) => 'Rp ' + Math.round(Number(n) || 0).toLocaleString('id-ID');
 
-export function transaksiOf(pack) {
-  if (!pack) return [];
-  return (isPerjadin(pack) ? pack.lpj?.transaksi : pack.np?.transaksi) || [];
+export function transaksiOf(b) {
+  if (!b) return [];
+  return (isPerjadin(b) ? b.lpj?.transaksi : b.spby?.transaksi) || [];
 }
 
-export function makOf(pack) {
-  if (!pack) return null;
-  return isPerjadin(pack) ? pack.spd?.mak : pack.np?.mak;
+export function makOf(b) {
+  if (!b) return null;
+  return (isPerjadin(b) ? b.spd?.mak : b.spby?.mak) || null;
 }
 
-export const lpjRowTotal = (pack) =>
-  transaksiOf(pack).reduce((sum, t) => sum + parseNum(t.jumlah), 0);
+/** Total transaksi (dokumen ringkas sudah membawa `total`). */
+export const lpjRowTotal = (b) =>
+  isRingkas(b)
+    ? b.total || 0
+    : transaksiOf(b).reduce((sum, t) => sum + (Number.isInteger(t.jumlah) ? t.jumlah : 0), 0);
+
+/** Semua baris transaksi lengkap: pelaksana, item, dan jumlah > 0 (diperiksa ulang di server). */
+export const transaksiLengkap = (transaksi) =>
+  transaksi.length > 0 && transaksi.every((t) => t.pelaksanaId && t.itemNodeId && t.jumlah > 0);
 
 /**
  * Gabungkan baris transaksi dengan item yang sama jadi satu baris (panel "Detail Transaksi").
- * @returns {{ itemKode, label, total }[]}
+ * @returns {{ itemNodeId, itemKode, label, total }[]}
  */
 export function groupTransaksiByItem(transaksi) {
   const order = [];
   const map = {};
   (transaksi || []).forEach((t) => {
-    if (!t.itemNodeId && !t.itemName) return;
-    const key = (t.itemNodeId || '') + '|' + (t.itemName || '');
-    if (!map[key]) {
-      map[key] = { itemKode: t.itemKode || '', label: t.itemName || '', total: 0 };
-      order.push(key);
+    if (!t.itemNodeId) return;
+    if (!map[t.itemNodeId]) {
+      map[t.itemNodeId] = {
+        itemNodeId: t.itemNodeId,
+        itemKode: t.salinan?.itemKode || '',
+        label: t.salinan?.itemNama || '',
+        total: 0,
+      };
+      order.push(t.itemNodeId);
     }
-    map[key].total += parseNum(t.jumlah);
+    map[t.itemNodeId].total += Number.isInteger(t.jumlah) ? t.jumlah : 0;
   });
   return order.map((k) => map[k]);
 }
 
 // ─── Apakah suatu bagian sudah mulai diisi ──────────────────────────────────
 
+const ada = (v) => (typeof v === 'string' ? v.trim() !== '' : !!v);
+
 export function pfHasSpData(sp) {
   if (!sp) return false;
   return !!(
-    sp.nomorSurat ||
-    sp.menimbang ||
+    ada(sp.menimbang) ||
     sp.pejabat ||
-    (sp.dasar || []).some((d) => d) ||
-    (sp.untuk || []).some((u) => u)
+    (sp.dasar || []).some(ada) ||
+    (sp.untuk || []).some(ada)
   );
 }
 
+export const pfHasTteData = (tte) => !!(tte && (ada(tte.nomorSurat) || tte.scan));
+
 export function pfHasSpdData(spd) {
   if (!spd) return false;
-  // nomorSPD (dari nomor SP) dan maksud (dari uraian kegiatan) terisi otomatis, bukan isian pengguna
-  return !!(
-    spd.tujuan ||
-    spd.alatAngkut ||
-    spd.berangkat ||
-    spd.kembali ||
-    spd.seksi ||
-    spd.kodeNo
-  );
+  // nomorSpd (dari nomor SP) dan maksud (dari uraian kegiatan) terisi otomatis, bukan isian pengguna
+  return !!(ada(spd.tujuan) || spd.alatAngkut || spd.berangkat || spd.kembali || spd.seksi);
 }
 
 const txFilled = (t) => t && (t.pelaksanaId || t.itemNodeId || t.jumlah);
 
 export function pfHasLpjData(lpj) {
   if (!lpj) return false;
-  if (lpj.tanggalLPJ || lpj.keterangan) return true;
+  if (lpj.tanggalLpj || ada(lpj.keterangan)) return true;
   return (lpj.transaksi || []).some(txFilled);
 }
 
@@ -110,61 +131,50 @@ export function pfHasLapData(lap) {
   if (!lap) return false;
   return !!(
     lap.tanggalLaporan ||
-    lap.pendahuluan ||
-    lap.maksud ||
-    lap.ruangLingkup ||
-    lap.pelaksanaan ||
-    lap.hasil ||
-    lap.kesimpulan ||
-    lap.rekomendasi ||
-    lap.penutup ||
+    ['pendahuluan', 'maksud', 'ruangLingkup', 'pelaksanaan', 'hasil', 'kesimpulan', 'penutup'].some(
+      (k) => ada(lap[k]),
+    ) ||
     lap.penandatangan ||
-    (lap.fotos && lap.fotos.length)
+    (lap.foto || []).length
   );
 }
 
-export function npHasFormData(np) {
-  if (!np) return false;
-  return !!(np.tanggal || np.mak?.akunNodeId || (np.transaksi || []).some(txFilled));
+export function npHasFormData(spby) {
+  if (!spby) return false;
+  return !!(spby.tanggal || spby.mak?.akunNodeId || (spby.transaksi || []).some(txFilled));
 }
 
 // ─── Fase per jenis berkas ───────────────────────────────────────────────────
+
+const subPerPelaksana = (d, pelaksana, code) =>
+  pelaksana.map((p) => ({
+    key: `${d.key}_${p.pegawaiId}`,
+    docKey: d.key,
+    pegawai: p,
+    docLabel: d.label,
+    label: `${d.label} — ${p.nama}`,
+    code,
+  }));
 
 /**
  * Fase (kartu di halaman Detail & ringkasan "Progress Dokumen").
  * `isi` = sub-langkah form yang dibuka tombol aksi (query ?isi=).
  */
-export function lpjDetailStages(pack) {
-  const pelaksana = pelaksanaOf(pack);
+export function lpjDetailStages(b) {
+  const pelaksana = pelaksanaOf(b);
 
-  if (!isPerjadin(pack)) {
-    const npRincianSubItems = [];
-    NP_RINCIAN_DOCS.forEach((d) => {
-      if (d.perPelaksana) {
-        pelaksana.forEach((p) =>
-          npRincianSubItems.push({
-            key: `${d.key}_${p.id}`,
-            docKey: d.key,
-            pegawai: p,
-            docLabel: d.label,
-            label: `${d.label} — ${p.nama}`,
-            code: 'SPTJM',
-          }),
-        );
-      } else {
-        npRincianSubItems.push({
-          key: d.key,
-          docKey: d.key,
-          label: d.label,
-          code: NP_CODES[d.key],
-        });
-      }
-    });
+  if (!isPerjadin(b)) {
+    const npRincianSubItems = NP_RINCIAN_DOCS.flatMap((d) =>
+      d.perPelaksana
+        ? subPerPelaksana(d, pelaksana, 'SPTJM')
+        : [{ key: d.key, docKey: d.key, label: d.label, code: NP_CODES[d.key] }],
+    );
     return [
       {
         num: 1,
         label: 'SPBy & Rincian Bayar',
         sub: 'Data Umum, Kode MAK & Rincian Dokumen',
+        bagian: ['spby'],
         items: [],
         groups: [
           {
@@ -181,6 +191,7 @@ export function lpjDetailStages(pack) {
         num: 2,
         label: 'Lampiran',
         sub: 'Bukti Pendukung Pembayaran',
+        bagian: ['lampiran'],
         items: [],
         groups: [
           {
@@ -201,7 +212,6 @@ export function lpjDetailStages(pack) {
     ];
   }
 
-  const lpjPackSubItems = [];
   // Urutan tampilan sama dengan Pemeriksaan Dokumen di Berkas Verifikasi (kelompokDokumen):
   // SPBy, Rincian SPBy/pelaksana, Nota Dinas, Kwitansi, SPTJM/pelaksana, SPP/pelaksana, Nominatif
   const ordered = [
@@ -213,22 +223,11 @@ export function lpjDetailStages(pack) {
     'suratpernyataan',
     'nominatif',
   ];
-  ordered.forEach((docKey) => {
+  const lpjPackSubItems = ordered.flatMap((docKey) => {
     const d = LPJ_DOCS.find((x) => x.key === docKey);
-    if (d.perPelaksana) {
-      pelaksana.forEach((p) =>
-        lpjPackSubItems.push({
-          key: `${d.key}_${p.id}`,
-          docKey: d.key,
-          pegawai: p,
-          docLabel: d.label,
-          label: `${d.label} — ${p.nama}`,
-          code: LPJ_CODES[d.key],
-        }),
-      );
-    } else {
-      lpjPackSubItems.push({ key: d.key, docKey: d.key, label: d.label, code: LPJ_CODES[d.key] });
-    }
+    return d.perPelaksana
+      ? subPerPelaksana(d, pelaksana, LPJ_CODES[d.key])
+      : [{ key: d.key, docKey: d.key, label: d.label, code: LPJ_CODES[d.key] }];
   });
 
   return [
@@ -236,6 +235,7 @@ export function lpjDetailStages(pack) {
       num: 1,
       label: 'Surat Perintah',
       sub: 'Dasar Penugasan & Penandatangan',
+      bagian: ['sp'],
       items: [{ key: 'sp', label: 'Surat Perintah', isi: 'sp', noEdit: true, code: 'SP' }],
       groups: [],
     },
@@ -243,6 +243,7 @@ export function lpjDetailStages(pack) {
       num: 2,
       label: 'SPD (Surat Perjalanan Dinas)',
       sub: 'Upload SP ber-TTE & Nomor Surat, lalu Isi & Cetak SPD per Pelaksana',
+      bagian: ['tte', 'spd'],
       // Upload SP harus selesai dulu sebelum form SPD bisa diisi (lihat lpjGroupStatus)
       items: [
         {
@@ -263,7 +264,7 @@ export function lpjDetailStages(pack) {
           noEdit: true,
           code: 'SPD',
           subItems: pelaksana.map((p) => ({
-            key: `spd_${p.id}`,
+            key: `spd_${p.pegawaiId}`,
             docKey: 'spd',
             pegawai: p,
             docLabel: 'SPD',
@@ -277,6 +278,7 @@ export function lpjDetailStages(pack) {
       num: 3,
       label: 'LPJ & SPBy',
       sub: 'Pack Dokumen Pertanggungjawaban',
+      bagian: ['lpj'],
       items: [],
       groups: [
         {
@@ -293,6 +295,7 @@ export function lpjDetailStages(pack) {
       num: 4,
       label: 'Laporan Kegiatan',
       sub: 'Hasil Perjalanan Dinas',
+      bagian: ['laporan'],
       items: [
         { key: 'laporan', label: 'Laporan Kegiatan', isi: 'laporan', noEdit: true, code: 'LAP' },
       ],
@@ -313,62 +316,47 @@ const LPJ_CODES = {
 
 const NP_CODES = { spby: 'SPBY', nota_dinas: 'ND', kwitansi: 'KWT', lembar_verifikasi: 'LV' };
 
-// ─── Status dokumen & fase ───────────────────────────────────────────────────
-// selesai | menunggu | proses | belum | terkunci (dokumen menunggu dokumen lain di fase yang sama)
+/** Bagian berkas yang menghasilkan dokumen fase (item tunggal / kelompok). */
+const BAGIAN_ITEM = { sp: 'sp', tte: 'tte', laporan: 'laporan' };
+const BAGIAN_KELOMPOK = { spd: 'spd', lpjpack: 'lpj', nprincian: 'spby', nplampiran: 'lampiran' };
 
-export function lpjSingleStatus(pack, stage, doc) {
-  const selesai = pack.selesai || {};
-  // SP selesai begitu draftnya final; upload scan & nomor TTE (selesai.sp) jadi dokumen Fase 2
-  const done =
-    doc.key === 'sp'
-      ? !!(pack.sp?.locked || selesai.sp)
-      : doc.key === 'tte'
-        ? !!selesai.sp
-        : doc.key === 'laporan'
-          ? !!selesai.laporan
-          : false;
-  if (done) return 'selesai';
+// ─── Status dokumen & fase ───────────────────────────────────────────────────
+// selesai | proses | belum | terkunci (dokumen menunggu dokumen lain di fase yang sama)
+
+export function lpjSingleStatus(b, stage, doc) {
+  const bagian = BAGIAN_ITEM[doc.key];
+  if (terkunci(b, bagian)) return 'selesai';
   const started =
-    doc.key === 'sp'
-      ? pfHasSpData(pack.sp)
-      : doc.key === 'tte'
-        ? !!(pack.sp?.scan || pack.sp?.nomorTTE?.trim())
-        : doc.key === 'laporan'
-          ? pfHasLapData(pack.lap)
-          : false;
+    bagian === 'sp'
+      ? pfHasSpData(b.sp)
+      : bagian === 'tte'
+        ? pfHasTteData(b.tte)
+        : pfHasLapData(b.laporan);
   return started ? 'proses' : 'belum';
 }
 
-export function lpjGroupSubDone(pack, stage, group, item) {
-  if (group.key === 'spd') return !!pack.spd?.locked;
-  if (group.key === 'lpjpack') return !!pack.selesai?.lpjDocs?.[item.key];
-  if (group.key === 'nprincian') return !!pack.np?.npDocs?.[item.key];
-  if (group.key === 'nplampiran') return (pack.np?.lampiran?.[item.key] || []).length > 0;
-  return false;
-}
+/** Dokumen kelompok selesai = bagiannya sudah terkunci (dokumen dicetak dari isi final). */
+export const lpjGroupSubDone = (b, stage, group) => terkunci(b, BAGIAN_KELOMPOK[group.key]);
 
-export function lpjGroupStatus(pack, stage, group) {
-  const doneCount = group.subItems.filter((it) => lpjGroupSubDone(pack, stage, group, it)).length;
-  if (group.subItems.length > 0 && doneCount === group.subItems.length) return 'selesai';
-  // Form SPD baru terbuka setelah SP ber-TTE diunggah (nomor SPD mengikuti nomor SP)
-  if (group.key === 'spd' && !pack.selesai?.sp) return 'terkunci';
-  if (group.key === 'spd' && pack.spd?.locked) return 'menunggu';
-  if (doneCount > 0) return 'proses';
+export function lpjGroupStatus(b, stage, group) {
+  if (group.subItems.length > 0 && lpjGroupSubDone(b, stage, group)) return 'selesai';
+  // Form SPD baru terbuka setelah SP ber-TTE tersimpan (nomor SPD mengikuti nomor SP)
+  if (group.key === 'spd' && !terkunci(b, 'tte')) return 'terkunci';
   const started =
     group.key === 'spd'
-      ? pfHasSpdData(pack.spd)
+      ? pfHasSpdData(b.spd)
       : group.key === 'lpjpack'
-        ? pfHasLpjData(pack.lpj)
+        ? pfHasLpjData(b.lpj)
         : group.key === 'nprincian'
-          ? npHasFormData(pack.np)
-          : false;
+          ? npHasFormData(b.spby)
+          : !!((b.lampiran?.foto || []).length || (b.lampiran?.nota || []).length);
   return started ? 'proses' : 'belum';
 }
 
-export function lpjStageStatus(pack, stage) {
+export function lpjStageStatus(b, stage) {
   const statuses = (stage.items || [])
-    .map((d) => lpjSingleStatus(pack, stage, d))
-    .concat((stage.groups || []).map((g) => lpjGroupStatus(pack, stage, g)));
+    .map((d) => lpjSingleStatus(b, stage, d))
+    .concat((stage.groups || []).map((g) => lpjGroupStatus(b, stage, g)));
   if (statuses.length === 0) return 'belum';
   if (statuses.every((s) => s === 'selesai')) return 'selesai';
   if (statuses.some((s) => s === 'selesai' || s === 'proses')) return 'proses';
@@ -376,18 +364,16 @@ export function lpjStageStatus(pack, stage) {
 }
 
 /** Jumlah dokumen selesai/total dalam satu fase (sub-item kelompok dihitung satu per satu). */
-export function stageTally(pack, stage) {
+export function stageTally(b, stage) {
   let total = 0;
   let done = 0;
   (stage.items || []).forEach((d) => {
     total++;
-    if (lpjSingleStatus(pack, stage, d) === 'selesai') done++;
+    if (lpjSingleStatus(b, stage, d) === 'selesai') done++;
   });
   (stage.groups || []).forEach((g) => {
-    g.subItems.forEach((it) => {
-      total++;
-      if (lpjGroupSubDone(pack, stage, g, it)) done++;
-    });
+    total += g.subItems.length;
+    if (lpjGroupSubDone(b, stage, g)) done += g.subItems.length;
   });
   return { total, done };
 }
@@ -396,12 +382,15 @@ export function stageTally(pack, stage) {
  * Status tiap fase untuk tampilan: fase ke-n terkunci selama fase sebelumnya belum selesai.
  * @returns {{ stage, raw, display, locked, tally, pct }[]}
  */
-export function stagesWithStatus(pack) {
-  const stages = lpjDetailStages(pack);
-  const raws = stages.map((s) => lpjStageStatus(pack, s));
+export function stagesWithStatus(b) {
+  const stages = lpjDetailStages(b);
+  const raws = stages.map((s) => lpjStageStatus(b, s));
+  // Dokumen ringkas tidak memuat isi: fase berjalan dianggap "proses" bila berkas pernah disunting
+  const aktif = raws.findIndex((r) => r !== 'selesai');
+  if (isRingkas(b) && b.adaIsian && aktif >= 0 && raws[aktif] === 'belum') raws[aktif] = 'proses';
   return stages.map((stage, i) => {
     const locked = i > 0 && raws[i - 1] !== 'selesai';
-    const tally = stageTally(pack, stage);
+    const tally = stageTally(b, stage);
     return {
       stage,
       raw: raws[i],
@@ -414,11 +403,11 @@ export function stagesWithStatus(pack) {
 }
 
 /** Ringkasan progres seluruh berkas. */
-export function overallProgress(pack) {
+export function overallProgress(b) {
   let total = 0;
   let done = 0;
-  lpjDetailStages(pack).forEach((s) => {
-    const t = stageTally(pack, s);
+  lpjDetailStages(b).forEach((s) => {
+    const t = stageTally(b, s);
     total += t.total;
     done += t.done;
   });
@@ -427,104 +416,71 @@ export function overallProgress(pack) {
 
 // ─── Status berkas untuk Daftar/Dashboard ────────────────────────────────────
 
-/** baru | draft | selesai */
-export function lpjDashStatus(pack) {
-  if (!isSkemaBaru(pack)) return pack?.status === 'completed' ? 'selesai' : 'draft';
-  if (pack.status === 'selesai') return 'selesai';
-  return adaIsian(pack) ? 'draft' : 'baru';
-}
-
 /** Apakah berkas sudah mulai diisi (bagian mana pun). */
-export function adaIsian(pack) {
-  if (isPerjadin(pack)) {
-    return (
-      pfHasSpData(pack.sp) ||
-      !!pack.sp?.locked ||
-      pfHasSpdData(pack.spd) ||
-      pfHasLpjData(pack.lpj) ||
-      pfHasLapData(pack.lap)
-    );
-  }
-  const np = pack.np || {};
-  return (
-    npHasFormData(np) ||
-    !!np.formLocked ||
-    Object.values(np.lampiran || {}).some((files) => (files || []).length > 0)
-  );
+export function adaIsian(b) {
+  if (isRingkas(b)) return !!b.adaIsian;
+  const urutan = BAGIAN[isPerjadin(b) ? 'perjadin' : 'nonperjadin'];
+  if (urutan.some((bag) => terkunci(b, bag))) return true;
+  return isPerjadin(b) ? pfHasSpData(b.sp) : npHasFormData(b.spby);
 }
 
-export const lpjDashType = (pack) => (isPerjadin(pack) ? 'perjadin' : 'non-perjadin');
+/** baru | draft | selesai */
+export function lpjDashStatus(b) {
+  if (b?.status === 'selesai') return 'selesai';
+  return adaIsian(b) ? 'draft' : 'baru';
+}
+
+export const lpjDashType = (b) => (isPerjadin(b) ? 'perjadin' : 'non-perjadin');
 
 /** Label kolom "Tahap": Draft / Selesai (+ gaya) */
-export function lpjTahapDisplay(pack) {
-  if (!isSkemaBaru(pack)) return { label: 'Format lama', done: false, legacy: true };
-  if (pack.status === 'selesai') return { label: 'Selesai', done: true };
+export function lpjTahapDisplay(b) {
+  if (b?.status === 'selesai') return { label: 'Selesai', done: true };
   return { label: 'Draft', done: false };
 }
 
 /** Fase aktif pertama yang belum selesai, mis. "Fase 2 — SPD (Surat Perjalanan Dinas)". */
-export function faseAktifLabel(pack) {
-  const list = stagesWithStatus(pack);
-  const aktif = list.find((s) => s.raw !== 'selesai');
+export function faseAktifLabel(b) {
+  const aktif = stagesWithStatus(b).find((s) => s.raw !== 'selesai');
   return aktif ? `Fase ${aktif.stage.num} — ${aktif.stage.label}` : 'Selesai';
 }
 
-/** Pengguna boleh mengubah berkas: admin, pembuat, atau pelaksana, dan berkas belum final. */
-export function canEditPack(pack, { uid, isAdmin }) {
-  if (!pack || pack.status === 'selesai' || !isSkemaBaru(pack)) return false;
-  if (isAdmin) return true;
-  if (pack.created_by === uid) return true;
-  return pelaksanaOf(pack).some((p) => p.uid && p.uid === uid);
-}
+/**
+ * Pengguna boleh mengubah isi berkas: anggota berkas (pembuat/pelaksana ber-akun) selama belum
+ * final. Keuangan tidak menyunting isi fase (rules menolak). Tampilan saja; rules yang menegakkan.
+ */
+export const canEditPack = (b, { uid }) =>
+  !!b && b.status !== 'selesai' && (b.anggotaUids || []).includes(uid);
 
 /** Tanggal ringkasan untuk Daftar/Detail. */
-export function tanggalRingkas(pack) {
-  if (isPerjadin(pack)) {
+export function tanggalRingkas(b) {
+  if (isPerjadin(b)) {
     return {
-      berangkat: pack.spd?.berangkat || '',
-      kembali: pack.spd?.kembali || '',
-      tanggalLPJ: pack.lpj?.tanggalLPJ || '',
+      berangkat: b.spd?.berangkat || '',
+      kembali: b.spd?.kembali || '',
+      tanggalLPJ: b.lpj?.tanggalLpj || '',
     };
   }
-  const t = pack.np?.tanggal || '';
+  const t = b?.spby?.tanggal || '';
   return { berangkat: t, kembali: t, tanggalLPJ: t };
 }
 
-// ─── Nomor (ID) LPJ ──────────────────────────────────────────────────────────
+// ─── Nomor LPJ ───────────────────────────────────────────────────────────────
 
-/**
- * SPBy sudah selesai: fase "LPJ & SPBy" (Perjadin) atau "SPBy & Rincian Bayar" (Non-Perjadin).
- * Saat itulah nomor LPJ diterbitkan (lihat saveLPJ opsi `beriNomor`).
- */
-export function spbySelesai(pack) {
-  if (!isSkemaBaru(pack)) return false;
-  return isPerjadin(pack) ? !!pack.lpj?.locked : !!pack.np?.formLocked;
-}
+/** SPBy sudah selesai (nomor LPJ terbit bersamaan, lewat Function selesaikanSpby). */
+export const spbySelesai = (b) => terkunci(b, isPerjadin(b) ? 'lpj' : 'spby');
 
-/**
- * Nomor LPJ (`LPJ-TAHUN-BULAN-NNNN`) atau '' bila belum terbit. Berkas lama yang ID dokumennya
- * sudah berformat nomor LPJ dianggap bernomor hanya bila SPBy-nya sudah selesai.
- */
-export function lpjIdOf(pack) {
-  if (!pack) return '';
-  if (pack.nomor_lpj) return pack.nomor_lpj;
-  // Format lama (surat_items): ID dokumen sudah nomor resmi sejak dibuat
-  if (!isSkemaBaru(pack)) return /^LPJ-/.test(pack.id || '') ? pack.id : '';
-  return spbySelesai(pack) && /^LPJ-/.test(pack.id || '') ? pack.id : '';
-}
+/** Nomor LPJ (`LPJ-TAHUN-BULAN-NNNN`) atau '' bila belum terbit. */
+export const lpjIdOf = (b) => b?.nomorLpj || '';
 
 /** Label nomor untuk tampilan: nomor LPJ, atau keterangan bila belum terbit. */
-export const lpjIdLabel = (pack) => lpjIdOf(pack) || 'Belum bernomor';
+export const lpjIdLabel = (b) => lpjIdOf(b) || 'Belum bernomor';
 
 /**
- * Berkas boleh dihapus selama nomor LPJ belum terbit, oleh pembuat atau admin.
- * Super Admin boleh menghapus berkas apa pun, termasuk yang sudah bernomor dan berkas format
- * lama (surat_items) yang sudah tidak bisa dibuka.
+ * Tampilkan tombol hapus: draf tanpa nomor oleh pembuatnya; Super Admin juga berkas bernomor
+ * yang belum diarsip. Tampilan saja; Function hapusBerkas yang menegakkan.
  */
-export function canDeletePack(pack, { uid, isAdmin, isSuperAdmin }) {
-  if (!pack) return false;
-  if (isSuperAdmin) return true;
-  if (!isSkemaBaru(pack)) return false;
-  if (lpjIdOf(pack)) return false;
-  return isAdmin || pack.created_by === uid;
+export function canDeletePack(b, { uid, isSuperAdmin }) {
+  if (!b) return false;
+  if (isSuperAdmin) return !(b.keuangan?.arsip === true);
+  return !lpjIdOf(b) && b.dibuatOleh === uid;
 }

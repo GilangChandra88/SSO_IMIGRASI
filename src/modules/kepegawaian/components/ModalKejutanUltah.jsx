@@ -7,27 +7,21 @@ import { showToast } from '@/utils/toastStore';
 import {
   adalahUltahHariIni,
   ambilStatusUltah,
-  daftarFoto,
   formatTanggal,
   resetUltah,
   tahunIni,
 } from '@/utils/ulangTahun';
 
-const OPSI_UCAPAN = [
-  { nilai: 'biarkan', label: 'Biarkan ucapan apa adanya' },
-  { nilai: 'belum-dibalas', label: 'Tandai belum dibalas (popup muncul lagi)' },
-  { nilai: 'hapus', label: 'Hapus semua ucapan tahun ini' },
-];
-
 /**
- * Status & pengujian kejutan ulang tahun seorang pegawai (khusus admin): captcha tahun ini sudah
- * dilihat atau belum, jumlah ucapan, pratinjau ("Uji Tampilan"), dan reset.
+ * Status & pengujian kejutan ulang tahun seorang pegawai (Kepegawaian): captcha tahun ini sudah
+ * dilihat atau belum, jumlah ucapan, pratinjau ("Uji Tampilan"), dan reset. Tanda "sudah dibalas"
+ * hanya bisa diisi penerimanya (rules), jadi reset ucapan = menghapus ucapan tahun ini.
  */
-export default function ModalKejutanUltah({ pegawai, olehEmail, onUji, onClose }) {
+export default function ModalKejutanUltah({ pegawai, uid, onUji, onClose }) {
   const [status, setStatus] = useState(null);
   const [galat, setGalat] = useState('');
   const [kejutan, setKejutan] = useState(true);
-  const [ucapan, setUcapan] = useState('belum-dibalas');
+  const [hapusUcapan, setHapusUcapan] = useState(false);
   const [mereset, setMereset] = useState(false);
   const [versi, setVersi] = useState(0);
 
@@ -36,7 +30,7 @@ export default function ModalKejutanUltah({ pegawai, olehEmail, onUji, onClose }
     setGalat('');
     ambilStatusUltah(pegawai.id)
       .then((s) => !batal && setStatus(s))
-      .catch(() => !batal && setGalat('Gagal memuat status. Periksa koneksi.'));
+      .catch(() => !batal && setGalat('Tidak punya akses atau gagal memuat status.'));
     return () => {
       batal = true;
     };
@@ -45,7 +39,7 @@ export default function ModalKejutanUltah({ pegawai, olehEmail, onUji, onClose }
   const reset = async () => {
     setMereset(true);
     try {
-      await resetUltah(pegawai.id, { kejutan, ucapan }, olehEmail);
+      await resetUltah(pegawai.id, { kejutan, hapusUcapan }, uid);
       showToast('Kejutan ulang tahun direset.');
       setVersi((v) => v + 1);
     } catch {
@@ -55,17 +49,13 @@ export default function ModalKejutanUltah({ pegawai, olehEmail, onUji, onClose }
     }
   };
 
+  const jumlahFoto = pegawai.fotoPaths?.length || 0;
   const sudahDilihat = status?.kejutanTahun === tahunIni();
   const belumDibalas = status?.ucapan.filter((u) => !u.terimaKasih).length ?? 0;
   const baris = [
-    ['Tanggal lahir', formatTanggal(pegawai.tanggal_lahir) || 'Belum diisi'],
-    ['Ulang tahun hari ini', adalahUltahHariIni(pegawai.tanggal_lahir) ? 'Ya 🎂' : 'Tidak'],
-    [
-      'Foto captcha',
-      daftarFoto(pegawai).length
-        ? `${daftarFoto(pegawai).length} foto`
-        : 'Belum ada (memakai inisial)',
-    ],
+    ['Tanggal lahir', formatTanggal(pegawai.tanggalLahir) || 'Belum diisi'],
+    ['Ulang tahun hari ini', adalahUltahHariIni(pegawai.tanggalLahir) ? 'Ya 🎂' : 'Tidak'],
+    ['Foto captcha', jumlahFoto ? `${jumlahFoto} foto` : 'Belum ada (memakai inisial)'],
     [`Captcha ${tahunIni()}`, status ? (sudahDilihat ? 'Sudah dilihat' : 'Belum dilihat') : '…'],
     [
       `Ucapan ${tahunIni()}`,
@@ -91,7 +81,7 @@ export default function ModalKejutanUltah({ pegawai, olehEmail, onUji, onClose }
         </dl>
         {galat && <p className={FORM.err}>{galat}</p>}
 
-        {!pegawai.tanggal_lahir && (
+        {!pegawai.tanggalLahir && (
           <p className={`${FORM.hint} mt-3`}>
             Tanggal lahir belum diisi, jadi kejutan tidak akan muncul otomatis saat login.
           </p>
@@ -107,20 +97,15 @@ export default function ModalKejutanUltah({ pegawai, olehEmail, onUji, onClose }
           />
           Tampilkan lagi captcha pada login berikutnya
         </label>
-        <div className="mt-2.5 space-y-1.5">
-          {OPSI_UCAPAN.map((o) => (
-            <label key={o.nilai} className="flex items-start gap-2.5 text-[13px] cursor-pointer">
-              <input
-                type="radio"
-                name="reset-ucapan"
-                checked={ucapan === o.nilai}
-                onChange={() => setUcapan(o.nilai)}
-                className="mt-0.5 accent-[#0f2040]"
-              />
-              {o.label}
-            </label>
-          ))}
-        </div>
+        <label className="flex items-start gap-2.5 text-[13px] cursor-pointer mt-2">
+          <input
+            type="checkbox"
+            checked={hapusUcapan}
+            onChange={(e) => setHapusUcapan(e.target.checked)}
+            className="mt-0.5 accent-[#0f2040]"
+          />
+          Hapus semua ucapan tahun ini untuk pegawai ini
+        </label>
 
         <p className={`${FORM.hint} mt-4`}>
           Uji penuh: isi tanggal lahir pegawai ini dengan tanggal hari ini, reset, lalu login dengan
@@ -137,7 +122,7 @@ export default function ModalKejutanUltah({ pegawai, olehEmail, onUji, onClose }
           <button
             type="button"
             onClick={reset}
-            disabled={mereset || (!kejutan && ucapan === 'biarkan')}
+            disabled={mereset || (!kejutan && !hapusUcapan)}
             className={BTN.primaryDark}
           >
             <FaRedo size={11} /> {mereset ? 'Mereset…' : 'Reset'}

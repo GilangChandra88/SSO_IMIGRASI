@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/context/AuthContext';
+import { usePegawaiRingkas } from '@/context/usePegawaiRingkas';
 import Modal from '@/components/Modal';
 import { T, BTN, FONT, NAVY } from '@/utils/uiTokens';
 import { ANIM, jedaKe } from '@/utils/animasi';
@@ -13,9 +14,8 @@ import { useKejutanAktif } from './kejutanAktif';
  * Menunggu bila captcha ulang tahun sedang tampil.
  */
 export default function PopupUcapan() {
-  const { userData } = useAuth();
+  const { pegawaiId } = useAuth();
   const kejutanAktif = useKejutanAktif();
-  const pegawaiId = userData?.id;
   const [ucapan, setUcapan] = useState([]);
   const [tunda, setTunda] = useState(null); // { sampai, ids: Set } saat "Nanti saja"
   const [mengirim, setMengirim] = useState(false);
@@ -70,17 +70,7 @@ export default function PopupUcapan() {
         <p className="text-sm text-white/75">{ucapan.length} rekan kerja mengirim ucapan.</p>
       </div>
 
-      <div className="px-6 py-4 space-y-2.5 max-h-[45vh] overflow-y-auto">
-        {ucapan.map((u, i) => (
-          <div
-            key={u.id}
-            className={`${T.surface2} rounded-xl px-4 py-3 ${ANIM.muncul} ${jedaKe(i)}`}
-          >
-            <p className={`text-[13.5px] whitespace-pre-line break-words ${T.ink}`}>{u.pesan}</p>
-            <p className={`text-[11.5px] font-semibold mt-1.5 ${T.ink2}`}>— {u.dariNama}</p>
-          </div>
-        ))}
-      </div>
+      <DaftarUcapan ucapan={ucapan} />
 
       <div className={`px-6 pb-5 pt-1`}>
         {galat && <p className="text-[12px] font-semibold text-[#d93025] mb-2">{galat}</p>}
@@ -102,5 +92,29 @@ export default function PopupUcapan() {
         </div>
       </div>
     </Modal>
+  );
+}
+
+/** Isi popup; nama pengirim dibaca dari pegawai ringkas (dimuat hanya saat popup tampil). */
+function DaftarUcapan({ ucapan }) {
+  const { semua } = usePegawaiRingkas();
+  const namaDari = useMemo(
+    () => Object.fromEntries(semua.filter((p) => p.authUid).map((p) => [p.authUid, p.nama])),
+    [semua],
+  );
+  return (
+    <div className="px-6 py-4 space-y-2.5 max-h-[45vh] overflow-y-auto">
+      {ucapan.map((u, i) => (
+        <div
+          key={u.id}
+          className={`${T.surface2} rounded-xl px-4 py-3 ${ANIM.muncul} ${jedaKe(i)}`}
+        >
+          <p className={`text-[13.5px] whitespace-pre-line break-words ${T.ink}`}>{u.pesan}</p>
+          <p className={`text-[11.5px] font-semibold mt-1.5 ${T.ink2}`}>
+            — {namaDari[u.dariUid] || 'Rekan kerja'}
+          </p>
+        </div>
+      ))}
+    </div>
   );
 }

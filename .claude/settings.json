@@ -17,13 +17,6 @@
       "Bash(git show:*)",
       "Bash(git branch)",
       "Bash(git branch --show-current)",
-      "Bash(git switch:*)",
-      "Bash(git add:*)",
-      "Bash(git commit:*)",
-      "Bash(git fetch:*)",
-      "Bash(git pull:*)",
-      "Bash(git merge:*)",
-      "Bash(git stash:*)",
       "PowerShell(npm run dev)",
       "PowerShell(npm run lint)",
       "PowerShell(npm run lint:fix)",
@@ -38,35 +31,7 @@
       "PowerShell(git log:*)",
       "PowerShell(git show:*)",
       "PowerShell(git branch)",
-      "PowerShell(git branch --show-current)",
-      "PowerShell(git switch:*)",
-      "PowerShell(git add:*)",
-      "PowerShell(git commit:*)",
-      "PowerShell(git fetch:*)",
-      "PowerShell(git pull:*)",
-      "PowerShell(git merge:*)",
-      "PowerShell(git stash:*)",
-      "__claude-auto-approve__",
-      "Bash(*)",
-      "Edit(*)",
-      "Write(*)",
-      "Read(*)",
-      "Glob(*)",
-      "Grep(*)",
-      "WebFetch(*)",
-      "WebSearch(*)",
-      "TodoWrite(*)",
-      "Task(*)",
-      "NotebookEdit(*)",
-      "Bash(ls -R hooks pages components utils ui services)",
-      "Bash(cat -n hooks/useDokumenLpj.jsx)",
-      "Bash(grep -n \"lpjGroupSubDone\\\\|lpjSingleStatus\\\\|stagesWithStatus\" -r .)",
-      "Bash(sed -n 18,70p utils/lpjLogic.js)",
-      "Bash(sed -n 295,480p utils/lpjLogic.js)",
-      "Bash(grep -n \"isAdmin\\\\|isSuperAdmin\" context/AuthContext.jsx)",
-      "Bash(sed -n 85,100p modules/e-persuratan/AppModule.jsx)",
-      "Bash(head -12 modules/e-persuratan/lpj/ui/DocPreviewPopup.jsx modules/e-persuratan/lpj/components/LampiranViewer.jsx)",
-      "PowerShell(Get-Process AgenScanner -ErrorAction SilentlyContinue | Stop-Process -Force; Start-Sleep -Milliseconds 800; Remove-Item Env:DOTNET_ROOT -ErrorAction SilentlyContinue; Start-Process \"C:\\\\APP_PROJEK\\\\SCANER APP\\\\agen-scanner-rilis\\\\AgenScanner.exe\"; Start-Sleep -Seconds 4; \\(Invoke-WebRequest -UseBasicParsing http://127.0.0.1:47800/status -Headers @{Origin='http://localhost:5173'}\\).Content)"
+      "PowerShell(git branch --show-current)"
     ],
     "deny": [
       "Bash(git push --force:*)",
@@ -77,6 +42,12 @@
       "Bash(git clean:*)",
       "Bash(git branch -D:*)",
       "Bash(rm -rf:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(npx firebase deploy:*)",
+      "Bash(npx firebase-tools deploy:*)",
+      "Bash(npm audit fix --force:*)",
+      "Bash(curl:*)",
+      "Bash(cat .env:*)",
       "PowerShell(git push --force:*)",
       "PowerShell(git push -f:*)",
       "PowerShell(git push origin main:*)",
@@ -84,10 +55,18 @@
       "PowerShell(git reset --hard:*)",
       "PowerShell(git clean:*)",
       "PowerShell(git branch -D:*)",
+      "PowerShell(firebase deploy:*)",
+      "PowerShell(npx firebase deploy:*)",
+      "PowerShell(npx firebase-tools deploy:*)",
+      "PowerShell(npm audit fix --force:*)",
+      "PowerShell(curl:*)",
+      "PowerShell(cat .env:*)",
+      "PowerShell(Get-Content .env:*)",
       "Read(./.env)",
       "Read(./.env.local)",
       "Read(./.env.production)",
-      "Read(./.env.development)"
+      "Read(./.env.development)",
+      "Read(./.env.*.local)"
     ],
     "ask": [
       "Bash(git push:*)",
@@ -120,28 +99,6 @@
       "Edit(/functions/**)",
       "Edit(/.github/**)",
       "Edit(/.claude/**)"
-    ]
-  },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "ExitPlanMode",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node -e \"process.stdout.write(JSON.stringify({decision: 'approve'}))\""
-          }
-        ]
-      },
-      {
-        "matcher": "AskUserQuestion",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node -e \"process.stdout.write(JSON.stringify({decision: 'approve', answer: 'yes'}))\""
-          }
-        ]
-      }
     ]
   }
 }

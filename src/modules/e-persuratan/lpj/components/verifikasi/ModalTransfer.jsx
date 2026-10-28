@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { FaCheck, FaCircleNotch } from 'react-icons/fa';
 import { rupiah } from '../../utils/lpjLogic';
-import { validasiBerkas } from '../../services/lpjStorage';
+import { cekBerkasDipilih } from '../../services/unggahan';
 import SlotBerkas from '../arsip/SlotBerkas';
 import ModalTahap, { KotakNilai } from './ModalTahap';
 import { ADMIN, FONT, T } from '@/utils/uiTokens';
@@ -17,7 +17,7 @@ export default function ModalTransfer({ pack, nom, onClose, onSave }) {
 
   function pilih(f) {
     if (!f) return;
-    const pesan = validasiBerkas(f);
+    const pesan = cekBerkasDipilih('keuangan', f);
     setErr(pesan);
     setFile(pesan ? null : f);
   }

@@ -8,17 +8,19 @@ import {
   FaChevronLeft,
   FaChevronRight,
 } from 'react-icons/fa';
-import { PEJABAT_KATEGORI, SCAN_MAX_BYTES } from '../../data/masterLpj';
-import { deleteLpjFile, pesanGagalUnggah, uploadLpjFile } from '../../services/lpjStorage';
+import { bukaBerkas, formatUkuran, pesanGagalUnggah } from '@/utils/berkasStorage';
+import { tanggalIso } from '@/utils/nilai';
+import { PEJABAT_KATEGORI } from '../../data/masterLpj';
+import { ATURAN_UNGGAHAN, pesanUnggah, simpanScanTte } from '../../services/unggahan';
 import Field from '../../ui/Field';
 import { BTN, FORM, NAVY, STATUS, T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
 import ProgressBar from '../../ui/ProgressBar';
 
 /**
- * Fase 2 (awal) — TTE Srikandi: unggah scan Surat Perintah ber-TTE dan isi nomor surat resmi
- * (keduanya wajib), lalu "Lanjut Buat SPD": SP selesai, form SPD terbuka dan nomor SPD mengikuti
- * nomor SP.
+ * Fase 2 (awal) — TTE Srikandi: unggah scan Surat Perintah ber-TTE, lalu isi nomor & tanggal
+ * surat resmi (semuanya wajib), lalu "Lanjut Buat SPD": bagian TTE dikunci, form SPD terbuka dan
+ * nomor SPD mengikuti nomor SP. Scan langsung tersimpan begitu terunggah (unggahan.js).
  */
 export default function StepTTE({ ctx }) {
   const {
@@ -35,71 +37,64 @@ export default function StepTTE({ ctx }) {
     user,
     dok,
   } = ctx;
+  const tte = pf.tte;
   const sp = pf.sp;
-  const nomor = sp.nomorTTE || '';
-  const filled = nomor.trim().length > 0;
+  const scan = pack.tte?.scan || null; // berkas unggahan selalu dari berkas live
+  const nomor = tte.nomorSurat || '';
   const [uploading, setUploading] = useState(false);
   const [persen, setPersen] = useState(0); // progres unggah scan (0–100)
+  // Tanggal surat resmi bawaan hari ini (bisa disesuaikan dengan tanggal di Srikandi)
+  const tanggal = tte.tanggalSurat || tanggalIso();
 
   const pejabatLabel = sp.pejabat
     ? `${sp.pejabat.nama} (${PEJABAT_KATEGORI.find((k) => k.id === sp.pejabat.kategori)?.label || 'Pejabat'})`
     : '—';
 
+  const setTte = (patch) => setPf((prev) => ({ ...prev, tte: { ...prev.tte, ...patch } }));
+
   async function handleFile(file) {
     if (!file) return;
-    const okTipe = file.type.startsWith('image/') || file.type === 'application/pdf';
-    if (!okTipe) {
-      setErrors({ ...errors, scan: 'File harus berupa gambar (JPG/PNG) atau PDF.' });
-      return;
-    }
-    if (file.size > SCAN_MAX_BYTES) {
-      setErrors({ ...errors, scan: 'Ukuran file maksimal 5 MB.' });
-      return;
-    }
     setErrors({ ...errors, scan: undefined });
     setPersen(0);
     setUploading(true);
     try {
-      const meta = await uploadLpjFile(pack.id, 'scan-sp', file, user.uid, {
-        onProgress: setPersen,
-      });
-      const lama = ctx.pfRef.current.sp.scan;
-      await persist((prev) => ({ ...prev, sp: { ...prev.sp, scan: meta } }), {
-        quiet: true,
-        teks: 'mengunggah scan Surat Perintah ber-TTE',
-      });
-      if (lama?.path) deleteLpjFile(lama.path).catch(() => {});
+      await simpanScanTte(pack, file, user.uid, { onProgress: setPersen });
       showToast('Scan Surat Perintah terunggah.');
     } catch (err) {
-      console.error('upload scan error:', err);
-      setErrors({ ...errors, scan: pesanGagalUnggah(err) });
+      setErrors({ ...errors, scan: pesanUnggah(err) });
     } finally {
       setUploading(false);
     }
   }
 
-  /** "Lanjut Buat SPD": scan & nomor surat resmi wajib, lalu SP selesai dan form SPD terbuka. */
+  /** "Lanjut Buat SPD": scan, nomor, dan tanggal wajib; lalu TTE dikunci dan form SPD terbuka. */
   async function handleSubmit() {
     if (uploading) return;
     const e = {};
-    if (!sp.scan) e.scan = 'Unggah scan Surat Perintah ber-TTE';
-    if (!filled) e.nomorTTE = 'Wajib diisi';
+    if (!scan) e.scan = 'Unggah scan Surat Perintah ber-TTE';
+    if (!nomor.trim()) e.nomorSurat = 'Wajib diisi';
+    if (!tanggal) e.tanggalSurat = 'Wajib diisi';
     if (tandaiGalat(e)) return;
     const nomorResmi = nomor.trim();
     const ok = await persist(
       (prev) => ({
         ...prev,
-        sp: { ...prev.sp, nomorSurat: nomorResmi },
-        spd: { ...prev.spd, nomorSPD: prev.spd.nomorSPD || nomorResmi },
-        selesai: { ...prev.selesai, sp: true },
+        tte: { ...prev.tte, nomorSurat: nomorResmi, tanggalSurat: tanggal },
+        // Nomor SPD mengikuti nomor SP; tersimpan begitu bagian SPD terbuka (setelah TTE terkunci)
+        spd: { ...prev.spd, nomorSpd: prev.spd.nomorSpd || nomorResmi },
       }),
-      { quiet: true, teks: `menyelesaikan Surat Perintah nomor ${nomorResmi}` },
+      { quiet: true, kunci: 'tte' },
     );
     if (ok) {
       showToast('Surat Perintah ditandai selesai.');
       goStep('spd');
     }
   }
+
+  const lihatScan = () =>
+    bukaBerkas(scan).catch((err) =>
+      showToast(pesanGagalUnggah(err, 'Berkas gagal dibuka.'), 'error'),
+    );
 
   return (
     <>
@@ -121,7 +116,7 @@ export default function StepTTE({ ctx }) {
                 <strong>{pejabatLabel}</strong>
               </li>
               <li>Upload hasil scan Surat Perintah yang sudah ber-TTE</li>
-              <li>Masukkan nomor surat resmi yang diterbitkan di bawah ini</li>
+              <li>Masukkan nomor & tanggal surat resmi yang diterbitkan di bawah ini</li>
             </ol>
           </div>
         </div>
@@ -155,7 +150,8 @@ export default function StepTTE({ ctx }) {
       <div className={FORM.card}>
         <h3 className={`${FORM.cardTitle} mb-1`}>Upload Scan &amp; Nomor Surat dari TTE</h3>
         <p className={`text-xs mb-4 ${T.ink2}`}>
-          Pilih file hasil scan (gambar/PDF, maks. 5 MB) dan masukkan nomor surat resmi
+          Pilih file hasil scan (gambar diperkecil otomatis, PDF maks.{' '}
+          {formatUkuran(ATURAN_UNGGAHAN.tte.maksByte)}) dan masukkan nomor & tanggal surat resmi
         </p>
         <Field
           label="File Scan Surat Perintah (ber-TTE)"
@@ -166,7 +162,7 @@ export default function StepTTE({ ctx }) {
           <input
             id="scan-sp"
             type="file"
-            accept="image/*,application/pdf"
+            accept="image/jpeg,image/png,application/pdf"
             disabled={uploading}
             onChange={(e) => {
               handleFile(e.target.files?.[0]);
@@ -191,31 +187,47 @@ export default function StepTTE({ ctx }) {
               />
             </div>
           )}
-          {sp.scan && !uploading && (
+          {scan && !uploading && (
             <p className={`mt-1 text-[11.5px] flex items-center gap-1.5 ${STATUS.doneInk}`}>
-              File terpilih: {sp.scan.name}
-              <a
-                href={sp.scan.url}
-                target="_blank"
-                rel="noreferrer"
+              File terpilih: {scan.nama}
+              <button
+                type="button"
+                onClick={lihatScan}
                 className="underline inline-flex items-center gap-1"
               >
                 lihat <FaExternalLinkAlt size={9} />
-              </a>
+              </button>
             </p>
           )}
         </Field>
-        <Field label="Nomor Surat Resmi" htmlFor="nomor-tte" required err={errors.nomorTTE}>
+        <Field label="Nomor Surat Resmi" htmlFor="nomor-tte" required err={errors.nomorSurat}>
           <input
             id="nomor-tte"
             value={nomor}
             placeholder="Contoh: W26.IMI.2.GR.02.01-140"
             onChange={(e) => {
-              const v = e.target.value;
-              setPf((prev) => ({ ...prev, sp: { ...prev.sp, nomorTTE: v } }));
-              setErrors({ ...errors, nomorTTE: undefined });
+              setTte({ nomorSurat: e.target.value });
+              setErrors({ ...errors, nomorSurat: undefined });
             }}
-            className={`${FORM.input} ${errors.nomorTTE ? FORM.borderErr : FORM.borderOk}`}
+            className={`${FORM.input} ${errors.nomorSurat ? FORM.borderErr : FORM.borderOk}`}
+          />
+        </Field>
+        <Field
+          label="Tanggal Surat Resmi"
+          htmlFor="tanggal-tte"
+          required
+          hint="Sesuai tanggal surat di Srikandi"
+          err={errors.tanggalSurat}
+        >
+          <input
+            id="tanggal-tte"
+            type="date"
+            value={tanggal}
+            onChange={(e) => {
+              setTte({ tanggalSurat: e.target.value });
+              setErrors({ ...errors, tanggalSurat: undefined });
+            }}
+            className={`${FORM.input} ${errors.tanggalSurat ? FORM.borderErr : FORM.borderOk}`}
           />
         </Field>
       </div>

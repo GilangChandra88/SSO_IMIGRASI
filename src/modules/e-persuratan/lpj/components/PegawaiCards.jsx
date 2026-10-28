@@ -12,7 +12,7 @@ export default function PegawaiCards({ list, onHapus }) {
     <>
       {list.map((p) => (
         <div
-          key={p.id}
+          key={p.pegawaiId}
           className={`flex items-start gap-2 p-3 mb-2 rounded-lg border text-[12.5px] font-semibold ${T.surface2} ${T.border} ${T.ink} ${onHapus ? ANIM.muncul : ''}`}
         >
           <div className="flex-1 min-w-0 grid grid-cols-2 sm:grid-cols-4 gap-2.5">

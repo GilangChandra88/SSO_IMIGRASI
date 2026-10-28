@@ -1,12 +1,16 @@
-import { daftarFoto } from '@/utils/ulangTahun';
+import { useUrlBerkas } from '@/utils/useUrlBerkas';
 
 /**
- * Foto pegawai (bawaan: foto pertamanya), atau inisial namanya bila belum ada foto. `url` memilih
- * foto tertentu; `varian` = kelas tambahan untuk gambar (filter/transform captcha); ukuran &
+ * Foto pegawai, atau inisial namanya bila belum ada foto (atau foto gagal dimuat). Bawaan: foto
+ * pertama dokumen pegawai (`fotoPaths`, hanya pemilik & Kepegawaian) atau thumbnail pegawai ringkas
+ * (`fotoThumbPath`, semua pegawai). `path` memilih foto Storage tertentu, `url` memakai URL lokal
+ * (mis. foto kamera); `varian` = kelas tambahan untuk gambar (filter/transform captcha); ukuran &
  * bentuk lewat `className`.
  */
-export default function FotoWajah({ pegawai, url, varian = '', alt = '', className = '' }) {
-  const src = url || daftarFoto(pegawai)[0]?.url;
+export default function FotoWajah({ pegawai, path, url, varian = '', alt = '', className = '' }) {
+  const jalur = url ? '' : path || pegawai?.fotoPaths?.[0] || pegawai?.fotoThumbPath || '';
+  const { url: urlBerkas } = useUrlBerkas(jalur);
+  const src = url || urlBerkas;
   const inisial = (pegawai?.nama || '?')
     .split(/\s+/)
     .filter(Boolean)

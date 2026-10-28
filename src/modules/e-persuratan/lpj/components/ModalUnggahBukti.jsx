@@ -1,29 +1,27 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { FaCheck, FaCircleNotch, FaRegFilePdf, FaTimes, FaUpload } from 'react-icons/fa';
 import Modal from '@/components/Modal';
+import { formatUkuran, validasiBerkas } from '@/utils/berkasStorage';
 import { LAP_BUKTI_JENIS } from '../data/masterLpj';
-import { tambahBuktiPengeluaran } from '../hooks/useLPJ';
-import { pesanGagalUnggah, uploadLpjFile, validasiBerkas } from '../services/lpjStorage';
+import { ATURAN_UNGGAHAN, pesanUnggah, tambahBukti } from '../services/unggahan';
 import { BTN, FONT, STATUS, T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
 
 const LABEL_JENIS = Object.fromEntries(LAP_BUKTI_JENIS);
-
-// Bukti pengeluaran hanya JPG, PNG, atau PDF (diperiksa dari jenis MIME, cadangan ekstensi)
-const TIPE_BOLEH = ['image/jpeg', 'image/png', 'application/pdf'];
-const EKSTENSI_BOLEH = /\.(jpe?g|png|pdf)$/i;
+const ATURAN = ATURAN_UNGGAHAN.bukti;
 const ACCEPT = '.jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf';
 
-function cekBerkas(f) {
-  const tipeSah = f.type ? TIPE_BOLEH.includes(f.type) : EKSTENSI_BOLEH.test(f.name);
-  if (!tipeSah) return 'File harus berupa JPG, PNG, atau PDF.';
-  return validasiBerkas(f); // ukuran < 5 MB
-}
+// Tipe dicek di sini; gambar besar tetap boleh karena dikompres otomatis sebelum diunggah
+const cekBerkas = (f) =>
+  validasiBerkas(f, {
+    tipe: ATURAN.tipe,
+    maksByte: f.type === 'application/pdf' ? ATURAN.maksByte : Infinity,
+  });
 
 /**
  * Popup unggah satu bukti pengeluaran untuk `pelaksana`: pilih label (bawaan = label pertama yang
  * belum ada buktinya; label yang sudah ada tidak bisa dipilih) dan berkasnya — seret-lepas ke area
- * unggah atau klik untuk memilih. JPG/PNG/PDF < 5 MB.
+ * unggah atau klik untuk memilih. JPG/PNG (dikompres) atau PDF ≤ 5 MB.
  */
 export default function ModalUnggahBukti({ pack, pelaksana, terpakai, user, showToast, onClose }) {
   const sudah = useMemo(() => new Set(terpakai), [terpakai]);
@@ -57,19 +55,19 @@ export default function ModalUnggahBukti({ pack, pelaksana, terpakai, user, show
     setGalat('');
     setPersen(0);
     try {
-      const meta = await uploadLpjFile(pack.id, `laporan-bukti/${pelaksana.id}`, file, user.uid, {
-        onProgress: (p) => setPersen(Math.round(p)),
-      });
-      await tambahBuktiPengeluaran(pack, pelaksana.id, [{ ...meta, jenis }], {
-        teks: `mengunggah bukti ${LABEL_JENIS[jenis]} ${pelaksana.nama}`,
-        uid: user.uid,
-        nama: user.nama,
-      });
+      await tambahBukti(
+        pack.id,
+        { pelaksanaId: pelaksana.pegawaiId, label: jenis },
+        file,
+        user.uid,
+        {
+          onProgress: (p) => setPersen(Math.round(p)),
+        },
+      );
       showToast?.(`Bukti ${LABEL_JENIS[jenis]} ${pelaksana.nama} terunggah.`);
       onClose();
     } catch (err) {
-      console.error('upload bukti pengeluaran error:', err);
-      setGalat(pesanGagalUnggah(err));
+      setGalat(pesanUnggah(err));
       setPersen(null);
     }
   }
@@ -194,7 +192,7 @@ export default function ModalUnggahBukti({ pack, pelaksana, terpakai, user, show
                 Seret berkas ke sini, atau klik untuk memilih
               </div>
               <div className={`text-[11.5px] mt-1 ${T.inkMuted}`}>
-                JPG, PNG, atau PDF, kurang dari 5 MB
+                JPG/PNG (diperkecil otomatis) atau PDF maks. {formatUkuran(ATURAN.maksByte)}
               </div>
             </div>
           )}

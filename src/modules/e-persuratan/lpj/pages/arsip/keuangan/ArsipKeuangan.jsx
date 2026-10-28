@@ -3,41 +3,34 @@
  *   /e-persuratan/arsip              → tab "Berkas LPJ"
  *   /e-persuratan/arsip/drpp         → tab "Daftar DRPP"
  *   /e-persuratan/arsip/drpp/:id     → detail satu DRPP
- * Data: semua berkas LPJ bernomor (`lpj_packs`, field `arsip`) + koleksi `drpp`.
+ * Data per tahun anggaran (docs/skema-database.md §5.2): ringkasan berkas di tahap Arsip
+ * (`lpj_ringkas`; tahap arsip & drpp = daftar kerja, selesai = sudah masuk DRPP) dan `lpj_drpp`.
+ * Kartu statistik memakai kueri hitung; progres & total DRPP dari field `masuk` (ditulis server).
  */
 
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Navigate, useNavigate, useParams } from 'react-router-dom';
-import {
-  FaArchive,
-  FaClock,
-  FaLayerGroup,
-  FaQrcode,
-  FaRegFileAlt,
-  FaRegTrashAlt,
-} from 'react-icons/fa';
+import { FaArchive, FaBan, FaClock, FaLayerGroup, FaQrcode, FaRegFileAlt } from 'react-icons/fa';
 import Modal from '@/components/Modal';
-import { useLPJPacks } from '../../../hooks/useLPJ';
+import { useDaftarBerkas, useDaftarDrpp, useJumlahTahap } from '../../../hooks/useBerkas';
 import { useLpjUser } from '../../../hooks/useLpjUser';
-import { usePegawaiList } from '../../../hooks/usePegawaiList';
 import {
-  assignToDrpp,
-  createDrpp,
-  deleteDrpp,
-  hapusPindaian,
-  scanDrppDoc,
-  scanLpj,
-  setExpectedList,
-  useDrppList,
-} from '../../../hooks/useDrpp';
-import { pesanGagalUnggah } from '../../../services/lpjStorage';
+  ambilDrpp,
+  batalkanArsip,
+  batalkanDrpp,
+  buatDrpp,
+  ubahDaftarDrpp,
+  ubahKwitansi,
+} from '../../../services/keuanganDb';
+import { arsipkanBerkas, pesanUnggah, unggahDokumenDrpp } from '../../../services/unggahan';
 import {
+  TAHAP_ARSIP,
   barisLpj,
-  berkasArsip,
+  drppAktif,
   drppLocked,
-  lpjArsipStatus,
   lpjPendingDrpp,
 } from '../../../utils/drppLogic';
+import { daftarTahun } from '../../../../tahunAnggaran';
 import ArsipLpjModal from '../ArsipLpjModal';
 import LpjTab from './LpjTab';
 import DrppTab from './DrppTab';
@@ -46,8 +39,11 @@ import ScanLpjModal from './ScanLpjModal';
 import CreateDrppModal from './CreateDrppModal';
 import EditDaftarModal from './EditDaftarModal';
 import DrppPickerModal from './DrppPickerModal';
+import { PANJANG, LIMIT_KUERI } from '@/utils/batas';
+import { keDate, tahunIni } from '@/utils/nilai';
+import { pesanGalat } from '@/utils/pesanGalat';
 import { useToast } from '@/utils/toastStore';
-import { BTN, FONT, LAYOUT, STATUS, T } from '@/utils/uiTokens';
+import { BTN, FONT, FORM, LAYOUT, STATUS, T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
 import { AngkaBerjalan, useMunculBerurutan } from '@/components/animasi';
 
@@ -62,23 +58,38 @@ const TAB =
   'px-4 py-[11px] -mb-px text-[13.5px] font-semibold border-b-[2.5px] motion-safe:transition-[color,border-color] motion-safe:duration-200';
 const TAB_ON = 'text-[#173D68] border-[#173D68] dark:text-[#7DB6F3] dark:border-[#7DB6F3]';
 const TAB_OFF = `border-transparent ${T.inkMuted} hover:text-[#55627A] dark:hover:text-[#A7B6CB]`;
+const SELECT = `h-10 pl-3 pr-2 rounded-[9px] border ${T.borderStrong} ${T.surface} ${T.ink} text-[12.5px] font-semibold cursor-pointer outline-none ${T.focus} dark:[color-scheme:dark]`;
 
 const BASE = '/e-persuratan/arsip';
+// Daftar kerja (belum dipindai + belum masuk DRPP) biasanya sedikit; berkas yang sudah masuk DRPP
+// dimuat terpisah supaya daftar kerja tidak terdesak berkas lama.
+const TAHAP_KERJA = ['arsip', 'drpp'];
+const BATAS = LIMIT_KUERI.halaman; // kueri hitung & daftar dibatasi limit rules
+const waktuDari = (r) => keDate(r.diubahPada)?.getTime() || 0;
+const waktuBuat = (r) => keDate(r.dibuatPada)?.getTime() || 0;
+
+/** Gabung dua daftar ringkas tanpa duplikat (berkas yang baru pindah tahap: ambil yang terbaru). */
+function gabungRingkas(...daftar) {
+  const per = new Map();
+  daftar.flat().forEach((r) => {
+    const ada = per.get(r.id);
+    if (!ada || waktuDari(r) >= waktuDari(ada)) per.set(r.id, r);
+  });
+  return [...per.values()].sort((a, b) => waktuBuat(b) - waktuBuat(a));
+}
 
 export default function ArsipKeuangan() {
   const navigate = useNavigate();
   const showToast = useToast();
-  const { uid, nama, isSuperAdmin } = useLpjUser();
+  const { uid, isSuperAdmin } = useLpjUser();
+  const [tahun, setTahun] = useState(tahunIni);
+  const kerja = useDaftarBerkas({ uid, semua: true, tahunAnggaran: tahun, tahap: TAHAP_KERJA });
+  const sudahMasuk = useDaftarBerkas({ uid, semua: true, tahunAnggaran: tahun, tahap: 'selesai' });
   const {
-    packs,
-    loading: loadingPacks,
-    error: errPacks,
-  } = useLPJPacks({
-    isAdmin: true,
-    userUid: uid,
-  });
-  const { list: drpps, loading: loadingDrpp, error: errDrpp } = useDrppList({ uid });
-  const { pegawai } = usePegawaiList();
+    list: semuaDrpp,
+    memuat: memuatDrpp,
+    galat: galatDrpp,
+  } = useDaftarDrpp({ uid, semua: true, tahunAnggaran: tahun });
 
   const parts = (useParams()['*'] || '').split('/').filter(Boolean);
   const tab = parts[0] === 'drpp' ? 'drpp' : 'lpj';
@@ -94,100 +105,142 @@ export default function ArsipKeuangan() {
   const [drppSearch, setDrppSearch] = useState('');
 
   // jendela
-  const [lihatId, setLihatId] = useState(null);
-  const [scanId, setScanId] = useState(null);
+  // Baris yang dibuka (bisa dari detail DRPP yang tidak ada di daftar termuat)
+  const [lihat, setLihat] = useState(null);
+  const [scan, setScan] = useState(null);
   const [create, setCreate] = useState(null); // null | { initialExpectedIds, thenAssign }
   const [pickerIds, setPickerIds] = useState(null);
   const [editId, setEditId] = useState(null);
-  const [hapusDrppId, setHapusDrppId] = useState(null);
-  const [menghapus, setMenghapus] = useState(false);
+  const [batalDrppId, setBatalDrppId] = useState(null);
+  const [alasanBatal, setAlasanBatal] = useState('');
+  const [membatalkan, setMembatalkan] = useState(false);
 
-  const arsipPacks = useMemo(() => berkasArsip(packs), [packs]);
-  const packsById = useMemo(
-    () => Object.fromEntries(arsipPacks.map((p) => [p.id, p])),
-    [arsipPacks],
+  const drpps = useMemo(() => drppAktif(semuaDrpp), [semuaDrpp]);
+  const packs = useMemo(
+    () => gabungRingkas(kerja.berkas, sudahMasuk.berkas),
+    [kerja.berkas, sudahMasuk.berkas],
   );
-  const rows = useMemo(() => arsipPacks.map(barisLpj), [arsipPacks]);
+  const packsById = useMemo(() => Object.fromEntries(packs.map((p) => [p.id, p])), [packs]);
+  const rows = useMemo(() => packs.map(barisLpj), [packs]);
   const rowById = useMemo(() => Object.fromEntries(rows.map((r) => [r.packId, r])), [rows]);
+  const jumlah = useJumlahTahap({
+    tahunAnggaran: tahun,
+    daftarTahap: TAHAP_ARSIP,
+    segar: `${kerja.berkas.length}:${kerja.berkas.filter((b) => b.tahap === 'arsip').length}:${sudahMasuk.berkas.length}`,
+  });
 
-  const loading = loadingPacks || loadingDrpp;
-  const error = errPacks || errDrpp;
+  const loading = kerja.memuat || sudahMasuk.memuat || memuatDrpp;
+  const error = kerja.galat || sudahMasuk.galat || galatDrpp;
   const detail = detailId ? drpps.find((d) => d.id === detailId) : null;
-  if (!loading && !error && detailId && !detail) return <Navigate to={`${BASE}/drpp`} replace />;
+  const adaDetail = !!detail;
+
+  // Tautan langsung ke DRPP tahun anggaran lain: baca DRPP-nya sekali lalu pindah tahun
+  const [taDicek, setTaDicek] = useState('');
+  useEffect(() => {
+    if (!detailId || loading || error || adaDetail || taDicek === detailId) return undefined;
+    let aktif = true;
+    const selesai = () => aktif && setTaDicek(detailId);
+    ambilDrpp(detailId).then((d) => {
+      if (aktif && d && d.status !== 'batal' && d.tahunAnggaran && d.tahunAnggaran !== tahun) {
+        setTahun(d.tahunAnggaran);
+      }
+      selesai();
+    }, selesai);
+    return () => {
+      aktif = false;
+    };
+  }, [detailId, loading, error, adaDetail, taDicek, tahun]);
+
+  if (!loading && !error && detailId && !detail && taDicek === detailId) {
+    return <Navigate to={`${BASE}/drpp`} replace />;
+  }
+
+  const lihatRow = lihat ? rowById[lihat.packId] || lihat : null;
+  const scanRow = scan ? rowById[scan.packId] || scan : null;
 
   const gotoTab = (t) => {
     setAssignTarget(null);
     navigate(t === 'drpp' ? `${BASE}/drpp` : BASE);
   };
   const openDrpp = (id) => navigate(`${BASE}/drpp/${encodeURIComponent(id)}`);
+  const gantiTahun = (t) => {
+    setTahun(t);
+    setSelected({});
+    setAssignTarget(null);
+    setLpjPage(1);
+  };
 
   // ─── Aksi ──────────────────────────────────────────────────────────────────
 
   async function saveScan({ file, kwitansi }) {
-    const r = rowById[scanId];
+    const r = scanRow;
+    const menunggu = !r.diarsip && lpjPendingDrpp(drpps, r.pack);
     try {
-      const { autoDrppId } = await scanLpj({ pack: r.pack, file, kwitansi, uid, nama, drpps });
+      // No. kwitansi dikoreksi lebih dulu: setelah arsip selesai hanya Super Admin yang bisa
+      if (kwitansi.trim() !== r.kwitansi) await ubahKwitansi(r.packId, kwitansi, uid);
+      await arsipkanBerkas(r.packId, file, uid);
       showToast(
-        `Berkas ${r.id} berhasil dipindai${autoDrppId ? ' dan otomatis masuk ke ' + autoDrppId : ''}.`,
+        `Berkas ${r.id} berhasil dipindai${menunggu ? ' dan otomatis masuk ke ' + menunggu.id : ''}.`,
       );
-      setScanId(null);
+      setScan(null);
       return true;
     } catch (err) {
-      console.error('scanLpj error:', err);
-      showToast(
-        err?.code?.startsWith('storage/') ? pesanGagalUnggah(err) : 'Gagal menyimpan pindaian.',
-        'error',
-      );
+      showToast(pesanUnggah(err), 'error');
       return false;
     }
   }
 
   async function submitCreate({ files, expectedIds }) {
     const wasAssign = create.thenAssign;
+    let hasil;
     try {
-      const r = await createDrpp({ files, expectedIds, packsById, drpps, uid, nama });
-      showToast(
-        `${r.id} berhasil dibuat` +
-          (expectedIds.length
-            ? ` · ${r.nowIn} LPJ langsung masuk` +
-              (r.waiting > 0 ? `, ${r.waiting} menunggu scan` : '')
-            : '') +
-          '.',
-      );
-      if (r.gagalUnggah.length) {
-        showToast(
-          `Dokumen ${r.gagalUnggah.join(', ')} gagal diunggah. Pindai ulang dari detail DRPP.`,
-          'error',
-        );
-      }
-      setCreate(null);
-      if (wasAssign) setSelected({});
-      openDrpp(r.id);
-      return true;
+      hasil = await buatDrpp(tahun, expectedIds);
     } catch (err) {
-      console.error('createDrpp error:', err);
-      showToast('Gagal membuat DRPP.', 'error');
+      showToast(pesanGalat(err, 'Gagal membuat DRPP.'), 'error');
       return false;
     }
+    // Dokumen pindaian diunggah setelah nomor DRPP terbit (jalur Storage memakai nomornya)
+    const gagalUnggah = [];
+    for (const [jenis, file] of Object.entries(files)) {
+      try {
+        await unggahDokumenDrpp(hasil.id, jenis, file, uid);
+      } catch {
+        gagalUnggah.push(jenis.toUpperCase());
+      }
+    }
+    showToast(
+      `${hasil.id} berhasil dibuat · ${hasil.masuk} LPJ langsung masuk` +
+        (hasil.menunggu > 0 ? `, ${hasil.menunggu} menunggu scan` : '') +
+        '.',
+    );
+    if (gagalUnggah.length) {
+      showToast(
+        `Dokumen ${gagalUnggah.join(', ')} gagal diunggah. Pindai ulang dari detail DRPP.`,
+        'error',
+      );
+    }
+    setCreate(null);
+    if (wasAssign) setSelected({});
+    openDrpp(hasil.id);
+    return true;
   }
 
   async function assignTo(ids, drppId) {
     const d = drpps.find((x) => x.id === drppId);
-    if (!d || drppLocked(packsById, arsipPacks, d)) {
+    if (!d || drppLocked(d)) {
       showToast('DRPP ini sudah terkunci. LPJ tidak bisa ditambahkan lagi.', 'error');
       return false;
     }
     try {
-      const n = await assignToDrpp({ drpp: d, packIds: ids, packsById, drpps });
-      showToast(`${n} berkas berhasil dimasukkan ke ${drppId}.`);
+      await ubahDaftarDrpp(d.id, [...new Set([...(d.berkasIds || []), ...ids])]);
+      showToast(`${ids.length} berkas berhasil dimasukkan ke ${drppId}.`);
       setSelected({});
       setPickerIds(null);
       setAssignTarget(null);
       openDrpp(drppId);
       return true;
     } catch (err) {
-      console.error('assignToDrpp error:', err);
-      showToast('Gagal memasukkan berkas ke DRPP.', 'error');
+      showToast(pesanGalat(err, 'Gagal memasukkan berkas ke DRPP.'), 'error');
       return false;
     }
   }
@@ -195,66 +248,74 @@ export default function ArsipKeuangan() {
   async function saveExpected(ids) {
     const d = drpps.find((x) => x.id === editId);
     try {
-      await setExpectedList({ drpp: d, ids, packs: arsipPacks, packsById, drpps });
+      await ubahDaftarDrpp(d.id, ids);
       showToast(`Daftar LPJ untuk ${d.id} berhasil diperbarui.`);
       setEditId(null);
       return true;
     } catch (err) {
-      console.error('setExpectedList error:', err);
-      showToast('Gagal menyimpan daftar LPJ.', 'error');
+      showToast(pesanGalat(err, 'Gagal menyimpan daftar LPJ.'), 'error');
       return false;
     }
   }
 
-  async function konfirmHapusDrpp() {
-    const d = drpps.find((x) => x.id === hapusDrppId);
-    if (!d) {
-      setHapusDrppId(null);
-      showToast(`${hapusDrppId} sudah tidak ada (mungkin sudah dihapus).`);
-      navigate(`${BASE}/drpp`);
+  async function konfirmBatalDrpp() {
+    const alasan = alasanBatal.trim();
+    if (!alasan) {
+      showToast('Alasan pembatalan wajib diisi.', 'error');
       return;
     }
-    setMenghapus(true);
+    setMembatalkan(true);
     try {
-      await deleteDrpp({ drpp: d, packs: arsipPacks });
-      showToast(`${d.id} dihapus. Berkas di dalamnya kembali "Belum Masuk DRPP".`);
-      setHapusDrppId(null);
+      await batalkanDrpp(batalDrppId, alasan);
+      showToast(`${batalDrppId} dibatalkan. Berkas di dalamnya kembali "Belum Masuk DRPP".`);
+      setBatalDrppId(null);
+      setAlasanBatal('');
       navigate(`${BASE}/drpp`);
     } catch (err) {
-      console.error('deleteDrpp error:', err);
-      showToast('Gagal menghapus DRPP.', 'error');
+      showToast(pesanGalat(err, 'Gagal membatalkan DRPP.'), 'error');
     } finally {
-      setMenghapus(false);
+      setMembatalkan(false);
     }
   }
 
-  async function hapusArsipLpj(r) {
+  async function batalArsipLpj(r) {
     try {
-      await hapusPindaian(r.pack);
-      showToast(`Pindaian ${r.id} dihapus.`);
-      setLihatId(null);
+      await batalkanArsip(r.packId, uid);
+      showToast(`Arsip ${r.id} dibatalkan. Berkas kembali "Belum Discan".`);
+      setLihat(null);
       return true;
     } catch (err) {
-      console.error('hapusPindaian error:', err);
-      showToast('Gagal menghapus pindaian.', 'error');
+      showToast(pesanGalat(err, 'Gagal membatalkan arsip.'), 'error');
       return false;
     }
   }
 
   async function scanDoc(d, key, file) {
     try {
-      await scanDrppDoc(d, key, file, uid);
+      await unggahDokumenDrpp(d.id, key, file, uid);
       showToast(`Dokumen ${key.toUpperCase()} berhasil dipindai.`);
     } catch (err) {
-      console.error('scanDrppDoc error:', err);
-      showToast(pesanGagalUnggah(err), 'error');
+      showToast(pesanUnggah(err), 'error');
     }
   }
+
+  // Muat lebih banyak mengikuti filter status tab Berkas LPJ
+  const sumberLpj =
+    lpjFilter.status === 'masuk_drpp'
+      ? [sudahMasuk]
+      : lpjFilter.status === 'all'
+        ? [kerja, sudahMasuk]
+        : [kerja];
+  const lanjutan = {
+    bisaLagi: sumberLpj.some((s) => s.bisaLagi),
+    memuatLagi: sumberLpj.some((s) => s.memuatLagi),
+    muatLagi: () => sumberLpj.filter((s) => s.bisaLagi).forEach((s) => s.muatLagi()),
+  };
 
   // ─── Isi halaman ───────────────────────────────────────────────────────────
 
   let body;
-  if (loading) {
+  if (loading || (detailId && !detail && !error)) {
     body = (
       <div className={`${LAYOUT.card} animate-pulse space-y-3`}>
         <div className={`h-10 rounded-[9px] ${T.surface2}`} />
@@ -266,7 +327,7 @@ export default function ArsipKeuangan() {
   } else if (error) {
     body = (
       <p className={`rounded-[10px] px-3.5 py-3 text-[12.5px] ${STATUS.critBg} ${STATUS.critInk}`}>
-        {error}
+        Arsip tidak dapat dimuat. Muat ulang halaman; bila berulang, hubungi admin.
       </p>
     );
   } else if (detail) {
@@ -274,7 +335,6 @@ export default function ArsipKeuangan() {
       <DrppDetail
         key={detail.id}
         drpp={detail}
-        packs={arsipPacks}
         packsById={packsById}
         onBack={() => navigate(`${BASE}/drpp`)}
         onScanDoc={scanDoc}
@@ -286,19 +346,49 @@ export default function ArsipKeuangan() {
           setLpjPage(1);
           navigate(BASE);
         }}
-        onLihat={(r) => setLihatId(r.packId)}
-        onHapus={isSuperAdmin ? (d) => setHapusDrppId(d.id) : undefined}
+        onLihat={setLihat}
+        onBatal={isSuperAdmin ? (d) => setBatalDrppId(d.id) : undefined}
       />
     );
   } else {
-    const c = { belum_scan: 0, belum_drpp: 0, masuk_drpp: 0 };
-    arsipPacks.forEach((p) => c[lpjArsipStatus(p)]++);
+    const n = (k) => jumlah[k] ?? 0;
+    const lebih = (k) => n(k) >= BATAS;
     const cards = [
-      { label: 'Total Berkas Diserahkan', num: arsipPacks.length, Icon: FaArchive, tone: 'navy' },
-      { label: 'Belum Discan', num: c.belum_scan, Icon: FaQrcode, tone: 'neutral' },
-      { label: 'Sudah Discan · Belum DRPP', num: c.belum_drpp, Icon: FaClock, tone: 'warn' },
-      { label: 'Sudah Masuk DRPP', num: c.masuk_drpp, Icon: FaLayerGroup, tone: 'good' },
-      { label: 'Total DRPP Dibuat', num: drpps.length, Icon: FaRegFileAlt, tone: 'info' },
+      {
+        label: 'Total Berkas Diserahkan',
+        num: TAHAP_ARSIP.reduce((s, k) => s + n(k), 0),
+        plus: TAHAP_ARSIP.some(lebih),
+        Icon: FaArchive,
+        tone: 'navy',
+      },
+      {
+        label: 'Belum Discan',
+        num: n('arsip'),
+        plus: lebih('arsip'),
+        Icon: FaQrcode,
+        tone: 'neutral',
+      },
+      {
+        label: 'Sudah Discan · Belum DRPP',
+        num: n('drpp'),
+        plus: lebih('drpp'),
+        Icon: FaClock,
+        tone: 'warn',
+      },
+      {
+        label: 'Sudah Masuk DRPP',
+        num: n('selesai'),
+        plus: lebih('selesai'),
+        Icon: FaLayerGroup,
+        tone: 'good',
+      },
+      {
+        label: 'Total DRPP Dibuat',
+        num: drpps.length,
+        plus: semuaDrpp.length >= BATAS,
+        Icon: FaRegFileAlt,
+        tone: 'info',
+      },
     ];
     body = (
       <>
@@ -306,7 +396,7 @@ export default function ArsipKeuangan() {
           ref={statRef}
           className="grid grid-cols-2 sm:grid-cols-[repeat(auto-fit,minmax(190px,1fr))] gap-2.5 sm:gap-3.5 mb-5"
         >
-          {cards.map(({ label, num, Icon, tone }) => (
+          {cards.map(({ label, num, plus, Icon, tone }) => (
             <div
               key={label}
               data-bertahap
@@ -319,7 +409,10 @@ export default function ArsipKeuangan() {
               </span>
               <div>
                 <div className={`${FONT.head} text-[22px] font-extrabold leading-[1.15] ${T.ink}`}>
-                  <AngkaBerjalan nilai={num} />
+                  <AngkaBerjalan
+                    nilai={num}
+                    format={(v) => `${Math.round(v).toLocaleString('id-ID')}${plus ? '+' : ''}`}
+                  />
                 </div>
                 <div className={`text-xs font-semibold mt-px ${T.inkMuted}`}>{label}</div>
               </div>
@@ -359,16 +452,16 @@ export default function ArsipKeuangan() {
                 selected={selected}
                 setSelected={setSelected}
                 assignTarget={assignTarget}
+                lanjutan={lanjutan}
                 onCancelAssign={() => setAssignTarget(null)}
-                onScan={(r) => setScanId(r.packId)}
-                onLihat={(r) => setLihatId(r.packId)}
+                onScan={setScan}
+                onLihat={setLihat}
                 onGroup={setPickerIds}
                 onAssignDirect={(ids) => assignTo(ids, assignTarget)}
               />
             ) : (
               <DrppTab
                 drpps={drpps}
-                packs={arsipPacks}
                 packsById={packsById}
                 search={drppSearch}
                 setSearch={setDrppSearch}
@@ -382,9 +475,11 @@ export default function ArsipKeuangan() {
     );
   }
 
-  const lihatRow = lihatId ? rowById[lihatId] : null;
-  const scanRow = scanId ? rowById[scanId] : null;
   const editDrpp = editId ? drpps.find((d) => d.id === editId) : null;
+  // Berkas yang sudah diarsipkan hanya bisa diubah Super Admin (rules); DRPP lengkap mengunci
+  const drppLihat = lihatRow?.drppId ? drpps.find((x) => x.id === lihatRow.drppId) : null;
+  const lihatTerkunci =
+    !!lihatRow && ((lihatRow.diarsip && !isSuperAdmin) || (!!drppLihat && drppLocked(drppLihat)));
 
   return (
     <div className={`min-h-full ${T.ground}`}>
@@ -397,6 +492,18 @@ export default function ArsipKeuangan() {
                 Kelola berkas LPJ yang sudah terpindai &amp; lengkap, lalu kelompokkan ke DRPP
               </p>
             </div>
+            <select
+              aria-label="Tahun anggaran"
+              value={tahun}
+              onChange={(e) => gantiTahun(Number(e.target.value))}
+              className={SELECT}
+            >
+              {daftarTahun().map((t) => (
+                <option key={t} value={t}>
+                  TA {t}
+                </option>
+              ))}
+            </select>
           </div>
         )}
         {body}
@@ -405,22 +512,17 @@ export default function ArsipKeuangan() {
       {lihatRow && !scanRow && (
         <ArsipLpjModal
           row={lihatRow}
-          pegawai={pegawai}
           kelola
-          terkunci={(() => {
-            const d = lihatRow.drppId && drpps.find((x) => x.id === lihatRow.drppId);
-            return !!d && drppLocked(packsById, arsipPacks, d);
-          })()}
-          onClose={() => setLihatId(null)}
-          onGantiScan={(r) => setScanId(r.packId)}
-          onHapusPindaian={isSuperAdmin ? hapusArsipLpj : undefined}
+          terkunci={lihatTerkunci}
+          onClose={() => setLihat(null)}
+          onHapusPindaian={isSuperAdmin ? batalArsipLpj : undefined}
         />
       )}
       {scanRow && (
         <ScanLpjModal
           row={scanRow}
           pendingDrppId={lpjPendingDrpp(drpps, scanRow.pack)?.id}
-          onClose={() => setScanId(null)}
+          onClose={() => setScan(null)}
           onSave={saveScan}
         />
       )}
@@ -437,8 +539,6 @@ export default function ArsipKeuangan() {
         <DrppPickerModal
           rows={pickerIds.map((id) => rowById[id]).filter(Boolean)}
           drpps={drpps}
-          packs={arsipPacks}
-          packsById={packsById}
           onClose={() => setPickerIds(null)}
           onConfirm={(drppId) => assignTo(pickerIds, drppId)}
           onCreateNew={() => {
@@ -447,36 +547,49 @@ export default function ArsipKeuangan() {
           }}
         />
       )}
-      {hapusDrppId && (
+      {batalDrppId && (
         <Modal
-          widthClass="max-w-[420px]"
-          onClose={menghapus ? undefined : () => setHapusDrppId(null)}
-          labelledBy="judul-hapus-drpp"
+          widthClass="max-w-[440px]"
+          onClose={membatalkan ? undefined : () => setBatalDrppId(null)}
+          labelledBy="judul-batal-drpp"
         >
           <div className="p-6">
-            <h3 id="judul-hapus-drpp" className={`${FONT.head} font-bold text-base ${T.ink}`}>
-              Hapus {hapusDrppId}?
+            <h3 id="judul-batal-drpp" className={`${FONT.head} font-bold text-base ${T.ink}`}>
+              Batalkan {batalDrppId}?
             </h3>
             <p className={`mt-1.5 text-[13px] leading-[1.55] ${T.inkMuted}`}>
-              Dokumen DRPP, SPM, dan SP2D yang sudah dipindai ikut terhapus. Berkas LPJ di dalamnya
-              tidak terhapus; statusnya kembali "Belum Masuk DRPP".
+              DRPP tidak dihapus: tetap tersimpan berstatus batal beserta dokumen pindaiannya.
+              Berkas LPJ di dalamnya lepas dan kembali "Belum Masuk DRPP".
             </p>
+            <label className={`${FORM.label} mt-4`} htmlFor="alasan-batal-drpp">
+              Alasan pembatalan
+            </label>
+            <textarea
+              id="alasan-batal-drpp"
+              rows={3}
+              value={alasanBatal}
+              maxLength={PANJANG.alasanBatal}
+              disabled={membatalkan}
+              onChange={(e) => setAlasanBatal(e.target.value)}
+              placeholder="Mis. daftar LPJ salah, DRPP dibuat ulang"
+              className={`${FORM.input} ${FORM.borderOk} resize-y`}
+            />
             <div className="flex justify-end gap-2 pt-5">
               <button
                 type="button"
                 className={BTN.ghost}
-                onClick={() => setHapusDrppId(null)}
-                disabled={menghapus}
+                onClick={() => setBatalDrppId(null)}
+                disabled={membatalkan}
               >
-                Batal
+                Kembali
               </button>
               <button
                 type="button"
                 className={BTN.danger}
-                onClick={konfirmHapusDrpp}
-                disabled={menghapus}
+                onClick={konfirmBatalDrpp}
+                disabled={membatalkan || !alasanBatal.trim()}
               >
-                <FaRegTrashAlt size={12} /> {menghapus ? 'Menghapus…' : 'Ya, Hapus'}
+                <FaBan size={12} /> {membatalkan ? 'Membatalkan…' : 'Ya, Batalkan'}
               </button>
             </div>
           </div>

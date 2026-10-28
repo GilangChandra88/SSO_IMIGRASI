@@ -1,13 +1,20 @@
 import React, { useState } from 'react';
 import { FaHashtag, FaTimes } from 'react-icons/fa';
 import Modal from '@/components/Modal';
+import { useAuth } from '@/context/AuthContext';
+import { PANJANG } from '@/utils/batas';
+import { pesanGalat } from '@/utils/pesanGalat';
 import { showToast } from '@/utils/toastStore';
 import { ADMIN } from '@/utils/uiTokens';
 import { SEKSI_OPTIONS } from '../../data/nomorSuratConfig';
-import { ubahNomorRegister } from '../../services/nomorSurat';
+import { ubahKeteranganNomor } from '../../services/nomorSurat';
 
-/** Jendela "Edit" register nomor surat: tanggal, seksi, perihal, tujuan (nomor tetap). */
+/**
+ * Jendela "Edit" register nomor surat: tanggal (dalam tahun yang sama), seksi, perihal, tujuan.
+ * Nomor, kode, dan tahun tetap (ditegakkan rules).
+ */
 export default function EditNomorSuratModal({ row, onClose }) {
+  const { currentUser } = useAuth();
   const [form, setForm] = useState({
     tanggal: row.tanggal || '',
     seksi: row.seksi || '',
@@ -18,23 +25,32 @@ export default function EditNomorSuratModal({ row, onClose }) {
   const [sibuk, setSibuk] = useState(false);
   const ubah = (patch) => setForm((f) => ({ ...f, ...patch }));
   const kelas = (v) => (cekKosong && !String(v).trim() ? ADMIN.inputErr : ADMIN.input);
+  const register = row.sumber === 'register';
+  const tahunSama = String(form.tanggal).startsWith(`${row.tahun}-`);
 
   const simpan = async () => {
-    if (!form.tanggal || !form.seksi || !form.perihal.trim() || !form.tujuan.trim()) {
+    const wajib = [form.tanggal, form.perihal, ...(register ? [form.seksi, form.tujuan] : [])];
+    if (wajib.some((v) => !String(v).trim()) || !tahunSama) {
       setCekKosong(true);
+      if (!tahunSama) showToast(`Tanggal harus di tahun ${row.tahun}.`, 'error');
       return;
     }
     setSibuk(true);
     try {
-      await ubahNomorRegister(row.id, {
-        ...form,
-        perihal: form.perihal.trim(),
-        tujuan: form.tujuan.trim(),
-      });
+      await ubahKeteranganNomor(
+        row.id,
+        {
+          tanggal: form.tanggal,
+          seksi: form.seksi,
+          perihal: form.perihal.trim(),
+          tujuan: form.tujuan.trim(),
+        },
+        currentUser?.uid || '',
+      );
       showToast('Perubahan berhasil disimpan.');
       onClose();
-    } catch {
-      showToast('Gagal menyimpan perubahan.', 'error');
+    } catch (err) {
+      showToast(pesanGalat(err, 'Gagal menyimpan perubahan.'), 'error');
       setSibuk(false);
     }
   };
@@ -79,7 +95,9 @@ export default function EditNomorSuratModal({ row, onClose }) {
             <input
               id="editTanggal"
               type="date"
-              className={kelas(form.tanggal)}
+              min={`${row.tahun}-01-01`}
+              max={`${row.tahun}-12-31`}
+              className={cekKosong && !tahunSama ? ADMIN.inputErr : kelas(form.tanggal)}
               value={form.tanggal}
               onChange={(e) => ubah({ tanggal: e.target.value })}
             />
@@ -90,12 +108,12 @@ export default function EditNomorSuratModal({ row, onClose }) {
             </label>
             <select
               id="editSeksi"
-              className={kelas(form.seksi)}
+              className={register ? kelas(form.seksi) : ADMIN.input}
               value={form.seksi}
               onChange={(e) => ubah({ seksi: e.target.value })}
             >
-              <option value="" disabled>
-                Pilih seksi/bagian
+              <option value="" disabled={register}>
+                {register ? 'Pilih seksi/bagian' : '—'}
               </option>
               {SEKSI_OPTIONS.map((s) => (
                 <option key={s} value={s}>
@@ -111,6 +129,7 @@ export default function EditNomorSuratModal({ row, onClose }) {
             <input
               id="editPerihal"
               type="text"
+              maxLength={PANJANG.perihalSurat}
               className={kelas(form.perihal)}
               value={form.perihal}
               onChange={(e) => ubah({ perihal: e.target.value })}
@@ -123,7 +142,8 @@ export default function EditNomorSuratModal({ row, onClose }) {
             <input
               id="editTujuan"
               type="text"
-              className={kelas(form.tujuan)}
+              maxLength={PANJANG.tujuanSurat}
+              className={register ? kelas(form.tujuan) : ADMIN.input}
               value={form.tujuan}
               onChange={(e) => ubah({ tujuan: e.target.value })}
             />

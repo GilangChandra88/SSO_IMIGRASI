@@ -7,8 +7,10 @@ import {
   FaRegClock,
   FaRegEye,
 } from 'react-icons/fa';
+import { pesanGalat } from '@/utils/pesanGalat';
 import { BTN, FORM, NAVY, STATUS, T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
+import { tandaiDicetak } from '../../services/berkasDb';
 
 const inisial = (nama) =>
   String(nama || '')
@@ -19,16 +21,19 @@ const inisial = (nama) =>
     .join('')
     .toUpperCase();
 
-/** Fase 2 lanjutan — cetak/unduh SPD untuk tiap pelaksana. */
+/**
+ * Fase 2 lanjutan — cetak/unduh SPD untuk tiap pelaksana. Penanda "sudah dicetak" disimpan di
+ * `dicetak.spd.{pegawaiId}` berkas (boleh kapan saja, juga setelah SPD final).
+ */
 export default function StepCetakSPD({ ctx }) {
-  const { pf, persist, backToDetail, dok } = ctx;
-  const kepada = pf.sp.kepada;
-  const dicetak = pf.spd.dicetak || {};
-  const printedCount = kepada.filter((p) => dicetak[p.id]).length;
+  const { pack, backToDetail, dok, user, showToast } = ctx;
+  const kepada = pack.sp?.kepada || [];
+  const dicetak = pack.dicetak?.spd || {};
+  const printedCount = kepada.filter((p) => dicetak[p.pegawaiId]).length;
   const allPrinted = kepada.length > 0 && printedCount === kepada.length;
 
   const docSpd = (p) => ({
-    key: `spd_${p.id}`,
+    key: `spd_${p.pegawaiId}`,
     docKey: 'spd',
     pegawai: p,
     label: `SPD — ${p.nama}`,
@@ -37,14 +42,11 @@ export default function StepCetakSPD({ ctx }) {
   // Popup pratinjau PDF (sama dengan "Lihat"); unduh/cetak lewat tombol penampil PDF di popup
   async function cetak(p) {
     dok.lihat(docSpd(p));
-    if (!dicetak[p.id]) {
-      await persist(
-        (prev) => ({
-          ...prev,
-          spd: { ...prev.spd, dicetak: { ...(prev.spd.dicetak || {}), [p.id]: true } },
-        }),
-        { quiet: true },
-      );
+    if (dicetak[p.pegawaiId]) return;
+    try {
+      await tandaiDicetak(pack.id, `spd.${p.pegawaiId}`, user.uid);
+    } catch (err) {
+      showToast(pesanGalat(err, 'Penanda "sudah dicetak" gagal disimpan.'), 'error');
     }
   }
 
@@ -56,7 +58,7 @@ export default function StepCetakSPD({ ctx }) {
         <div className={`flex items-start gap-2.5 text-[13px] ${STATUS.infoInk}`}>
           <FaInfoCircle size={15} className="shrink-0 mt-0.5" />
           <div>
-            SPD <strong>{pf.spd.nomorSPD}</strong> berhasil dibuat. Setiap pelaksana mendapat{' '}
+            SPD <strong>{pack.spd?.nomorSpd}</strong> berhasil dibuat. Setiap pelaksana mendapat{' '}
             <strong>satu lembar SPD</strong> untuk dibawa saat perjalanan dinas.
           </div>
         </div>
@@ -69,10 +71,10 @@ export default function StepCetakSPD({ ctx }) {
         </p>
         <div className="flex flex-col gap-3">
           {kepada.map((p) => {
-            const printed = !!dicetak[p.id];
+            const printed = !!dicetak[p.pegawaiId];
             return (
               <div
-                key={p.id}
+                key={p.pegawaiId}
                 className={`rounded-[10px] border-[1.5px] overflow-hidden ${
                   printed ? `${STATUS.doneBorder} ${STATUS.doneBg}` : `${T.border} ${T.surface}`
                 }`}

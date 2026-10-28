@@ -1,16 +1,18 @@
 import React from 'react';
 import { FaCheck, FaChevronLeft, FaInfoCircle } from 'react-icons/fa';
-import { LPJ_DOCS } from '../../data/masterLpj';
-import { emptyTransaksi } from '../../utils/emptyModels';
+import { itemDiAkun } from '../../../makPohon';
+import { transaksiKosong } from '../../utils/modelKosong';
 import { formatTanggal } from '../../utils/formatTanggal';
-import { parseNum } from '../../utils/lpjLogic';
-import { makItemsOfAkun } from '../../utils/makTree';
-import { catatMakHistory } from '../../services/makHistory';
+import { transaksiLengkap } from '../../utils/lpjLogic';
 import TransaksiTable from '../../components/TransaksiTable';
 import Field from '../../ui/Field';
 import { BTN, FONT, FORM, STATUS, T } from '@/utils/uiTokens';
 
-/** Fase 3 — LPJ & SPBy: detail transaksi → pack dokumen pertanggungjawaban. */
+/**
+ * Fase 3 — LPJ & SPBy: detail transaksi → pack dokumen pertanggungjawaban. "Selesai" menyimpan isi
+ * terakhir lalu memanggil Function selesaikanSpby: bagian dikunci, nomor LPJ terbit, dan realisasi
+ * MAK tercatat di server dalam satu transaksi.
+ */
 export default function StepLPJ({ ctx }) {
   const {
     pack,
@@ -23,55 +25,37 @@ export default function StepLPJ({ ctx }) {
     closeConfirm,
     showToast,
     mak,
-    user,
   } = ctx;
-  const { sp, spd, lpj } = pf;
+  // Surat Perintah & SPD sudah final: dibaca dari berkas live
+  const sp = pack.sp || {};
+  const spd = pack.spd || {};
+  const kepada = sp.kepada || [];
+  const { lpj } = pf;
   const setLpj = (patch) => setPf((prev) => ({ ...prev, lpj: { ...prev.lpj, ...patch } }));
   const akun = mak.byId[spd.mak?.akunNodeId];
-  const akunItems = makItemsOfAkun(mak.nodes, spd.mak?.akunNodeId);
-  const total = lpj.transaksi.reduce((s, t) => s + parseNum(t.jumlah), 0);
+  const akunItems = itemDiAkun(mak.nodes, spd.mak?.akunNodeId);
+  const total = lpj.transaksi.reduce((s, t) => s + (Number.isInteger(t.jumlah) ? t.jumlah : 0), 0);
 
   function handleSelesai() {
-    if (tandaiGalat(lpj.tanggalLPJ ? {} : { tanggalLPJ: 'Wajib diisi' })) return;
+    const e = {};
+    if (!lpj.tanggalLpj) e.tanggalLpj = 'Wajib diisi';
+    if (!transaksiLengkap(lpj.transaksi)) {
+      e.transaksi = 'Lengkapi setiap baris: pelaksana, item, dan jumlah lebih dari 0.';
+    }
+    if (tandaiGalat(e)) return;
     askConfirm({
       label: 'LPJ & SPBy (Pack Dokumen)',
       onYes: async () => {
-        const lpjDocs = { ...(pf.selesai.lpjDocs || {}) };
-        LPJ_DOCS.forEach((d) => {
-          if (d.perPelaksana) sp.kepada.forEach((p) => (lpjDocs[`${d.key}_${p.id}`] = true));
-          else lpjDocs[d.key] = true;
+        const hasil = await persist(ctx.pfRef.current, {
+          quiet: true,
+          selesaikanSpby: true, // kunci + nomor LPJ + realisasi MAK (satu transaksi di server)
+          tahanLangkah: true, // tetap di form ini sampai pindah ke Detail
         });
-        const ok = await persist(
-          (prev) => ({
-            ...prev,
-            lpj: { ...prev.lpj, locked: true },
-            selesai: { ...prev.selesai, lpjDocs },
-          }),
-          // SPBy selesai → nomor LPJ terbit (satu transaksi)
-          {
-            quiet: true,
-            teks: 'menandai LPJ & SPBy selesai',
-            beriNomor: true,
-            tahanLangkah: true, // tetap di form ini sampai pindah ke Detail
-          },
-        );
-        if (ok) {
-          try {
-            await catatMakHistory(pack, {
-              transaksi: ctx.pfRef.current.lpj.transaksi,
-              mak: spd.mak,
-              tanggal: lpj.tanggalLPJ,
-              pelaksana: sp.kepada,
-              uid: user.uid,
-            });
-          } catch (err) {
-            console.error('catatMakHistory error:', err);
-            showToast('LPJ tersimpan, tetapi pencatatan History MAK gagal.', 'error');
-          }
-          showToast('LPJ & SPBy ditandai selesai. Nomor LPJ sudah terbit.');
-        }
         closeConfirm();
-        if (ok) ctx.keDetail();
+        if (hasil) {
+          showToast(`LPJ & SPBy selesai. Nomor LPJ ${hasil.nomorLpj || ''} terbit.`);
+          ctx.keDetail();
+        }
       },
       onNo: async () => {
         await persist(ctx.pfRef.current, { quiet: true });
@@ -82,11 +66,11 @@ export default function StepLPJ({ ctx }) {
   }
 
   const ringkas = [
-    ['No. SPD', spd.nomorSPD],
+    ['No. SPD', spd.nomorSpd],
     ['Tujuan', spd.tujuan],
     ['Berangkat', spd.berangkat && formatTanggal(spd.berangkat)],
     ['Kembali', spd.kembali && formatTanggal(spd.kembali)],
-    ['Pelaksana', sp.kepada.map((p) => p.nama).join(', ')],
+    ['Pelaksana', kepada.map((p) => p.nama).join(', ')],
     ['Seksi', spd.seksi],
     ['Kode MAK', spd.mak?.kode],
     ['Alat Angkut', spd.alatAngkut],
@@ -113,13 +97,13 @@ export default function StepLPJ({ ctx }) {
 
       <div className={FORM.card}>
         <h3 className={`${FORM.cardTitle} mb-4`}>Informasi SPBy &amp; LPJ</h3>
-        <Field label="Tanggal LPJ" htmlFor="lpj-tanggal" required err={errors.tanggalLPJ}>
+        <Field label="Tanggal LPJ" htmlFor="lpj-tanggal" required err={errors.tanggalLpj}>
           <input
             id="lpj-tanggal"
             type="date"
-            value={lpj.tanggalLPJ}
-            onChange={(e) => setLpj({ tanggalLPJ: e.target.value })}
-            className={`${FORM.input} ${errors.tanggalLPJ ? FORM.borderErr : FORM.borderOk} max-w-[240px]`}
+            value={lpj.tanggalLpj}
+            onChange={(e) => setLpj({ tanggalLpj: e.target.value })}
+            className={`${FORM.input} ${errors.tanggalLpj ? FORM.borderErr : FORM.borderOk} max-w-[240px]`}
           />
         </Field>
         <Field label="Keterangan" htmlFor="lpj-ket">
@@ -162,17 +146,17 @@ export default function StepLPJ({ ctx }) {
           rows={lpj.transaksi}
           onChange={(transaksi) => setLpj({ transaksi })}
           onTambah={() =>
-            setLpj({
-              transaksi: [
-                ...lpj.transaksi,
-                { ...emptyTransaksi(), pelaksanaId: sp.kepada[0]?.id || '' },
-              ],
-            })
+            setLpj({ transaksi: [...lpj.transaksi, transaksiKosong(kepada[0]?.pegawaiId || '')] })
           }
-          pelaksana={sp.kepada}
+          pelaksana={kepada}
           items={akunItems}
           akunKode={akun?.kode || ''}
         />
+        {errors.transaksi && (
+          <p data-galat className={FORM.err}>
+            {errors.transaksi}
+          </p>
+        )}
         {total > 0 && (
           <div className={`flex justify-end border-t pt-3 mt-3.5 ${T.border}`}>
             <div className="text-right">

@@ -1,13 +1,13 @@
 /**
- * Memuat berkas lalu membuka form sesuai jenisnya (Perjadin / Non-Perjadin).
- * Berkas final, format lama, atau tanpa hak edit dikembalikan ke Detail Dokumen.
+ * Memuat berkas (listener live) lalu membuka form sesuai jenisnya (Perjadin / Non-Perjadin).
+ * Berkas final atau tanpa hak edit (bukan anggota berkas) dikembalikan ke Detail Dokumen.
  */
 
 import React from 'react';
 import { Navigate, useNavigate } from 'react-router-dom';
-import { useLPJPack } from '../hooks/useLPJ';
+import { useBerkas } from '../hooks/useBerkas';
 import { useLpjUser } from '../hooks/useLpjUser';
-import { canEditPack, isPerjadin, isSkemaBaru } from '../utils/lpjLogic';
+import { canEditPack, isPerjadin } from '../utils/lpjLogic';
 import LinkBack from '../ui/LinkBack';
 import { LAYOUT, T } from '@/utils/uiTokens';
 import PerjadinFormPage from './perjadin/PerjadinFormPage';
@@ -16,7 +16,7 @@ import NonPerjadinFormPage from './nonperjadin/NonPerjadinFormPage';
 export default function BerkasFormPage({ packId, isi }) {
   const navigate = useNavigate();
   const user = useLpjUser();
-  const { pack, loading, error } = useLPJPack(packId);
+  const { berkas: pack, memuat: loading, galat: error } = useBerkas(packId);
   const detailUrl = `/e-persuratan/lpj/${packId}`;
 
   if (loading) {
@@ -44,7 +44,9 @@ export default function BerkasFormPage({ packId, isi }) {
           <section className={LAYOUT.card}>
             <LinkBack onClick={() => navigate('/e-persuratan/lpj')}>Kembali ke Daftar LPJ</LinkBack>
             <p className={`text-center py-9 text-[13.5px] ${T.inkMuted}`}>
-              {error || 'Berkas tidak ditemukan.'}
+              {error
+                ? 'Berkas tidak dapat dibuka: Anda bukan pembuat/pelaksananya, atau berkas sudah dihapus.'
+                : 'Berkas tidak ditemukan.'}
             </p>
           </section>
         </div>
@@ -52,7 +54,7 @@ export default function BerkasFormPage({ packId, isi }) {
     );
   }
 
-  if (!isSkemaBaru(pack) || !canEditPack(pack, user)) return <Navigate to={detailUrl} replace />;
+  if (!canEditPack(pack, user)) return <Navigate to={detailUrl} replace />;
 
   return isPerjadin(pack) ? (
     <PerjadinFormPage pack={pack} isi={isi} user={user} />

@@ -1,19 +1,21 @@
 import React, { useState } from 'react';
 import { FaCheck, FaCircleNotch } from 'react-icons/fa';
 import Modal from '@/components/Modal';
-import { validasiBerkas } from '../../../services/lpjStorage';
+import { cekBerkasDipilih } from '../../../services/unggahan';
 import { BERKAS_LABEL } from '../../../utils/drppLogic';
 import Kwitansi from '../../../components/arsip/Kwitansi';
 import SlotBerkas from '../../../components/arsip/SlotBerkas';
 import ModalKepala from './ModalKepala';
+import { PANJANG } from '@/utils/batas';
 import { ADMIN, FONT, STATUS, T } from '@/utils/uiTokens';
 
 /**
- * Scan berkas LPJ (satu dokumen gabungan) + no. kwitansi SAKTI (ScanLpjModal purwarupa).
+ * Scan berkas LPJ (satu dokumen gabungan) + no. kwitansi SAKTI (ScanLpjModal purwarupa). No.
+ * kwitansi sudah diisi di tahap SAKTI; di sini masih bisa dikoreksi sebelum diarsipkan.
  * `onSave({ file, kwitansi })` mengunggah & menyimpan; mengembalikan true bila berhasil.
  */
 export default function ScanLpjModal({ row, pendingDrppId, onClose, onSave }) {
-  const ganti = !!row.scan;
+  const ganti = row.diarsip;
   const [file, setFile] = useState(null);
   const [kw, setKw] = useState(row.kwitansi);
   const [err, setErr] = useState({});
@@ -21,7 +23,7 @@ export default function ScanLpjModal({ row, pendingDrppId, onClose, onSave }) {
 
   function pilih(f) {
     if (!f) return;
-    const pesan = validasiBerkas(f);
+    const pesan = cekBerkasDipilih('keuangan', f);
     setErr((e) => ({ ...e, file: pesan }));
     setFile(pesan ? null : f);
   }
@@ -69,6 +71,7 @@ export default function ScanLpjModal({ row, pendingDrppId, onClose, onSave }) {
         <input
           id="kw-scan"
           value={kw}
+          maxLength={PANJANG.nomorKwitansi}
           onChange={(e) => {
             setKw(e.target.value);
             setErr((x) => ({ ...x, kw: '' }));

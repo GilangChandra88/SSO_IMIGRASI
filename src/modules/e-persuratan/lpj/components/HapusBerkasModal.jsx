@@ -1,15 +1,27 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { FaExclamationTriangle, FaRegTrashAlt } from 'react-icons/fa';
 import Modal from '@/components/Modal';
-import { isSkemaBaru, lpjIdOf, uraianOf } from '../utils/lpjLogic';
-import { BTN, FONT, STATUS, T } from '@/utils/uiTokens';
+import { PANJANG } from '@/utils/batas';
+import { lpjIdOf, uraianOf } from '../utils/lpjLogic';
+import { BTN, FONT, FORM, STATUS, T } from '@/utils/uiTokens';
 
 /**
- * Popup konfirmasi hapus berkas LPJ (lihat canDeletePack). Hanya bertanya; penghapusan dan
- * animasi baris keluar dijalankan pemanggil lewat `onYa` (lihat BerkasListPage).
+ * Popup konfirmasi hapus berkas LPJ (lihat canDeletePack). Berkas bernomor (hanya Super Admin)
+ * wajib disertai alasan. Hanya bertanya; penghapusan dan animasi baris keluar dijalankan
+ * pemanggil lewat `onYa(alasan)` (lihat BerkasListPage).
  */
 export default function HapusBerkasModal({ pack, onClose, onYa }) {
   const nomor = lpjIdOf(pack);
+  const [alasan, setAlasan] = useState('');
+  const [galat, setGalat] = useState(false);
+
+  const ya = () => {
+    if (nomor && !alasan.trim()) {
+      setGalat(true);
+      return;
+    }
+    onYa(alasan.trim());
+  };
 
   return (
     <Modal widthClass="max-w-[440px]" onClose={onClose} labelledBy="judul-hapus-berkas" animasi>
@@ -20,26 +32,38 @@ export default function HapusBerkasModal({ pack, onClose, onYa }) {
         >
           <FaExclamationTriangle size={18} />
         </div>
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h3 id="judul-hapus-berkas" className={`${FONT.head} font-bold text-base ${T.ink}`}>
             Hapus berkas {nomor || 'ini'}?
           </h3>
           <p className={`mt-1.5 text-[13px] leading-[1.55] break-words ${T.inkMuted}`}>
-            "{uraianOf(pack) || 'Tanpa uraian'}" beserta isinya akan{' '}
+            "{uraianOf(pack) || 'Tanpa uraian'}" beserta isi dan berkas unggahannya akan{' '}
             <strong>dihapus permanen</strong> dan tidak bisa dikembalikan.
           </p>
-          {!isSkemaBaru(pack) ? (
-            <p className={`mt-2 text-[12.5px] leading-[1.55] ${STATUS.critInk}`}>
-              Berkas format lama: seluruh dokumen suratnya (surat_items) dan catatan realisasinya di
-              History MAK ikut dihapus.
-            </p>
-          ) : (
-            nomor && (
+          {nomor && (
+            <>
               <p className={`mt-2 text-[12.5px] leading-[1.55] ${STATUS.critInk}`}>
-                Nomor {nomor} tidak akan dipakai ulang. Berkas juga dikeluarkan dari DRPP, catatan
-                realisasinya di History MAK dihapus, dan pindaian arsipnya ikut terhapus.
+                Nomor {nomor} tidak akan dipakai ulang. Realisasinya di History MAK dibatalkan
+                (tidak dihapus) dan tidak lagi dihitung di Rekap.
               </p>
-            )
+              <label htmlFor="alasan-hapus" className={`${FORM.label} mt-3`}>
+                Alasan penghapusan <span className="text-[#ef4444]">*</span>
+              </label>
+              <textarea
+                id="alasan-hapus"
+                rows={2}
+                maxLength={PANJANG.alasanBatal}
+                value={alasan}
+                aria-invalid={galat || undefined}
+                onChange={(e) => {
+                  setAlasan(e.target.value);
+                  setGalat(false);
+                }}
+                className={`${FORM.textarea} ${galat ? FORM.borderErr : FORM.borderOk}`}
+                autoFocus
+              />
+              {galat && <p className={FORM.err}>Alasan wajib diisi untuk berkas bernomor.</p>}
+            </>
           )}
         </div>
       </div>
@@ -47,7 +71,7 @@ export default function HapusBerkasModal({ pack, onClose, onYa }) {
         <button type="button" className={BTN.ghost} onClick={onClose}>
           Batal
         </button>
-        <button type="button" className={BTN.danger} onClick={onYa}>
+        <button type="button" className={BTN.danger} onClick={ya}>
           <FaRegTrashAlt size={12} /> Ya, Hapus
         </button>
       </div>

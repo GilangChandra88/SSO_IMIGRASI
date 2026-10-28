@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { FaCheck, FaClock, FaLock, FaRegEye, FaRegFileAlt } from 'react-icons/fa';
-import { useMakBerkas } from '../hooks/useVerifikasi';
+import { keDate } from '@/utils/nilai';
+import { useKeuanganBerkas } from '../hooks/useBerkas';
 import { useDokumenLpj } from '../hooks/useDokumenLpj';
 import { lpjIdOf } from '../utils/lpjLogic';
-import { verifOf } from '../utils/verifikasiLogic';
-import { formatTanggal } from '../utils/formatTanggal';
+import { formatTanggal, formatTanggalDate } from '../utils/formatTanggal';
 import ProgressBar from '../ui/ProgressBar';
 import LampiranViewer from './LampiranViewer';
 import { BTN, FONT, NAVY, STAGE_CLS, STATUS, T } from '@/utils/uiTokens';
@@ -17,61 +17,69 @@ const LEMBAR = {
   label: 'Lembar Verifikasi',
 };
 
-/** Tahap pengolahan berkas oleh Admin/Keuangan (urut, sama dengan tab Berkas Verifikasi). */
-function tahapProgres(pack) {
-  const verif = verifOf(pack);
-  const bayar = pack.pembayaran || {};
-  const arsip = pack.arsip || {};
+/**
+ * Tahap pengolahan berkas oleh Keuangan dari dokumen `keuangan/status` (urut, sama dengan tab
+ * Berkas Verifikasi). `namaAkun(uid)` memberi nama pegawai dari pegawai ringkas.
+ */
+function tahapProgres(k, namaAkun) {
+  const v = k?.verifikasi || {};
+  const sakti = k?.sakti || {};
+  const transfer = k?.transfer || {};
+  const arsip = k?.arsip || {};
+  const oleh = namaAkun(v.selesaiOleh);
   return [
     {
       key: 'verif',
       kode: 'VER',
       label: 'Verifikasi',
-      selesai: !!verif.selesai,
-      ket: verif.selesai
-        ? `Terverifikasi ${formatTanggal(verif.selesaiAt)}${verif.oleh?.nama ? ` oleh ${verif.oleh.nama}` : ''}`
-        : 'Menunggu verifikasi dokumen oleh Admin',
+      selesai: !!v.selesai,
+      ket: v.selesai
+        ? `Terverifikasi ${formatTanggalDate(keDate(v.selesaiPada))}${oleh ? ` oleh ${oleh}` : ''}`
+        : 'Menunggu verifikasi dokumen oleh Keuangan',
     },
     {
       key: 'sakti',
       kode: 'SAKTI',
       label: 'Upload SAKTI',
-      selesai: !!arsip.kwitansi,
-      ket: arsip.kwitansi ? 'Kode upload SAKTI' : 'Menunggu kode upload SAKTI',
-      kodeSakti: arsip.kwitansi,
+      selesai: !!sakti.selesai,
+      ket: sakti.selesai ? 'Nomor kwitansi SAKTI' : 'Menunggu upload SAKTI',
+      kodeSakti: sakti.nomorKwitansi,
     },
     {
       key: 'transfer',
       kode: 'TRF',
       label: 'Bukti Transfer Bendahara',
-      selesai: !!bayar.buktiTransfer,
-      ket: bayar.buktiTransfer
-        ? `Ditransfer ${formatTanggal(bayar.tanggalTransfer)}`
+      selesai: !!transfer.selesai,
+      ket: transfer.selesai
+        ? `Ditransfer ${formatTanggal(transfer.tanggal)}`
         : 'Menunggu bukti transfer dari Bendahara',
-      berkas: bayar.berkas,
+      berkas: transfer.berkas,
     },
     {
       key: 'arsip',
       kode: 'ARS',
       label: 'Arsip',
-      selesai: !!arsip.scan,
-      ket: arsip.scan
-        ? `Berkas asli dipindai ${formatTanggal(arsip.scan.uploadedAt)}`
+      selesai: !!arsip.selesai,
+      ket: arsip.selesai
+        ? `Berkas asli diarsipkan ${formatTanggal(arsip.tanggalArsip)}`
         : 'Menunggu berkas asli dipindai & diarsipkan',
-      berkas: arsip.scan,
+      berkas: arsip.berkas,
     },
   ];
 }
 
 /**
  * Fase terakhir Detail LPJ (Fase 5 Perjadin / Fase 3 Non-Perjadin): progres pengolahan berkas oleh
- * Admin/Keuangan — Verifikasi (Lembar Verifikasi), Upload SAKTI (kode), Bukti Transfer Bendahara,
- * dan Arsip (scan berkas asli lengkap). Hanya-baca; tidak ikut dihitung di progres dokumen.
+ * Keuangan — Verifikasi (Lembar Verifikasi), Upload SAKTI (nomor kwitansi), Bukti Transfer
+ * Bendahara, dan Arsip (scan berkas asli). Hanya-baca; tidak ikut dihitung di progres dokumen.
  * Terbuka setelah nomor LPJ terbit (saat berkas masuk Berkas Verifikasi).
+ * @param {{ pack, num, pegawai: object[], showToast }} props  pegawai = pegawai ringkas
  */
 export default function FaseProgresBerkas({ pack, num, pegawai, showToast }) {
   const terbuka = !!lpjIdOf(pack);
-  const tahap = tahapProgres(pack);
+  const { keuangan } = useKeuanganBerkas(terbuka ? pack.id : null);
+  const namaAkun = (uid) => (uid && pegawai.find((p) => p.authUid === uid)?.nama) || '';
+  const tahap = tahapProgres(keuangan, namaAkun);
   const nSelesai = terbuka ? tahap.filter((t) => t.selesai).length : 0;
   const semua = nSelesai === tahap.length;
   const pct = (nSelesai / tahap.length) * 100;
@@ -105,7 +113,7 @@ export default function FaseProgresBerkas({ pack, num, pegawai, showToast }) {
           </h2>
           <p className={`text-xs mt-0.5 ${T.inkMuted}`}>
             {nSelesai}/{tahap.length} selesai · Verifikasi, SAKTI, Transfer &amp; Arsip oleh
-            Admin/Keuangan
+            Keuangan
           </p>
         </div>
         {semua && (
@@ -122,7 +130,7 @@ export default function FaseProgresBerkas({ pack, num, pegawai, showToast }) {
       />
 
       {terbuka ? (
-        <IsiProgres pack={pack} tahap={tahap} pegawai={pegawai} showToast={showToast} />
+        <IsiProgres pack={pack} keuangan={keuangan} tahap={tahap} showToast={showToast} />
       ) : (
         <div
           data-bertahap
@@ -136,10 +144,15 @@ export default function FaseProgresBerkas({ pack, num, pegawai, showToast }) {
   );
 }
 
-/** Baris tiap tahap; dipisah agar data MAK Lembar Verifikasi baru dimuat saat fase terbuka. */
-function IsiProgres({ pack, tahap, pegawai, showToast }) {
-  const { mak } = useMakBerkas(pack);
-  const dok = useDokumenLpj({ pack, pegawai, showToast, mak });
+/** Baris tiap tahap. Lembar Verifikasi memakai POK & pejabat yang dibekukan saat verifikasi. */
+function IsiProgres({ pack, keuangan, tahap, showToast }) {
+  const dok = useDokumenLpj({
+    pack,
+    showToast,
+    mak: { pok: keuangan?.pokBeku || {} },
+    pejabat: keuangan?.pejabatBeku || {},
+    verifikasi: keuangan?.verifikasi || {},
+  });
   const [lihat, setLihat] = useState(null); // { label, files }
   const aktif = tahap.findIndex((t) => !t.selesai); // tahap yang sedang berjalan
 
@@ -166,7 +179,7 @@ function IsiProgres({ pack, tahap, pegawai, showToast }) {
               {t.kodeSakti}
             </span>
           );
-        } else if (t.selesai && t.berkas?.url) {
+        } else if (t.selesai && t.berkas?.path) {
           aksi = (
             <button
               type="button"

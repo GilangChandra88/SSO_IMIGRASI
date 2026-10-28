@@ -7,11 +7,12 @@ import FotoWajah from './FotoWajah';
 import ModalUcapan from './ModalUcapan';
 
 /**
- * Banner Portal: siapa yang berulang tahun hari ini + tombol "Kirim Ucapan". Pegawai yang
- * berulang tahun hanya melihat sapaan untuk dirinya (bukan banner kirim ucapan untuk dirinya).
+ * Banner Portal: siapa yang berulang tahun hari ini (pegawai ringkas) + tombol "Kirim Ucapan".
+ * Pegawai yang berulang tahun hanya melihat sapaan untuk dirinya (bukan banner kirim ucapan untuk
+ * dirinya).
  */
 export default function BannerUltah() {
-  const { currentUser, userData } = useAuth();
+  const { currentUser, pegawaiId } = useAuth();
   const [yangUltah, setYangUltah] = useState([]);
   const [terkirim, setTerkirim] = useState({});
   const [tujuan, setTujuan] = useState(null);
@@ -22,16 +23,13 @@ export default function BannerUltah() {
   useEffect(() => {
     if (!uid) return undefined;
     return pantauUcapanDari(uid, (daftar) =>
-      setTerkirim(Object.fromEntries(daftar.map((u) => [u.untukId, u]))),
+      setTerkirim(Object.fromEntries(daftar.map((u) => [u.untukPegawaiId, u]))),
     );
   }, [uid]);
 
-  const diriSendiri = (p) => p.id === userData?.id || (!!p.email && p.email === currentUser?.email);
-  const sendiri = yangUltah.find(diriSendiri);
-  const lain = yangUltah.filter((p) => !diriSendiri(p));
+  const sendiri = yangUltah.find((p) => p.id === pegawaiId);
+  const lain = yangUltah.filter((p) => p.id !== pegawaiId);
   if (!sendiri && !lain.length) return null;
-
-  const namaPengirim = userData?.nama || currentUser?.email?.split('@')[0] || 'Rekan kerja';
 
   return (
     <div className="space-y-3">
@@ -69,8 +67,10 @@ export default function BannerUltah() {
                 <FaBirthdayCake /> Ulang tahun hari ini
               </p>
               <p className="font-bold text-slate-800 dark:text-slate-100 truncate">{p.nama}</p>
-              {p.jabatan && (
-                <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{p.jabatan}</p>
+              {p.jabatanNama && (
+                <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
+                  {p.jabatanNama}
+                </p>
               )}
             </div>
             {kirim ? (
@@ -94,11 +94,7 @@ export default function BannerUltah() {
       })}
 
       {tujuan && uid && (
-        <ModalUcapan
-          pegawai={tujuan}
-          dari={{ uid, nama: namaPengirim }}
-          onClose={() => setTujuan(null)}
-        />
+        <ModalUcapan pegawai={tujuan} dariUid={uid} onClose={() => setTujuan(null)} />
       )}
     </div>
   );

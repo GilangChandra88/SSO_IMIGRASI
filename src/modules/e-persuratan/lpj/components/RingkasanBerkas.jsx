@@ -57,7 +57,7 @@ export function InfoBerkasKop({ pack }) {
           {pelaksana.length === 0 && <span className="text-[13px] text-white/70">—</span>}
           {pelaksana.map((p, i) => (
             <span
-              key={p.id || p.nip || i}
+              key={p.pegawaiId || i}
               className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border bg-white/15 border-white/20 text-white ${ANIM.meletup} ${jedaKe(i + 1)}`}
             >
               {p.nama}

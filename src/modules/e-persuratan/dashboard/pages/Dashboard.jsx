@@ -1,6 +1,7 @@
 /**
  * Dashboard e-Persuratan (DashboardPage purwarupa): sambutan + tombol Buat LPJ, Status Berkas,
- * Berkas LPJ Saya, Perlu Dilengkapi, dan Aktivitas Terbaru — semuanya dari berkas LPJ di Firestore.
+ * Berkas LPJ Saya, Perlu Dilengkapi, dan Aktivitas Terbaru — semuanya dari ringkasan berkas
+ * (`lpj_ringkas`) yang mencantumkan pengguna pada tahun anggaran berjalan.
  */
 
 import React, { useMemo, useState } from 'react';
@@ -16,22 +17,21 @@ import {
   FaUpload,
 } from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
+import { keDate, tahunIni } from '@/utils/nilai';
 import { FONT, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, jedaKe } from '@/utils/animasi';
 import { AngkaBerjalan, useMunculBerurutan } from '@/components/animasi';
 import {
   formatTanggalDate,
   formatTanggalPendek,
-  isSkemaBaru,
   lpjIdLabel,
   lpjIdOf,
   lpjDashStatus,
   lpjDashType,
   lpjRowTotal,
-  pelaksanaOf,
   stagesWithStatus,
   uraianOf,
-  useLPJPacks,
+  useDaftarBerkas,
 } from '@/modules/e-persuratan/lpj';
 
 const STATUS_LABEL = { baru: 'Baru', draft: 'Draft', selesai: 'Selesai' };
@@ -55,9 +55,8 @@ function faseRingkas(pack) {
 }
 
 /** "Baru saja", "5 menit lalu", "2 jam lalu", "Kemarin, 09.15", atau tanggal. */
-function waktuRelatif(iso) {
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return '';
+function waktuRelatif(d) {
+  if (!d || Number.isNaN(d.getTime())) return '';
   const menit = Math.floor((Date.now() - d.getTime()) / 60000);
   const jam = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
   if (menit < 1) return 'Baru saja';
@@ -76,26 +75,17 @@ function ikonAktivitas(teks) {
 }
 
 export default function Dashboard() {
-  const { currentUser, userData, isAdmin, isSuperAdmin } = useAuth();
+  const { currentUser, userData } = useAuth();
   const navigate = useNavigate();
   const uid = currentUser?.uid || '';
-  const { packs } = useLPJPacks({ isAdmin: !!(isAdmin || isSuperAdmin), userUid: uid });
+  // "Berkas LPJ Saya": berkas yang dibuat pengguna atau mencantumkan dirinya sebagai pelaksana
+  // (kueri anggota lpj_ringkas, tahun anggaran berjalan)
+  const { berkas: milikSaya } = useDaftarBerkas({ uid, tahunAnggaran: tahunIni() });
 
   const [q, setQ] = useState('');
   const [type, setType] = useState('all');
   const [status, setStatus] = useState('all');
   const [filterOpen, setFilterOpen] = useState(false);
-
-  // "Berkas LPJ Saya": berkas yang dibuat pengguna atau mencantumkan dirinya sebagai pelaksana
-  const milikSaya = useMemo(
-    () =>
-      packs.filter(
-        (p) =>
-          isSkemaBaru(p) &&
-          (p.created_by === uid || pelaksanaOf(p).some((x) => x.uid && x.uid === uid)),
-      ),
-    [packs, uid],
-  );
 
   const filtered = useMemo(() => {
     const qq = q.trim().toLowerCase();
@@ -131,11 +121,12 @@ export default function Dashboard() {
     [milikSaya],
   );
 
+  // Aktivitas terakhir tiap berkas (ditulis Function dari riwayat berkas), terbaru dulu
   const aktivitas = useMemo(
     () =>
       milikSaya
-        .filter((p) => p.aktivitas?.at)
-        .sort((a, b) => String(b.aktivitas.at).localeCompare(String(a.aktivitas.at)))
+        .filter((p) => keDate(p.aktivitasTerakhir?.pada))
+        .sort((a, b) => keDate(b.aktivitasTerakhir.pada) - keDate(a.aktivitasTerakhir.pada))
         .slice(0, 3),
     [milikSaya],
   );
@@ -143,9 +134,7 @@ export default function Dashboard() {
   // Nama hari + tanggal hari/bulan/tahun, mis. "Jumat, 23/10/2026"
   const sekarang = new Date();
   const today = `${sekarang.toLocaleDateString('id-ID', { weekday: 'long' })}, ${formatTanggalDate(sekarang)}`;
-  const namaDepan = userData?.nama
-    ? userData.nama.split(' ')[0]
-    : currentUser?.email?.split('@')[0] || 'Pengguna';
+  const namaDepan = userData?.nama?.split(' ')[0] || 'Pengguna';
 
   // Segmen bar status (SVG, lebar dalam persen)
   const segmen = [];
@@ -475,9 +464,9 @@ export default function Dashboard() {
             </div>
             <ul className="flex flex-col">
               {aktivitas.map((p, i) => {
-                const a = p.aktivitas;
+                const a = p.aktivitasTerakhir;
                 const Icon = ikonAktivitas(a.teks);
-                const siapa = a.uid && a.uid === uid ? 'Anda' : a.oleh || 'Seseorang';
+                const siapa = a.oleh && a.oleh === uid ? 'Anda' : a.olehNama || 'Seseorang';
                 return (
                   <li
                     key={p.id}
@@ -490,16 +479,18 @@ export default function Dashboard() {
                     </div>
                     <div className="min-w-0">
                       <p className={`text-[13px] leading-[1.45] ${T.ink}`}>
-                        {siapa} {a.teks}
+                        {a.teks}
                         {!a.teks.includes(lpjIdOf(p) || uraianOf(p)) && (
                           <>
                             {' '}
-                            pada{' '}
+                            &middot;{' '}
                             <strong className="font-semibold">{lpjIdOf(p) || uraianOf(p)}</strong>
                           </>
                         )}
                       </p>
-                      <p className={`text-[11.5px] mt-0.5 ${T.inkMuted}`}>{waktuRelatif(a.at)}</p>
+                      <p className={`text-[11.5px] mt-0.5 ${T.inkMuted}`}>
+                        oleh {siapa} &middot; {waktuRelatif(keDate(a.pada))}
+                      </p>
                     </div>
                   </li>
                 );

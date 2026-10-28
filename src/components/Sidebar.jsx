@@ -1,11 +1,13 @@
 import React from 'react';
 import { useLocation } from 'react-router-dom';
 import { FaSignOutAlt, FaSun, FaMoon, FaBars, FaUserShield } from 'react-icons/fa';
-import { signOut } from 'firebase/auth';
-import { auth } from '@/config/firebase';
 import { useAuth } from '@/context/AuthContext';
 import { APP_ACCENTS } from '@/utils/appAccents';
 import { ANIM } from '@/utils/animasi';
+import { keluarAkun } from '@/utils/keluarAkun';
+import { LABEL_PERAN } from '@/utils/peran';
+
+const LABEL_SINGKAT = { superadmin: 'Super', kepegawaian: 'Kepeg.' };
 
 /**
  * Sidebar bersama untuk semua aplikasi (e-Persuratan, Inventory, Kepegawaian).
@@ -46,9 +48,7 @@ export default function Sidebar({
 
   const isActive = (prefix) => path === prefix || path.startsWith(prefix + '/');
 
-  const handleLogout = async () => {
-    await signOut(auth);
-  };
+  const handleLogout = keluarAkun;
 
   const navItemClass = (active) => `
     flex items-center gap-3 py-2.5 px-4 rounded-xl font-medium transition-all text-sm motion-safe:active:scale-[.98]
@@ -157,28 +157,28 @@ export default function Sidebar({
               <div
                 role="radiogroup"
                 aria-label="Tampilan peran"
-                className="flex gap-1 p-1 rounded-lg bg-slate-900/80 border border-slate-700/50"
+                className="grid grid-cols-3 gap-1 p-1 rounded-lg bg-slate-900/80 border border-slate-700/50"
               >
                 {roles.map((r) => {
-                  const aktif = (viewAsRole || 'Super Admin') === r;
+                  const aktif = (viewAsRole || 'superadmin') === r;
                   return (
                     <button
                       key={r}
                       type="button"
                       role="radio"
                       aria-checked={aktif}
-                      title={`Lihat sebagai ${r}`}
-                      aria-label={r}
+                      title={`Lihat sebagai ${LABEL_PERAN[r]}`}
+                      aria-label={LABEL_PERAN[r]}
                       onClick={() => setViewAsRole(r)}
-                      className={`flex-1 min-w-0 truncate px-1.5 py-1.5 rounded-md text-[10px] font-bold motion-safe:transition-[color,background-color,scale] motion-safe:duration-200 motion-safe:active:scale-90 ${
+                      className={`min-w-0 truncate px-1.5 py-1.5 rounded-md text-[10px] font-bold motion-safe:transition-[color,background-color,scale] motion-safe:duration-200 motion-safe:active:scale-90 ${
                         aktif
-                          ? r === 'Super Admin'
+                          ? r === 'superadmin'
                             ? 'bg-slate-700 text-white'
                             : 'bg-amber-500 text-slate-900'
                           : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800'
                       }`}
                     >
-                      {r === 'Super Admin' ? 'Super' : r}
+                      {LABEL_SINGKAT[r] || LABEL_PERAN[r]}
                     </button>
                   );
                 })}
@@ -196,7 +196,7 @@ export default function Sidebar({
             <button
               type="button"
               onClick={() => {
-                const urut = roles.indexOf(viewAsRole || 'Super Admin');
+                const urut = roles.indexOf(viewAsRole || 'superadmin');
                 setViewAsRole(roles[(urut + 1) % roles.length]);
               }}
               title={`Tampilan peran: ${userRole} (klik untuk ganti)`}

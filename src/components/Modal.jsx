@@ -11,6 +11,9 @@ import { useDariTombol } from '@/components/animasi';
  *   CSS lewat varian `starting:`, tanpa gerakan bila "kurangi gerakan" aktif.
  * `dariTombol` = popup "Lihat": tumbuh dari tombol yang membukanya, isinya muncul bertahap dari
  *   atas ke bawah, dan saat ditutup mengecil kembali ke tombol itu (useDariTombol).
+ * `lembar` = di HP (< 768 px) tampil sebagai lembar dari bawah selebar layar (sudut atas membulat,
+ *   tinggi maks. 92% layar); di layar lebar tetap kartu di tengah. `tinggiTetap` = lembar HP
+ *   selalu setinggi 78% layar (form panjang).
  * Dirender lewat portal ke `body` agar posisinya tidak terpengaruh transform leluhur
  * (mis. animasi perpindahan halaman).
  */
@@ -20,15 +23,20 @@ export default function Modal({
   labelledBy,
   animasi = true,
   dariTombol = false,
+  lembar = false,
+  tinggiTetap = false,
   children,
 }) {
   const { dialogRef, latarRef } = useDariTombol(animasi && dariTombol);
   // Popup "Lihat" (dariTombol): tumbuh dari tombol pembukanya; bukan ANIM.popup (bertumpuk)
-  const kartuAnim = animasi && !dariTombol ? ANIM.popup : '';
+  const kartuAnim = animasi && !dariTombol ? (lembar ? ANIM.lembar : ANIM.popup) : '';
+  const tata = lembar
+    ? `max-md:max-w-none max-md:rounded-b-none max-md:rounded-t-[20px] max-md:max-h-[92dvh] ${tinggiTetap ? 'max-md:h-[78dvh]' : ''}`
+    : '';
   return createPortal(
     <div
       ref={latarRef}
-      className={`fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-[rgba(10,18,32,.55)] ${animasi ? ANIM.latar : ''}`}
+      className={`fixed inset-0 z-[1000] flex items-center justify-center p-4 bg-[rgba(10,18,32,.55)] ${lembar ? 'max-md:items-end max-md:p-0' : ''} ${animasi ? ANIM.latar : ''}`}
       onClick={(e) => {
         if (e.target === e.currentTarget && onClose) onClose();
       }}
@@ -38,7 +46,7 @@ export default function Modal({
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
-        className={`${FONT.body} ${T.surface} ${T.ink} w-full ${widthClass} max-h-[90vh] overflow-y-auto rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,.35)] ${kartuAnim}`}
+        className={`${FONT.body} ${T.surface} ${T.ink} w-full ${widthClass} max-h-[90vh] overflow-y-auto rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,.35)] ${tata} ${kartuAnim}`}
       >
         {children}
       </div>

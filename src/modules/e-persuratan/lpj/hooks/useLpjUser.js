@@ -1,20 +1,19 @@
+import { useMemo } from 'react';
 import { useAuth } from '@/context/AuthContext';
-import { toPegawaiRef } from '../utils/emptyModels';
-import { namaPengguna } from './useLPJ';
+import { keOrang } from '@/context/usePegawaiRingkas';
 
 /**
- * Data pengguna login untuk modul LPJ: uid, nama, hak admin, dan referensi pegawai
- * (null bila akun tidak punya dokumen `pegawai`, mis. Super Admin bawaan).
+ * Pengguna login untuk modul LPJ. Hak di sini hanya untuk tampilan; rules & Function yang
+ * menegakkannya. pegawaiLogin = salinan beku Orang dari dokumen pegawai sendiri (null sampai termuat).
  */
 export function useLpjUser() {
-  const { currentUser, userData, isAdmin, isSuperAdmin } = useAuth();
-  const uid = currentUser?.uid || '';
-  const pegawaiLogin =
-    userData?.id && userData?.nama ? toPegawaiRef({ ...userData, authUid: uid }) : null;
+  const { currentUser, userData, pegawaiId, isKeuangan, isSuperAdmin } = useAuth();
+  const pegawaiLogin = useMemo(() => keOrang(userData), [userData]);
   return {
-    uid,
-    nama: namaPengguna(currentUser, userData),
-    isAdmin: !!(isAdmin || isSuperAdmin),
+    uid: currentUser?.uid || '',
+    pegawaiId: pegawaiId || '',
+    nama: userData?.nama || 'Pengguna',
+    isAdmin: !!isKeuangan,
     isSuperAdmin: !!isSuperAdmin,
     pegawaiLogin,
   };

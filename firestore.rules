@@ -1,0 +1,699 @@
+rules_version = '2';
+
+// Aturan keamanan Firestore — Imigrasi Super Web.
+// Acuan struktur data: docs/skema-database.md (setiap perubahan skema wajib diikuti perubahan berkas ini).
+//
+// Prinsip:
+// - Tolak kecuali diizinkan. Koleksi yang tidak disebut di sini tidak bisa dibaca/ditulis siapa pun.
+// - Identitas & peran hanya dari custom claims { peran: [...], aktif: true, pegawaiId } yang ditulis Cloud Function.
+// - Field turunan, nomor resmi, realisasi, dan penghitung hanya ditulis Cloud Function (Admin SDK melewati rules).
+// - Setiap penulisan klien divalidasi: daftar field tertutup, tipe, panjang, jejak audit dari waktu server.
+// - Setiap kueri daftar wajib memakai limit() (mencegah unduhan massal & lonjakan biaya).
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ─── Identitas & peran ──────────────────────────────────────────────────
+    function masuk() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password'
+        && request.auth.token.aktif == true
+        && request.auth.token.peran is list
+        && request.auth.token.pegawaiId is string;
+    }
+    function uid() { return request.auth.uid; }
+    function pegawaiSaya() { return request.auth.token.pegawaiId; }
+    function superadmin() { return masuk() && 'superadmin' in request.auth.token.peran; }
+    function punya(p) { return masuk() && (p in request.auth.token.peran || 'superadmin' in request.auth.token.peran); }
+    function keuangan() { return punya('keuangan'); }
+    function kepegawaian() { return punya('kepegawaian'); }
+    function umum() { return punya('umum'); }
+
+    // ─── Pembantu data ──────────────────────────────────────────────────────
+    function baru() { return request.resource.data; }
+    function lama() { return resource.data; }
+    function berubah() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function hanya(kunci) { return request.resource.data.keys().hasOnly(kunci); }
+    function wajib(kunci) { return request.resource.data.keys().hasAll(kunci); }
+    function teks(v, maks) { return v is string && v.size() <= maks; }
+    function teksIsi(v, maks) { return v is string && v.size() > 0 && v.size() <= maks; }
+    function tanggal(v) {
+      return v is string && v.matches('^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$');
+    }
+    function tahun(v) { return v is int && v >= 2024 && v <= 2100; }
+    function bulat(v, min, maks) { return v is int && v >= min && v <= maks; }
+    function rupiah(v) { return bulat(v, 0, 1000000000000); }
+    function idSah(v) { return v is string && v.matches('^[A-Za-z0-9_-]{1,64}$'); }
+    function batasDaftar(n) { return request.query.limit is int && request.query.limit <= n; }
+
+    // Jejak audit: waktu dari server, pelaku = uid login, jejak pembuatan tidak bisa diubah.
+    function kunciAudit() { return ['dibuatPada', 'dibuatOleh', 'diubahPada', 'diubahOleh']; }
+    function auditBuat() {
+      return baru().dibuatOleh == uid() && baru().dibuatPada == request.time
+        && baru().diubahOleh == uid() && baru().diubahPada == request.time;
+    }
+    function auditUbah() {
+      return baru().diubahOleh == uid() && baru().diubahPada == request.time
+        && baru().dibuatOleh == lama().dibuatOleh && baru().dibuatPada == lama().dibuatPada;
+    }
+
+    // Metadata berkas Storage (tanpa url). Path harus berada di folder yang diharapkan.
+    function metaBerkas(m, awalan) {
+      return m is map
+        && m.keys().hasOnly(['path', 'nama', 'ukuran', 'tipe', 'diunggahPada', 'diunggahOleh'])
+        && m.path is string
+        && m.path.matches('^' + awalan + '[0-9]{13}-[A-Za-z0-9._-]{1,80}$')
+        && teksIsi(m.nama, 200)
+        && bulat(m.ukuran, 1, 10485760)
+        && m.tipe in ['image/jpeg', 'image/png', 'application/pdf'];
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // PEGAWAI & AKUN
+    // ════════════════════════════════════════════════════════════════════════
+
+    function kunciPegawaiKlien() {
+      return ['nama', 'nip', 'pangkatId', 'pangkatNama', 'jabatanId', 'jabatanNama', 'seksi',
+              'tanggalLahir', 'fotoPaths'].concat(kunciAudit());
+    }
+    function kunciPegawaiFn() { return ['email', 'authUid', 'peran', 'aktif', 'ultahMd']; }
+    // Foto ke-i (bila ada): path foto asli di folder pegawai itu sendiri (storage.rules).
+    function fotoKe(id, l, i) {
+      return l.size() <= i
+        || (l[i] is string && l[i].matches('^pegawai/' + id + '/foto/[0-9]{13}-[A-Za-z0-9._-]{1,80}$'));
+    }
+    function fotoPathsSah(id, l) {
+      return l is list && l.size() <= 9 && l.toSet().size() == l.size()
+        && fotoKe(id, l, 0) && fotoKe(id, l, 1) && fotoKe(id, l, 2)
+        && fotoKe(id, l, 3) && fotoKe(id, l, 4) && fotoKe(id, l, 5)
+        && fotoKe(id, l, 6) && fotoKe(id, l, 7) && fotoKe(id, l, 8);
+    }
+    function pegawaiSah(d, id) {
+      return teksIsi(d.nama, 120)
+        && (d.nip == '' || (d.nip is string && d.nip.matches('^[0-9]{18}$')))
+        && teks(d.pangkatId, 64) && teks(d.pangkatNama, 80)
+        && teks(d.jabatanId, 64) && teks(d.jabatanNama, 160)
+        && teks(d.seksi, 80)
+        && (d.tanggalLahir == '' || tanggal(d.tanggalLahir))
+        && fotoPathsSah(id, d.fotoPaths);
+    }
+
+    match /pegawai/{id} {
+      allow get: if kepegawaian() || (masuk() && pegawaiSaya() == id);
+      allow list: if kepegawaian() && batasDaftar(500);
+      allow create: if kepegawaian()
+        && hanya(kunciPegawaiKlien()) && wajib(kunciPegawaiKlien())
+        && pegawaiSah(baru(), id) && auditBuat();
+      // Data Super Admin hanya bisa diubah Super Admin; field akun/peran hanya oleh Cloud Function.
+      allow update: if kepegawaian()
+        && (superadmin() || !('superadmin' in lama().get('peran', [])))
+        && hanya(kunciPegawaiKlien().concat(kunciPegawaiFn()))
+        && !berubah().hasAny(kunciPegawaiFn())
+        && pegawaiSah(baru(), id) && auditUbah();
+      allow delete: if false; // nonaktifkan lewat Function nonaktifkanPegawai
+    }
+
+    match /pegawai_ringkas/{id} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(500);
+      allow write: if false; // diturunkan Function dari pegawai
+    }
+
+    function kunciMaster() { return ['nama', 'urutan', 'aktif'].concat(kunciAudit()); }
+    function masterSah(d) { return teksIsi(d.nama, 160) && bulat(d.urutan, 0, 9999) && d.aktif is bool; }
+    function bolehBuatMaster() {
+      return kepegawaian() && hanya(kunciMaster()) && wajib(kunciMaster()) && masterSah(baru()) && auditBuat();
+    }
+    function bolehUbahMaster() {
+      return kepegawaian() && hanya(kunciMaster()) && masterSah(baru()) && auditUbah();
+    }
+
+    match /pegawai_pangkat/{id} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(200);
+      allow create: if bolehBuatMaster();
+      allow update: if bolehUbahMaster();
+      allow delete: if false; // pakai aktif: false
+    }
+
+    match /pegawai_jabatan/{id} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(200);
+      allow create: if bolehBuatMaster();
+      allow update: if bolehUbahMaster();
+      allow delete: if false;
+    }
+
+    function kunciPejabat() {
+      return ['jenis', 'pegawaiId', 'berlakuMulai', 'berlakuSampai'].concat(kunciAudit());
+    }
+    function pejabatSah(d) {
+      return d.jenis in ['ppk', 'bendahara', 'kpa', 'kepala', 'plt', 'plh']
+        && idSah(d.pegawaiId)
+        && tanggal(d.berlakuMulai)
+        && (d.berlakuSampai == null || (tanggal(d.berlakuSampai) && d.berlakuSampai >= d.berlakuMulai));
+    }
+
+    match /pegawai_pejabat/{id} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(200);
+      // Ditetapkan Kepegawaian (+ Super Admin); dibaca semua pegawai untuk dokumen LPJ & surat.
+      allow create: if kepegawaian()
+        && hanya(kunciPejabat()) && wajib(kunciPejabat())
+        && pejabatSah(baru()) && auditBuat()
+        && exists(/databases/$(database)/documents/pegawai/$(baru().pegawaiId));
+      // Penetapan tidak diubah isinya; hanya diakhiri (berlakuSampai).
+      allow update: if kepegawaian()
+        && hanya(kunciPejabat())
+        && berubah().hasOnly(['berlakuSampai', 'diubahPada', 'diubahOleh'])
+        && pejabatSah(baru()) && auditUbah();
+      allow delete: if false;
+    }
+
+    match /pengguna_preferensi/{u} {
+      allow get: if masuk() && u == uid();
+      allow list: if false;
+      allow create, update: if masuk() && u == uid()
+        && hanya(['modeGelap', 'diubahPada'])
+        && baru().modeGelap is bool && baru().diubahPada == request.time;
+      allow delete: if masuk() && u == uid();
+    }
+
+    // ─── Ulang tahun ────────────────────────────────────────────────────────
+    // Tahun berjalan menurut WITA (UTC+8), sama dengan tahunIni() di klien.
+    function tahunWita() { return (request.time + duration.value(8, 'h')).year(); }
+
+    match /ultah_status/{pid} {
+      allow get: if masuk() && (pegawaiSaya() == pid || kepegawaian());
+      allow list: if kepegawaian() && batasDaftar(500);
+      allow create: if masuk() && (
+          (pegawaiSaya() == pid
+            && hanya(['kejutanTahun', 'kejutanPada'])
+            && baru().kejutanTahun == tahunWita()
+            && baru().kejutanPada == request.time)
+          || (kepegawaian()
+            && hanya(['kejutanTahun', 'kejutanPada', 'resetPada', 'resetOleh'])
+            && baru().kejutanTahun == null
+            && baru().resetOleh == uid() && baru().resetPada == request.time));
+      allow update: if masuk() && (
+          (pegawaiSaya() == pid
+            && berubah().hasOnly(['kejutanTahun', 'kejutanPada'])
+            && baru().kejutanTahun == tahunWita()
+            && baru().kejutanPada == request.time)
+          || (kepegawaian()
+            && berubah().hasOnly(['kejutanTahun', 'resetPada', 'resetOleh'])
+            && baru().kejutanTahun == null
+            && baru().resetOleh == uid() && baru().resetPada == request.time));
+      allow delete: if false;
+    }
+
+    // ID: {tahun}_{untukPegawaiId}_{dariUid} — satu ucapan per pengirim per penerima per tahun.
+    match /ultah_ucapan/{id} {
+      allow get: if masuk()
+        && (lama().dariUid == uid() || lama().untukPegawaiId == pegawaiSaya() || kepegawaian());
+      allow list: if masuk()
+        && (resource.data.dariUid == uid() || resource.data.untukPegawaiId == pegawaiSaya() || kepegawaian())
+        && batasDaftar(200);
+      allow create: if masuk()
+        && hanya(['tahun', 'untukPegawaiId', 'dariUid', 'pesan', 'dibuatPada', 'terimaKasih', 'terimaKasihPada'])
+        && baru().tahun == tahunWita()
+        && baru().dariUid == uid()
+        && idSah(baru().untukPegawaiId) && baru().untukPegawaiId != pegawaiSaya()
+        && id == string(baru().tahun) + '_' + baru().untukPegawaiId + '_' + uid()
+        && teksIsi(baru().pesan, 200)
+        && baru().dibuatPada == request.time
+        && baru().terimaKasih == false && baru().terimaKasihPada == null
+        && exists(/databases/$(database)/documents/pegawai_ringkas/$(baru().untukPegawaiId));
+      allow update: if masuk() && lama().untukPegawaiId == pegawaiSaya()
+        && berubah().hasOnly(['terimaKasih', 'terimaKasihPada'])
+        && baru().terimaKasih == true && baru().terimaKasihPada == request.time;
+      allow delete: if kepegawaian();
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // LPJ
+    // ════════════════════════════════════════════════════════════════════════
+
+    function jalurBerkas(id) { return /databases/$(database)/documents/lpj_berkas/$(id); }
+    function jalurKeuangan(id) { return /databases/$(database)/documents/lpj_berkas/$(id)/keuangan/status; }
+    function anggotaDari(d) { return masuk() && uid() in d.anggotaUids; }
+    function anggotaBerkas(id) { return anggotaDari(get(jalurBerkas(id)).data); }
+
+    function bagianPerjadin() { return ['sp', 'tte', 'spd', 'lpj', 'laporan']; }
+    function bagianNonPerjadin() { return ['spby', 'lampiran']; }
+    function kunciBerkasFn() {
+      return ['anggotaUids', 'tahap', 'status', 'nomorLpj', 'nomorLpjPada', 'realisasiTercatat'];
+    }
+    function kunciBerkasKlien(jenis) {
+      return ['skema', 'jenis', 'uraian', 'tahunAnggaran', 'versi', 'dicetak']
+        .concat(jenis == 'perjadin' ? bagianPerjadin() : bagianNonPerjadin())
+        .concat(kunciAudit());
+    }
+
+    function terkunci(d, b) { return d.get(b, {}).get('terkunci', false) == true; }
+    function bagianSah(d, b) { return !(b in d) || (d[b] is map && d[b].get('terkunci', false) is bool); }
+    function teksLaporan(d, f) { return teks(d.get('laporan', {}).get(f, ''), 5000); }
+    // Meta unggahan di dalam bagian: folder berkas ini, tipe & ukuran sama dengan storage.rules.
+    function metaLpj(m, awalan, tipe, maksByte) {
+      return metaBerkas(m, awalan) && m.tipe in tipe && m.ukuran <= maksByte
+        && m.diunggahPada is timestamp && m.diunggahOleh is string;
+    }
+    // Daftar gambar (laporan.foto 300 KB, lampiran.foto/nota 1 MB): hanya isi yang baru masuk yang
+    // diperiksa, paling banyak satu per simpan (klien menambah satu per unggahan, melepas bebas).
+    // Isi lama sudah diperiksa saat masuk, dan daftar tidak bisa diisi saat berkas dibuat, jadi
+    // seluruh isi daftar tetap sah tanpa memeriksa setiap slot (batas 1.000 ekspresi per permintaan).
+    function gambarBaruSah(b, f, awalan, maksByte) {
+      let sesudah = baru().get(b, {}).get(f, []);
+      let tambah = sesudah.removeAll(lama().get(b, {}).get(f, []));
+      return tambah.size() == 0
+        || (tambah.size() == 1 && metaLpj(tambah[0], awalan, ['image/jpeg', 'image/png'], maksByte));
+    }
+    function scanBaruSah(id) {
+      let scan = baru().get('tte', {}).get('scan', null);
+      return scan == null || scan == lama().get('tte', {}).get('scan', null)
+        || metaLpj(scan, 'lpj/' + id + '/tte/', ['image/jpeg', 'image/png', 'application/pdf'], 5242880);
+    }
+    function berkasSah(d) {
+      return d.skema == 1
+        && d.jenis in ['perjadin', 'nonperjadin']
+        && teksIsi(d.uraian, 220)
+        && tahun(d.tahunAnggaran)
+        && d.versi is int
+        && d.get('dicetak', {}) is map
+        && bagianSah(d, 'sp') && bagianSah(d, 'tte') && bagianSah(d, 'spd') && bagianSah(d, 'lpj')
+        && bagianSah(d, 'laporan') && bagianSah(d, 'spby') && bagianSah(d, 'lampiran')
+        && d.get('lpj', {}).get('transaksi', []).size() <= 100
+        && d.get('spby', {}).get('transaksi', []).size() <= 100
+        && d.get('laporan', {}).get('foto', []).size() <= 10
+        && d.get('lampiran', {}).get('foto', []).size() <= 10
+        && d.get('lampiran', {}).get('nota', []).size() <= 10
+        && teksLaporan(d, 'pendahuluan') && teksLaporan(d, 'maksud') && teksLaporan(d, 'ruangLingkup')
+        && teksLaporan(d, 'pelaksanaan') && teksLaporan(d, 'hasil') && teksLaporan(d, 'kesimpulan')
+        && teksLaporan(d, 'penutup');
+    }
+    // ── Simpan (update) berkas ───────────────────────────────────────────────
+    // Batas Firestore: 1.000 ekspresi per permintaan. Karena itu daftar field yang berubah (k)
+    // dihitung sekali, dan hanya bagian/field yang berubah yang diperiksa: isi yang tidak berubah
+    // sudah diperiksa saat ditulis (berkas dibuat lewat rules create, field Fn ditulis Function).
+
+    // Bagian b yang berubah: bentuknya sah, belum terkunci, dan bagian sebelumnya sudah terkunci
+    // (fase berurutan; '' = bagian pertama). Bagian terkunci tidak bisa diubah lagi.
+    function bagianBerubahSah(k, b, sebelumnya) {
+      return !k.hasAny([b])
+        || (bagianSah(baru(), b) && !terkunci(lama(), b)
+          && (sebelumnya == '' || terkunci(lama(), sebelumnya)));
+    }
+    function laporanSah(d) {
+      return d.get('laporan', {}).get('foto', []).size() <= 10
+        && teksLaporan(d, 'pendahuluan') && teksLaporan(d, 'maksud') && teksLaporan(d, 'ruangLingkup')
+        && teksLaporan(d, 'pelaksanaan') && teksLaporan(d, 'hasil') && teksLaporan(d, 'kesimpulan')
+        && teksLaporan(d, 'penutup');
+    }
+    function isiBerubahSah(d, k) {
+      return (!k.hasAny(['uraian']) || teksIsi(d.uraian, 220))
+        && (!k.hasAny(['tahunAnggaran']) || tahun(d.tahunAnggaran))
+        && (!k.hasAny(['dicetak']) || d.get('dicetak', {}) is map)
+        && (!k.hasAny(['lpj']) || d.get('lpj', {}).get('transaksi', []).size() <= 100)
+        && (!k.hasAny(['spby']) || d.get('spby', {}).get('transaksi', []).size() <= 100)
+        && (!k.hasAny(['laporan']) || laporanSah(d))
+        && (!k.hasAny(['lampiran'])
+          || (d.get('lampiran', {}).get('foto', []).size() <= 10
+            && d.get('lampiran', {}).get('nota', []).size() <= 10));
+    }
+    function ubahBerkasSah(id) {
+      let k = berubah();
+      let d = baru();
+      return hanya(kunciBerkasKlien(lama().jenis).concat(kunciBerkasFn()))
+        && !k.hasAny(kunciBerkasFn().concat(['skema', 'jenis']))
+        && d.versi == lama().versi + 1
+        && isiBerubahSah(d, k)
+        && bagianBerubahSah(k, 'sp', '') && bagianBerubahSah(k, 'tte', 'sp')
+        && bagianBerubahSah(k, 'spd', 'tte') && bagianBerubahSah(k, 'lpj', 'spd')
+        && bagianBerubahSah(k, 'laporan', 'lpj')
+        && bagianBerubahSah(k, 'spby', '') && bagianBerubahSah(k, 'lampiran', 'spby')
+        // LPJ & SPBy dikunci hanya oleh Function selesaikanSpby (sekaligus nomor & realisasi).
+        && (!k.hasAny(['lpj']) || !terkunci(d, 'lpj'))
+        && (!k.hasAny(['spby']) || !terkunci(d, 'spby'))
+        && (!k.hasAny(['uraian', 'tahunAnggaran']) || lama().get('nomorLpj', null) == null)
+        && auditUbah()
+        && (!k.hasAny(['tte']) || scanBaruSah(id))
+        && (!k.hasAny(['laporan']) || gambarBaruSah('laporan', 'foto', 'lpj/' + id + '/laporan/', 307200))
+        && (!k.hasAny(['lampiran'])
+          || (gambarBaruSah('lampiran', 'foto', 'lpj/' + id + '/lampiran/foto/', 1048576)
+            && gambarBaruSah('lampiran', 'nota', 'lpj/' + id + '/lampiran/nota/', 1048576)));
+    }
+
+    match /lpj_berkas/{id} {
+      allow get: if keuangan() || anggotaDari(lama());
+      allow list: if false; // daftar memakai lpj_ringkas
+      allow create: if masuk()
+        && hanya(kunciBerkasKlien(baru().jenis).concat(['anggotaUids']))
+        && baru().anggotaUids == [uid()]
+        && baru().versi == 1
+        && berkasSah(baru())
+        && !baru().keys().hasAny(['tte', 'spd', 'lpj', 'laporan', 'lampiran'])
+        && !terkunci(baru(), 'sp') && !terkunci(baru(), 'spby')
+        && auditBuat();
+      allow update: if anggotaDari(lama()) && ubahBerkasSah(id);
+      allow delete: if false; // lewat Function hapusBerkas
+
+      // Bagian Keuangan: Verifikasi → SAKTI → Transfer → Arsip, berurutan.
+      match /keuangan/{dok} {
+        allow get: if keuangan() || anggotaBerkas(id);
+        allow list: if false;
+        allow create: if keuangan() && dok == 'status'
+          && get(jalurBerkas(id)).data.get('nomorLpj', null) != null
+          && hanya(kunciKeuangan()) && keuanganSah(baru(), id) && auditBuat()
+          && drppIdDari(baru()) == null;
+        allow update: if keuangan() && dok == 'status'
+          && hanya(kunciKeuangan()) && keuanganSah(baru(), id) && auditUbah()
+          && (!tahapSelesai(lama(), 'arsip') || superadmin())
+          && drppTetap();
+        allow delete: if false;
+      }
+
+      // Bukti pengeluaran: boleh ditambah setelah berkas final, selama verifikasi belum selesai.
+      match /bukti/{b} {
+        allow get: if keuangan() || anggotaBerkas(id);
+        allow list: if (keuangan() || anggotaBerkas(id)) && batasDaftar(200);
+        allow create: if anggotaBerkas(id) && verifikasiBelumSelesai(id)
+          && hanya(['pelaksanaId', 'label', 'berkas', 'dibuatPada', 'dibuatOleh'])
+          && idSah(baru().pelaksanaId)
+          && teksIsi(baru().label, 120)
+          && metaBerkas(baru().berkas, 'lpj/' + id + '/bukti/' + baru().pelaksanaId + '/')
+          && baru().berkas.diunggahOleh == uid()
+          && baru().dibuatOleh == uid() && baru().dibuatPada == request.time;
+        allow update: if false;
+        allow delete: if (lama().dibuatOleh == uid() && anggotaBerkas(id) && verifikasiBelumSelesai(id))
+          || keuangan();
+      }
+
+      match /riwayat/{r} {
+        allow get: if keuangan() || anggotaBerkas(id);
+        allow list: if (keuangan() || anggotaBerkas(id)) && batasDaftar(100);
+        allow write: if false; // ditulis Function
+      }
+    }
+
+    function kunciKeuangan() {
+      return ['verifikasi', 'sakti', 'transfer', 'arsip', 'pejabatBeku', 'pokBeku'].concat(kunciAudit());
+    }
+    function tahapSelesai(d, t) { return d.get(t, {}).get('selesai', false) == true; }
+    function berkasTahapSah(d, t, id) {
+      return !('berkas' in d.get(t, {})) || metaBerkas(d[t].berkas, 'lpj/' + id + '/keuangan/' + t + '/');
+    }
+    function keuanganSah(d, id) {
+      return d.get('verifikasi', {}) is map && d.get('sakti', {}) is map
+        && d.get('transfer', {}) is map && d.get('arsip', {}) is map
+        && d.get('pejabatBeku', {}) is map && d.get('pokBeku', {}) is map
+        && (!tahapSelesai(d, 'sakti') || tahapSelesai(d, 'verifikasi'))
+        && (!tahapSelesai(d, 'transfer') || tahapSelesai(d, 'sakti'))
+        && (!tahapSelesai(d, 'arsip') || tahapSelesai(d, 'transfer'))
+        && teks(d.get('sakti', {}).get('nomorKwitansi', ''), 60)
+        && berkasTahapSah(d, 'sakti', id) && berkasTahapSah(d, 'transfer', id) && berkasTahapSah(d, 'arsip', id);
+    }
+    // Tautan berkas ke DRPP hanya ditulis Function (buatDrpp, ubahDaftarDrpp, pemicu arsip);
+    // Super Admin hanya boleh melepasnya saat membatalkan arsip.
+    function drppIdDari(d) { return d.get('arsip', {}).get('drppId', null); }
+    function drppTetap() {
+      return drppIdDari(baru()) == drppIdDari(lama()) || (superadmin() && drppIdDari(baru()) == null);
+    }
+    function verifikasiBelumSelesai(id) {
+      return !exists(jalurKeuangan(id)) || !tahapSelesai(get(jalurKeuangan(id)).data, 'verifikasi');
+    }
+
+    match /lpj_ringkas/{id} {
+      allow get: if keuangan() || anggotaDari(lama());
+      allow list: if (keuangan() || (masuk() && uid() in resource.data.anggotaUids)) && batasDaftar(50);
+      allow write: if false;
+    }
+
+    match /lpj_nomor/{nomor} {
+      allow get: if keuangan();
+      allow list: if keuangan() && batasDaftar(50);
+      allow write: if false;
+    }
+
+    function dokumenDrppSah(m, id) {
+      return m is map && m.keys().hasOnly(['drpp', 'spm', 'sp2d'])
+        && (!('drpp' in m) || metaBerkas(m.drpp, 'drpp/' + id + '/drpp/'))
+        && (!('spm' in m) || metaBerkas(m.spm, 'drpp/' + id + '/spm/'))
+        && (!('sp2d' in m) || metaBerkas(m.sp2d, 'drpp/' + id + '/sp2d/'));
+    }
+
+    match /lpj_drpp/{id} {
+      allow get: if keuangan() || anggotaDari(lama());
+      allow list: if (keuangan() || (masuk() && uid() in resource.data.anggotaUids)) && batasDaftar(50);
+      allow create: if false; // lewat Function buatDrpp
+      // Keuangan hanya mengisi dokumen pindaian DRPP yang masih aktif (DRPP batal = arsip beku)
+      allow update: if keuangan() && lama().get('status', 'aktif') != 'batal'
+        && berubah().hasOnly(['dokumen', 'diubahPada', 'diubahOleh'])
+        && dokumenDrppSah(baru().dokumen, id) && auditUbah();
+      allow delete: if false; // dibatalkan lewat Function batalkanDrpp
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // MAK & ANGGARAN
+    // ════════════════════════════════════════════════════════════════════════
+
+    function kunciMak() {
+      return ['tahunAnggaran', 'tingkat', 'kode', 'nama', 'indukId', 'pagu', 'aktif', 'urutan'].concat(kunciAudit());
+    }
+    function makSah(d) {
+      return tahun(d.tahunAnggaran)
+        && d.tingkat in ['tahun', 'program', 'kegiatan', 'kro', 'output', 'komponen', 'subkomponen', 'akun', 'item']
+        && teks(d.kode, 40)
+        && teksIsi(d.nama, 300)
+        && ((d.tingkat == 'tahun' && d.indukId == null) || (d.tingkat != 'tahun' && idSah(d.indukId)))
+        && rupiah(d.pagu) && (d.tingkat == 'item' || d.pagu == 0)
+        && d.aktif is bool
+        && bulat(d.urutan, 0, 99999);
+    }
+    // Anggaran lebih dari setahun lalu hanya bisa diubah Super Admin.
+    function tahunTerbuka(d) { return d.tahunAnggaran >= request.time.year() - 1 || superadmin(); }
+
+    match /mak_node/{id} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(5000);
+      allow create: if keuangan()
+        && hanya(kunciMak()) && wajib(kunciMak()) && makSah(baru()) && tahunTerbuka(baru()) && auditBuat();
+      allow update: if keuangan()
+        && hanya(kunciMak())
+        && !berubah().hasAny(['tahunAnggaran', 'tingkat', 'indukId'])
+        && makSah(baru()) && tahunTerbuka(lama()) && auditUbah();
+      allow delete: if false; // lewat Function hapusNodeMak (node tanpa realisasi)
+    }
+
+    match /mak_realisasi/{id} {
+      allow get: if keuangan();
+      allow list: if keuangan() && batasDaftar(100);
+      allow write: if false; // ditulis Function
+    }
+
+    match /mak_rekap/{t} {
+      allow get: if masuk();
+      allow list: if keuangan() && batasDaftar(20);
+      allow write: if false;
+    }
+
+    function kunciDipa() { return ['tahunAnggaran', 'nomor', 'tanggal', 'tahunNodeId'].concat(kunciAudit()); }
+    function dipaSah(d, t) {
+      return tahun(d.tahunAnggaran) && t == string(d.tahunAnggaran)
+        && teksIsi(d.nomor, 120) && tanggal(d.tanggal) && idSah(d.tahunNodeId);
+    }
+
+    match /mak_dipa/{t} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(20);
+      allow create: if keuangan() && hanya(kunciDipa()) && wajib(kunciDipa()) && dipaSah(baru(), t) && auditBuat();
+      allow update: if keuangan() && hanya(kunciDipa()) && dipaSah(baru(), t) && auditUbah();
+      allow delete: if false;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // PERSURATAN
+    // ════════════════════════════════════════════════════════════════════════
+
+    function kunciKodeSurat() { return ['kode', 'nama', 'tingkat', 'indukId', 'aktif', 'urutan'].concat(kunciAudit()); }
+    function kodeSuratSah(d) {
+      return teksIsi(d.kode, 20) && d.kode.matches('^[A-Za-z0-9./-]+$')
+        && teksIsi(d.nama, 200)
+        && bulat(d.tingkat, 0, 3)
+        && ((d.tingkat == 0 && d.indukId == null) || (d.tingkat > 0 && idSah(d.indukId)))
+        && d.aktif is bool
+        && bulat(d.urutan, 0, 99999);
+    }
+
+    match /surat_kode/{id} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(2000);
+      allow create: if keuangan()
+        && hanya(kunciKodeSurat()) && wajib(kunciKodeSurat()) && kodeSuratSah(baru()) && auditBuat();
+      allow update: if keuangan()
+        && hanya(kunciKodeSurat())
+        && !berubah().hasAny(['tingkat', 'indukId'])
+        && kodeSuratSah(baru()) && auditUbah();
+      allow delete: if false;
+    }
+
+    // Nomor surat diterbitkan Function terbitkanNomorSurat (boleh dipanggil semua pegawai aktif).
+    // Pembatalan oleh Keuangan (wajib alasan). Keterangan (tanggal di tahun yang sama, seksi,
+    // perihal, tujuan) boleh diubah pemohon nomor atau Keuangan; nomor, kode, dan tahun tetap.
+    function batalNomorSah() {
+      return keuangan()
+        && berubah().hasOnly(['status', 'alasanBatal', 'dibatalkanPada', 'dibatalkanOleh', 'diubahPada', 'diubahOleh'])
+        && baru().status == 'batal'
+        && teksIsi(baru().alasanBatal, 300)
+        && baru().dibatalkanOleh == uid() && baru().dibatalkanPada == request.time;
+    }
+    function keteranganNomorSah() {
+      return (keuangan() || lama().dibuatOleh == uid())
+        && lama().sumber in ['register', 'form']
+        && berubah().hasOnly(['tanggal', 'seksi', 'perihal', 'tujuan', 'diubahPada', 'diubahOleh'])
+        && tanggal(baru().tanggal) && baru().tanggal.matches(string(lama().tahun) + '-.*')
+        && teks(baru().seksi, 60) && teksIsi(baru().perihal, 300) && teks(baru().tujuan, 200);
+    }
+    match /surat_nomor/{id} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(100);
+      allow create: if false;
+      allow update: if masuk() && lama().status == 'aktif'
+        && (batalNomorSah() || keteranganNomorSah())
+        && baru().diubahOleh == uid() && baru().diubahPada == request.time;
+      allow delete: if false;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // INVENTORY
+    // ════════════════════════════════════════════════════════════════════════
+
+    function kunciKategori() { return ['kode', 'nama', 'akunKode', 'aktif'].concat(kunciAudit()); }
+    function kategoriSah(d) {
+      return d.kode is string && d.kode.matches('^[0-9]{10}$')
+        && teksIsi(d.nama, 200)
+        && (d.akunKode == '' || (d.akunKode is string && d.akunKode.matches('^[0-9]{6}$')))
+        && d.aktif is bool;
+    }
+
+    match /inventory_kategori/{id} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(500);
+      allow create: if umum()
+        && hanya(kunciKategori()) && wajib(kunciKategori()) && kategoriSah(baru()) && auditBuat();
+      allow update: if umum()
+        && hanya(kunciKategori()) && !berubah().hasAny(['kode'])
+        && kategoriSah(baru()) && auditUbah();
+      allow delete: if false;
+    }
+
+    function kunciBarang() {
+      return ['kode', 'kategoriId', 'nama', 'satuan', 'stokAwal', 'stokMin', 'aktif'].concat(kunciAudit());
+    }
+    function barangSah(d) {
+      return (d.kode == '' || (d.kode is string && d.kode.matches('^[0-9]{6}$')))
+        && (d.kategoriId == null || idSah(d.kategoriId))
+        && teksIsi(d.nama, 200)
+        && teksIsi(d.satuan, 30)
+        && bulat(d.stokAwal, 0, 1000000)
+        && bulat(d.stokMin, 0, 1000000)
+        && d.aktif is bool;
+    }
+
+    match /inventory_barang/{id} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(2000);
+      allow create: if umum()
+        && hanya(kunciBarang()) && wajib(kunciBarang()) && barangSah(baru()) && auditBuat();
+      // Stok awal terkunci setelah barang punya transaksi (adaTransaksi diisi Function).
+      allow update: if umum()
+        && hanya(kunciBarang().concat(['adaTransaksi']))
+        && !berubah().hasAny(['kode', 'kategoriId', 'adaTransaksi'])
+        && (!berubah().hasAny(['stokAwal']) || lama().get('adaTransaksi', false) == false)
+        && barangSah(baru()) && auditUbah();
+      allow delete: if false;
+    }
+
+    function kunciPemasok() { return ['nama', 'namaKunci', 'aktif'].concat(kunciAudit()); }
+    function pemasokSah(d) {
+      return teksIsi(d.nama, 200) && d.namaKunci == d.nama.lower() && d.aktif is bool;
+    }
+
+    match /inventory_pemasok/{id} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(1000);
+      allow create: if umum()
+        && hanya(kunciPemasok()) && wajib(kunciPemasok()) && pemasokSah(baru()) && auditBuat();
+      allow update: if umum() && hanya(kunciPemasok()) && pemasokSah(baru()) && auditUbah();
+      allow delete: if false;
+    }
+
+    // Penjaga keunikan kode SAKTI: hanya bisa dibuat sekali (menulis ulang = update = ditolak).
+    match /inventory_kode/{kode} {
+      allow get: if umum();
+      allow list: if false;
+      allow create: if umum()
+        && kode.matches('^[0-9]{10}([0-9]{6})?$')
+        && hanya(['jenis', 'refId', 'dibuatPada', 'dibuatOleh'])
+        && baru().jenis in ['kategori', 'barang']
+        && idSah(baru().refId)
+        && baru().dibuatOleh == uid() && baru().dibuatPada == request.time;
+      allow update, delete: if false;
+    }
+
+    // Transaksi & saldo dicatat Function (nomor TBR/TBK, cek stok, tutup tahun).
+    match /inventory_masuk/{id} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(200);
+      allow write: if false;
+    }
+    match /inventory_keluar/{id} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(200);
+      allow write: if false;
+    }
+    match /inventory_saldo/{t} {
+      allow get: if masuk();
+      allow list: if masuk() && batasDaftar(20);
+      allow write: if false;
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // SISTEM
+    // ════════════════════════════════════════════════════════════════════════
+
+    match /sistem_penghitung/{kunci} {
+      // Nomor urut surat terakhir boleh dilihat pegawai (pratinjau nomor berikutnya)
+      allow get: if superadmin() || (masuk() && kunci.matches('^surat_[0-9]{4}$'));
+      allow list: if superadmin() && batasDaftar(50);
+      allow write: if false; // hanya Function
+    }
+
+    match /sistem_pengaturan/{kunci} {
+      allow get: if masuk();
+      allow list: if false;
+      // Tutup buku Inventory: tanggal hanya boleh maju, kecuali Super Admin.
+      allow create: if kunci == 'inventory' && umum()
+        && hanya(['tutupSampai', 'diubahPada', 'diubahOleh'])
+        && tanggal(baru().tutupSampai)
+        && baru().diubahOleh == uid() && baru().diubahPada == request.time;
+      allow update: if kunci == 'inventory' && umum()
+        && hanya(['tutupSampai', 'diubahPada', 'diubahOleh'])
+        && tanggal(baru().tutupSampai)
+        && (baru().tutupSampai >= lama().tutupSampai || superadmin())
+        && baru().diubahOleh == uid() && baru().diubahPada == request.time;
+      allow delete: if false;
+    }
+
+    match /sistem_log/{id} {
+      allow get: if superadmin() || (keuangan() && lama().modul in ['lpj', 'mak', 'surat']);
+      allow list: if (superadmin() || (keuangan() && resource.data.modul in ['lpj', 'mak', 'surat']))
+        && batasDaftar(100);
+      allow write: if false; // hanya Function
+    }
+
+    // Semua path lain ditolak.
+    match /{path=**} {
+      allow read, write: if false;
+    }
+  }
+}

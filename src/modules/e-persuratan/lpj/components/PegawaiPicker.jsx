@@ -1,13 +1,14 @@
 import React, { useState } from 'react';
 import { FaSearch } from 'react-icons/fa';
-import { toPegawaiRef } from '../utils/emptyModels';
+import { keOrang } from '@/context/usePegawaiRingkas';
 import { FORM, T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
 
 /**
  * Cari & pilih beberapa pegawai (dipakai untuk "Kepada" Surat Perintah). Hanya kolom cari +
  * daftar pilihan; pegawai terpilih ditampilkan (dan dihapus) lewat `PegawaiCards` di bawahnya.
- * @param {{ pegawai: object[], selected: object[], onChange: (refs) => void, err?: boolean, loading?: boolean }} props
+ * @param {{ pegawai: object[], selected: object[], onChange: (orang) => void, err?: boolean, loading?: boolean }} props
+ *   pegawai = pegawai ringkas aktif; selected/onChange = salinan beku Orang
  */
 export default function PegawaiPicker({ pegawai, selected, onChange, err, loading }) {
   const [q, setQ] = useState('');
@@ -16,7 +17,7 @@ export default function PegawaiPicker({ pegawai, selected, onChange, err, loadin
   const kata = q.toLowerCase();
   const filtered = pegawai.filter(
     (p) =>
-      !selected.find((s) => s.id === p.id) &&
+      !selected.find((s) => s.pegawaiId === p.id) &&
       (p.nama.toLowerCase().includes(kata) || String(p.nip || '').includes(q)),
   );
 
@@ -48,14 +49,14 @@ export default function PegawaiPicker({ pegawai, selected, onChange, err, loadin
             <div
               key={p.id}
               onMouseDown={() => {
-                onChange([...selected, toPegawaiRef(p)]);
+                onChange([...selected, keOrang(p)]);
                 setQ('');
               }}
               className={`px-3.5 py-2.5 cursor-pointer border-b last:border-b-0 ${T.border} ${T.hoverSurface2}`}
             >
               <div className={`text-[13px] font-medium ${T.ink}`}>{p.nama}</div>
               <div className={`text-[11.5px] mt-0.5 ${T.ink2}`}>
-                {p.nip || '-'} · {p.pangkat || '-'} · {p.jabatan || '-'}
+                {p.nip || '-'} · {p.pangkatNama || '-'} · {p.jabatanNama || '-'}
               </div>
             </div>
           ))}

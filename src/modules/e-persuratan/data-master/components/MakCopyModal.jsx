@@ -3,8 +3,8 @@ import { FaTimes } from 'react-icons/fa';
 import Modal from '@/components/Modal';
 import { ADMIN } from '@/utils/uiTokens';
 
-/** Jendela "Copy Struktur Tahun" (MakCopyModal purwarupa). */
-export default function MakCopyModal({ state, tahunList, onChange, onClose, onSubmit, sibuk }) {
+/** Jendela "Copy Struktur Tahun" (MakCopyModal purwarupa): dari tahun terpilih ke tahun baru. */
+export default function MakCopyModal({ dariTahun, keTahun, onChange, onClose, onSubmit, sibuk }) {
   return (
     <Modal onClose={sibuk ? undefined : onClose} labelledBy="judul-copy-tahun">
       <form
@@ -29,27 +29,13 @@ export default function MakCopyModal({ state, tahunList, onChange, onClose, onSu
           </button>
         </div>
         <p className={ADMIN.modalSub}>
-          Salin seluruh struktur MAK (Program, Kegiatan, dst.) beserta Pagu dari tahun sumber ke
-          tahun tujuan baru. Lock Pagu akan direset ke 0.
+          Salin seluruh struktur MAK yang aktif (Program, Kegiatan, dst.) beserta Pagu dari tahun{' '}
+          {dariTahun} ke tahun anggaran baru yang masih kosong. Realisasi tidak ikut disalin.
         </p>
         <div className="flex flex-col gap-[18px]">
           <div>
-            <label className={ADMIN.label} htmlFor="copy-dari">
-              Tahun Sumber
-            </label>
-            <select
-              id="copy-dari"
-              className={ADMIN.input}
-              value={state.from}
-              onChange={(e) => onChange({ ...state, from: e.target.value })}
-            >
-              <option value="">-- Pilih Tahun Sumber --</option>
-              {tahunList.map((n) => (
-                <option value={n.id} key={n.id}>
-                  {n.name}
-                </option>
-              ))}
-            </select>
+            <span className={ADMIN.label}>Tahun Sumber</span>
+            <div className={ADMIN.kodeFixed}>{dariTahun}</div>
           </div>
           <div>
             <label className={ADMIN.label} htmlFor="copy-ke">
@@ -60,9 +46,11 @@ export default function MakCopyModal({ state, tahunList, onChange, onClose, onSu
               className={ADMIN.input}
               type="text"
               inputMode="numeric"
-              placeholder="misal: 2027"
-              value={state.to}
-              onChange={(e) => onChange({ ...state, to: e.target.value })}
+              maxLength={4}
+              placeholder={`misal: ${dariTahun + 1}`}
+              value={keTahun}
+              onChange={(e) => onChange(e.target.value.replace(/\D/g, ''))}
+              autoFocus
             />
           </div>
         </div>

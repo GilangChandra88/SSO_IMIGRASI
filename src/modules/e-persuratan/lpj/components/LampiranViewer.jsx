@@ -8,17 +8,26 @@ import {
   FaTimes,
 } from 'react-icons/fa';
 import Modal from '@/components/Modal';
+import { bukaBerkas, pesanGagalUnggah } from '@/utils/berkasStorage';
+import { showToast } from '@/utils/toastStore';
+import { useUrlBerkas } from '@/utils/useUrlBerkas';
 import { halamanDariBerkas } from '../utils/halamanBerkas';
 import { cetakBlob, pdfGabungan } from '../utils/cetakPdf';
 import { BTN, FONT, T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
 
-const isGambar = (f) => String(f?.type || '').startsWith('image/');
+const isGambar = (f) => String(f?.tipe || '').startsWith('image/');
+
+const bukaDiTab = (file) =>
+  bukaBerkas(file).catch((err) =>
+    showToast(pesanGagalUnggah(err, 'Berkas gagal dibuka.'), 'error'),
+  );
 
 /**
- * Menampilkan berkas unggahan (foto/PDF) dari Firebase Storage. Satu berkas langsung tampil
- * besar (PDF dirender per halaman, juga di HP); banyak berkas tampil sebagai kisi, klik untuk
- * melihat salah satunya.
+ * Menampilkan berkas unggahan (foto/PDF) dari Firebase Storage lewat getBlob() — tanpa link
+ * publik. Satu berkas langsung tampil besar (PDF dirender per halaman, juga di HP); banyak berkas
+ * tampil sebagai kisi, klik untuk melihat salah satunya.
+ * @param {{ label: string, files: { path, nama, tipe }[], onClose }} props  files = Meta berkas
  */
 export default function LampiranViewer({ label, files, onClose }) {
   const [dipilih, setDipilih] = useState(files.length === 1 ? 0 : null);
@@ -32,9 +41,8 @@ export default function LampiranViewer({ label, files, onClose }) {
       const { blob, gagal } = await pdfGabungan([{ kind: 'files', files: [file] }]);
       if (gagal) throw new Error('Berkas tidak bisa diolah untuk dicetak.');
       await cetakBlob(blob);
-    } catch (err) {
-      console.error('cetak berkas unggahan error:', err);
-      window.open(file.url, '_blank', 'noopener'); // cadangan: cetak dari tab baru
+    } catch {
+      bukaDiTab(file); // cadangan: cetak dari penampil bawaan browser di tab baru
     } finally {
       setMencetak(false);
     }
@@ -59,11 +67,11 @@ export default function LampiranViewer({ label, files, onClose }) {
           <h3
             id="judul-lampiran"
             className={`${FONT.head} font-bold text-[15px] truncate ${T.ink}`}
-            title={file?.name}
+            title={file?.nama}
           >
             {label}
             {file && files.length > 1 && (
-              <span className={`font-medium ${T.inkMuted}`}> · {file.name}</span>
+              <span className={`font-medium ${T.inkMuted}`}> · {file.nama}</span>
             )}
           </h3>
         </div>
@@ -92,13 +100,13 @@ export default function LampiranViewer({ label, files, onClose }) {
                 title="Lihat berkas"
               >
                 {isGambar(f) ? (
-                  <img src={f.url} alt={f.name} className="w-full h-36 object-cover block" />
+                  <GambarBerkas file={f} className="w-full h-36 object-cover block" />
                 ) : (
                   <div className={`h-36 flex items-center justify-center ${T.inkMuted}`}>
                     <FaRegFilePdf size={40} />
                   </div>
                 )}
-                <div className={`px-2 py-1.5 text-[11.5px] truncate ${T.ink2}`}>{f.name}</div>
+                <div className={`px-2 py-1.5 text-[11.5px] truncate ${T.ink2}`}>{f.nama}</div>
               </button>
             ))}
           </div>
@@ -107,9 +115,9 @@ export default function LampiranViewer({ label, files, onClose }) {
 
       <div className="flex flex-wrap justify-end gap-2 px-[22px] pb-[22px]">
         {file && (
-          <a href={file.url} target="_blank" rel="noreferrer" className={BTN.ghost}>
+          <button type="button" className={BTN.ghost} onClick={() => bukaDiTab(file)}>
             <FaExternalLinkAlt size={11} /> Buka di tab baru
-          </a>
+          </button>
         )}
         <button type="button" className={BTN.ghost} onClick={onClose}>
           Tutup
@@ -134,14 +142,27 @@ export default function LampiranViewer({ label, files, onClose }) {
   );
 }
 
+/** Gambar dari Storage (URL lokal blob:, dilepas saat komponen dilepas). */
+function GambarBerkas({ file, className }) {
+  const { url, galat } = useUrlBerkas(file.path);
+  if (galat) {
+    return (
+      <div className={`flex items-center justify-center text-[11.5px] ${T.inkMuted} ${className}`}>
+        Gagal memuat gambar
+      </div>
+    );
+  }
+  if (!url) return <div className={`animate-pulse ${T.surface2} ${className}`} />;
+  return <img src={url} alt={file.nama} className={className} />;
+}
+
 /** Pratinjau besar satu berkas: gambar utuh, atau halaman-halaman PDF yang dirender. */
 function PratinjauBerkas({ file }) {
   if (isGambar(file)) {
     return (
-      <img
-        src={file.url}
-        alt={file.name}
-        className={`block w-full max-h-[70vh] object-contain rounded-lg border ${T.border} bg-white`}
+      <GambarBerkas
+        file={file}
+        className={`block w-full max-h-[70vh] min-h-40 object-contain rounded-lg border ${T.border} bg-white`}
       />
     );
   }
@@ -160,10 +181,7 @@ function HalamanPdf({ file }) {
     halamanDariBerkas(file, { onHalaman }).then(
       (halaman) => aktif && setHasil({ path: file.path, halaman, galat: null, selesai: true }),
       (err) => {
-        console.error('pratinjau PDF error:', err);
-        if (aktif) {
-          setHasil({ path: file.path, halaman: [], galat: err?.message || String(err) });
-        }
+        if (aktif) setHasil({ path: file.path, halaman: [], galat: err?.message || String(err) });
       },
     );
     return () => {
@@ -171,7 +189,19 @@ function HalamanPdf({ file }) {
     };
   }, [file]);
 
-  if (!milikBerkas || (!hasil.galat && hasil.halaman.length === 0)) {
+  if (milikBerkas && hasil.galat) {
+    // Cadangan: penampil PDF bawaan browser di tab baru (berkas tetap lewat getBlob)
+    return (
+      <div className={`flex flex-col items-center gap-3 py-10 text-center text-[13px] ${T.ink2}`}>
+        <p>Pratinjau PDF tidak bisa disiapkan di sini.</p>
+        <p className={`text-[11.5px] ${T.inkMuted}`}>Detail: {hasil.galat}</p>
+        <button type="button" className={BTN.ghost} onClick={() => bukaDiTab(file)}>
+          <FaExternalLinkAlt size={11} /> Buka di tab baru
+        </button>
+      </div>
+    );
+  }
+  if (!milikBerkas || hasil.halaman.length === 0) {
     return (
       <div
         className={`flex flex-col items-center justify-center gap-2.5 py-16 text-[13px] ${T.inkMuted}`}
@@ -181,31 +211,13 @@ function HalamanPdf({ file }) {
       </div>
     );
   }
-  if (hasil.galat) {
-    // Cadangan tanpa unduh lewat skrip: penampil PDF bawaan browser (tidak butuh CORS).
-    // Di sebagian HP penampil ini kosong → pakai "Buka di tab baru".
-    return (
-      <div className="flex flex-col gap-2">
-        <iframe
-          // Tanpa panel daftar halaman (seperti pratinjau SPD), toolbar cetak tetap, selebar popup
-          src={`${file.url}#toolbar=1&navpanes=0&view=FitH`}
-          title={file.name || 'Pratinjau PDF'}
-          className={`block w-full h-[70vh] rounded-lg border ${T.border} bg-white`}
-        />
-        <p className={`text-[11.5px] ${T.inkMuted}`}>
-          Pratinjau memakai penampil PDF browser. Bila kosong, gunakan "Buka di tab baru".
-          <span className="block mt-0.5 opacity-80">Detail: {hasil.galat}</span>
-        </p>
-      </div>
-    );
-  }
   return (
     <div className="flex flex-col gap-3">
       {hasil.halaman.map((src, i) => (
         <img
           key={i}
           src={src}
-          alt={`${file.name} — halaman ${i + 1}`}
+          alt={`${file.nama} — halaman ${i + 1}`}
           className={`block w-full rounded-lg border ${T.border} bg-white ${ANIM.muncul}`}
         />
       ))}

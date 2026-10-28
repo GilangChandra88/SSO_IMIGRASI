@@ -1,11 +1,8 @@
 /**
  * Konstanta LPJ (dari masterData.js purwarupa, tanpa data pegawai/pejabat).
- * Data pegawai, pejabat, dan MAK diambil dari Firestore (koleksi `pegawai` dan `MAK`).
+ * Data pegawai, pejabat, MAK, dan DIPA diambil dari Firestore (`pegawai_ringkas`, `mak_node`,
+ * `mak_dipa`); batas panjang & ukuran dari `@/utils/batas`, daftar seksi dari `@/data/seksi`.
  */
-
-export const URAIAN_MAX = 220;
-
-export const SEKSI_LIST = ['LALINTALKIM', 'INTELDAKIM', 'TIKIM', 'Umum', 'Keuangan', 'Kepegawaian'];
 
 export const PEJABAT_KATEGORI = [
   { id: 'kepala', label: 'Kepala' },
@@ -15,10 +12,6 @@ export const PEJABAT_KATEGORI = [
 
 export const ALAT_ANGKUT = ['Kendaraan', 'Pesawat', 'Kendaraan dan Pesawat'];
 
-// Dasar baku yang otomatis menjadi dasar terakhir Surat Perintah (sama dengan SuratForm)
-export const DIPA_DASAR_TEXT =
-  'Daftar Isian Penggunaan Anggaran (DIPA) Kantor Imigrasi Kelas II TPI Singaraja Nomor SP DIPA-137.03.2.692951/2026 tanggal 01 Desember 2025;';
-
 // Poin 2–4 "Untuk" Surat Perintah yang baku (poin 1 diisi pengguna)
 export const UNTUK_FIXED = [
   'Selama Melaksanakan kegiatan tersebut, yang bersangkutan dibebaskan dari tugas dinas sehari-hari;',
@@ -26,10 +19,20 @@ export const UNTUK_FIXED = [
   'Melaporkan hasil kegiatan tesebut kepada Kepala Kantor Imigrasi Kelas II TPI Buleleng.',
 ];
 
-// Lampiran Non-Perjadin yang wajib diunggah
+/** Jenis berkas LPJ (field `jenis`). */
+export const JENIS = Object.freeze({ perjadin: 'perjadin', nonperjadin: 'nonperjadin' });
+
+/** Bagian fase per jenis, berurutan (bagian berikutnya baru boleh diisi setelah sebelumnya terkunci). */
+export const BAGIAN = Object.freeze({
+  perjadin: ['sp', 'tte', 'spd', 'lpj', 'laporan'],
+  nonperjadin: ['spby', 'lampiran'],
+});
+
+// Lampiran Non-Perjadin yang wajib diunggah: key = field di bagian `lampiran`,
+// daftar = kunci DAFTAR_GAMBAR di services/unggahan.js
 export const NP_PACK_DOCS = [
-  { key: 'foto_bukti', label: 'Foto Bukti/Produk' },
-  { key: 'nota_pembayaran', label: 'Nota Pembayaran' },
+  { key: 'foto', label: 'Foto Bukti/Produk', daftar: 'lampiranFoto' },
+  { key: 'nota', label: 'Nota Pembayaran', daftar: 'lampiranNota' },
 ];
 
 // Dokumen yang dihasilkan form SPBy & Rincian Bayar (Non-Perjadin)
@@ -101,8 +104,3 @@ export const LAP_BUKTI_JENIS = [
   ['tiket_pp', 'Tiket PP'],
   ['bill_hotel', 'Bill Hotel'],
 ];
-
-export const LAP_FOTO_MAX_COUNT = 10;
-export const LAP_FOTO_MAX_BYTES = 200 * 1024;
-export const NP_LAMPIRAN_MAX_COUNT = 10;
-export const SCAN_MAX_BYTES = 5 * 1024 * 1024;

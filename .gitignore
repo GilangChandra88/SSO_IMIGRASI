@@ -32,3 +32,6 @@ Thumbs.db
 
 # Pengaturan Claude Code pribadi (settings.json tim boleh di-commit)
 .claude/settings.local.json
+
+# Installer Agen Scanner dirilis lewat GitHub Releases, bukan disimpan di git (K31)
+public/unduh/*.exe

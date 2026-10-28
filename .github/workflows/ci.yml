@@ -1,0 +1,79 @@
+# Pemeriksaan otomatis untuk setiap Pull Request dan push ke main (CLAUDE.md §6, rencana P8):
+# lint, build, audit dependensi produksi (K36 dikecualikan), lalu uji rules & Cloud Functions di
+# Firebase Emulator (proyek demo, tidak menyentuh cloud, tanpa rahasia).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: Lint, build, audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build
+      - name: Audit dependensi produksi
+        run: node scripts/cek-audit.mjs
+
+  emulator:
+    name: Uji rules & Functions (Emulator)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Pasang dependensi Functions
+        run: npm ci
+        working-directory: functions
+      - name: Konfigurasi Emulator sementara
+        run: |
+          cat > firebase.uji-ci.json <<'EOF'
+          {
+            "functions": [{ "source": "functions", "codebase": "default" }],
+            "firestore": { "rules": "firestore.rules", "indexes": "firestore.indexes.json" },
+            "storage": { "rules": "storage.rules" },
+            "emulators": {
+              "auth": { "port": 9099 },
+              "firestore": { "port": 8080 },
+              "functions": { "port": 5001 },
+              "storage": { "port": 9199 },
+              "ui": { "enabled": false },
+              "singleProjectMode": true
+            }
+          }
+          EOF
+      # Urutan penting: uji-lpj sebelum uji-rules (trigger sisa uji-rules bisa menghapus data awal).
+      - name: Uji di Emulator
+        env:
+          FUNCTIONS_DISCOVERY_TIMEOUT: 60 # detik; pemuatan awal kode Functions bisa > 10 detik
+        run: >
+          npx -y firebase-tools@13.35.1 emulators:exec
+          --only auth,firestore,storage,functions
+          --project demo-imigrasi
+          --config firebase.uji-ci.json
+          "node scripts/uji-lpj.mjs && node scripts/uji-functions.mjs \"$GITHUB_WORKSPACE\" && node scripts/uji-rules.mjs"

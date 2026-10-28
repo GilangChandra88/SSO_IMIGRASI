@@ -1,8 +1,10 @@
 /**
  * Ubah berkas unggahan (gambar / PDF di Firebase Storage) menjadi gambar JPEG per halaman agar
  * bisa digabung ke PDF cetakan (@react-pdf hanya menerima JPG/PNG). PDF dipecah per halaman
- * dengan PDF.js; pustakanya dimuat hanya saat dibutuhkan (import dinamis).
+ * dengan PDF.js; pustakanya dimuat hanya saat dibutuhkan (import dinamis). Berkas diambil lewat
+ * getBlob() dari metadata `{ path, tipe }` (tanpa link publik).
  */
+import { ambilBlob, pesanGagalUnggah } from '@/utils/berkasStorage';
 
 const MAKS_SISI = 2400; // batas sisi terpanjang (px) per halaman agar memori tidak membengkak
 
@@ -70,18 +72,18 @@ async function pdfKeJpeg(blob, onHalaman) {
 }
 
 async function olahBerkas(file, onHalaman) {
-  let res;
+  let blob;
   try {
-    res = await fetch(file.url);
-  } catch {
-    // TypeError tanpa status = permintaan ditolak browser (CORS) atau koneksi putus
+    blob = await ambilBlob(file.path);
+  } catch (err) {
     throw new Error(
-      'Berkas tidak bisa diunduh browser dari Firebase Storage (aturan CORS bucket belum dipasang, atau koneksi terputus).',
+      pesanGagalUnggah(
+        err,
+        'Berkas tidak bisa diunduh dari Firebase Storage (aturan CORS bucket belum dipasang, atau koneksi terputus).',
+      ),
     );
   }
-  if (!res.ok) throw new Error(`Gagal mengambil berkas dari Storage (status ${res.status}).`);
-  const blob = await res.blob();
-  const jenis = file.type || blob.type;
+  const jenis = file.tipe || blob.type;
   try {
     if (jenis === 'application/pdf') return await pdfKeJpeg(blob, onHalaman);
     const hasil = [await gambarKeJpeg(blob)];
@@ -97,13 +99,13 @@ const MAKS_SIMPANAN = 6;
 const simpanan = new Map(); // path → { promise, halaman, dengar }
 
 /**
- * Gambar JPEG (data URL) per halaman dari satu berkas unggahan `{ url, path, type, name }`.
+ * Gambar JPEG (data URL) per halaman dari satu berkas unggahan (Meta `{ path, nama, tipe }`).
  * Hasil disimpan sehingga pemanggilan berikutnya (atau yang sedang berjalan) tidak mengulang
  * unduh & render. `onHalaman(halaman)` dipanggil setiap ada halaman baru yang jadi.
  * Melempar galat bila berkas tidak bisa diambil (koneksi / akses Storage) atau dibaca.
  */
 export function halamanDariBerkas(file, { onHalaman } = {}) {
-  const kunci = file.path || file.url;
+  const kunci = file.path;
   let e = simpanan.get(kunci);
   if (!e) {
     e = { halaman: [], dengar: new Set() };
@@ -127,5 +129,5 @@ export function halamanDariBerkas(file, { onHalaman } = {}) {
 
 /** Siapkan berkas di latar belakang (unduh + render) agar Lihat / Cetak Semua terasa instan. */
 export function siapkanBerkas(file) {
-  if (file?.url) halamanDariBerkas(file).catch(() => {});
+  if (file?.path) halamanDariBerkas(file).catch(() => {});
 }

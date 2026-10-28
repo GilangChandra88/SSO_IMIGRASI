@@ -3,7 +3,8 @@ import { ADMIN, T } from '@/utils/uiTokens';
 import { HIERARKI_KODE } from '../../data/nomorSuratConfig';
 
 /**
- * Pilihan kode surat bertingkat (KOP → Kode surat 1 → 2 → 3) dari hierarki kode.
+ * Pilihan kode surat bertingkat (KOP → Kode surat 1 → 2 → 3) dari hierarki kode (`indeks` hanya
+ * berisi kode aktif).
  * `value` = array id node per tingkat; memilih satu tingkat mengosongkan tingkat di bawahnya.
  */
 export default function PilihKodeSurat({ indeks, value, onChange, error }) {

@@ -9,16 +9,20 @@ import {
   FaReceipt,
   FaTimes,
 } from 'react-icons/fa';
-import { createLPJPack, idBerkasBaru } from '../hooks/useLPJ';
-import { URAIAN_MAX } from '../data/masterLpj';
+import { buatBerkas, idBerkasBaru } from '../services/berkasDb';
+import { JENIS } from '../data/masterLpj';
 import { kurangiGerakan } from '@/utils/animasi';
+import { PANJANG } from '@/utils/batas';
+import { pesanGalat } from '@/utils/pesanGalat';
 import Modal from '@/components/Modal';
 import { gulirKeGalat } from '../../gulirPintar';
 import { BTN, FONT, FORM, NAVY, STATUS, T } from '@/utils/uiTokens';
 
+const URAIAN_MAX = PANJANG.uraianBerkas;
+
 const CARDS = [
   {
-    type: 'perjadin',
+    type: JENIS.perjadin,
     name: 'LPJ Perjadin',
     desc: 'Perjalanan dinas — Surat Perintah, SPD, sampai SPBy & laporan kegiatan.',
     Icon: FaPlaneDeparture,
@@ -28,7 +32,7 @@ const CARDS = [
     delay: 'motion-safe:delay-100',
   },
   {
-    type: 'non-perjadin',
+    type: JENIS.nonperjadin,
     name: 'LPJ Non-Perjadin',
     desc: 'Kegiatan selain perjalanan dinas — SPBy, rincian bayar, & lampiran bukti.',
     Icon: FaReceipt,
@@ -47,7 +51,9 @@ const MASUK_KARTU = `motion-safe:transition-[opacity,translate,scale] motion-saf
  * 1) pilih jenis LPJ (Perjadin / Non-Perjadin), 2) isi uraian kegiatan → berkas dibuat, lalu
  * onCreated dipanggil (induk menutup jendela dan menganimasikan berkas masuk ke Daftar LPJ).
  * `onAkanDibuat(id)` dipanggil sebelum berkas ditulis, `onGagal(id)` bila gagal.
- * @param {{ onClose, onCreated: (id) => void, onAkanDibuat, onGagal, uid, nama, pegawaiLogin }} props
+ * Pembuat (pegawaiLogin, salinan beku Orang) otomatis menjadi pelaksana pertama.
+ * @param {{ onClose, onCreated: (id) => void, onAkanDibuat, onGagal, uid, pegawaiLogin,
+ *   tahunAnggaran: number }} props
  */
 export default function CreatePackModal({
   onClose,
@@ -55,8 +61,8 @@ export default function CreatePackModal({
   onAkanDibuat,
   onGagal,
   uid,
-  nama,
   pegawaiLogin,
+  tahunAnggaran,
 }) {
   const [langkah, setLangkah] = useState(1);
   const [arah, setArah] = useState('maju'); // arah geser isi saat pindah langkah
@@ -102,12 +108,18 @@ export default function CreatePackModal({
     const id = idBerkasBaru();
     onAkanDibuat?.(id);
     try {
-      await createLPJPack({ id, jenis: type, uraian: val, uid, nama, pegawaiLogin });
+      await buatBerkas({
+        id,
+        jenis: type,
+        uraian: val,
+        tahunAnggaran,
+        uid,
+        pelaksana: pegawaiLogin,
+      });
       onCreated(id);
     } catch (err) {
-      console.error('createLPJPack error:', err);
       onGagal?.(id);
-      setErrSubmit('Gagal membuat berkas. Periksa koneksi lalu coba lagi.');
+      setErrSubmit(pesanGalat(err, 'Gagal membuat berkas. Periksa koneksi lalu coba lagi.'));
       setBusy(false);
     }
   }
@@ -234,7 +246,8 @@ export default function CreatePackModal({
               />
               <div className="flex justify-between gap-2.5 mt-1.5">
                 <p className={`text-[11.5px] ${T.inkMuted}`}>
-                  Uraian singkat ini tampil sebagai judul pada Detail Dokumen dan Daftar LPJ.
+                  Uraian singkat ini tampil sebagai judul pada Detail Dokumen dan Daftar LPJ (tahun
+                  anggaran {tahunAnggaran}).
                 </p>
                 <p className={`text-[11.5px] whitespace-nowrap ${T.inkMuted}`}>
                   {uraian.length}/{URAIAN_MAX}

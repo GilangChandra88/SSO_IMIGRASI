@@ -1,20 +1,19 @@
 import React from 'react';
 import {
-  MAK_LEVELS,
-  isAkun,
-  makKodeFromAkun,
-  makNodeLabel,
-  makOptions,
-  makTahunOf,
-} from '../utils/makTree';
+  LABEL_TINGKAT,
+  TINGKAT_PILIHAN,
+  labelNode,
+  makDariAkun,
+  pilihanTingkat,
+} from '../../makPohon';
 import { ANIM } from '@/utils/animasi';
 import { FONT, FORM, STATUS, T } from '@/utils/uiTokens';
 
 /**
- * Dropdown MAK bertingkat (Tahun → … → Akun). Tiap tingkat terkunci sampai tingkat
- * sebelumnya dipilih; dengan `bertahap`, tingkat yang belum bisa dipilih disembunyikan
- * (baru muncul setelah tingkat sebelumnya diisi).
- * Nilai: { kode, akunNodeId, tahunNodeId, pilihan: { <tingkat>: nodeId } }.
+ * Dropdown MAK bertingkat (Tahun → … → Akun) dari pohon `mak_node` satu tahun anggaran. Tiap
+ * tingkat terkunci sampai tingkat sebelumnya dipilih; dengan `bertahap`, tingkat yang belum bisa
+ * dipilih disembunyikan (baru muncul setelah tingkat sebelumnya diisi). Node nonaktif tidak tampil.
+ * Nilai (`Mak`, skema §3): { kode, akunNodeId, tahunNodeId, pilihan: { <tingkat>: nodeId } }.
  */
 export default function MakDropdowns({ nodes, byId, loading, mak, onChange, bertahap = false }) {
   const pilihan = mak?.pilihan || {};
@@ -23,62 +22,58 @@ export default function MakDropdowns({ nodes, byId, loading, mak, onChange, bert
   if (nodes.length === 0) {
     return (
       <p className={`text-[13px] ${STATUS.warnInk}`}>
-        Data MAK belum diisi. Minta Super Admin mengisinya di menu MAK Setup.
+        Data MAK tahun anggaran ini belum diisi. Minta Keuangan mengisinya di menu MAK Setup.
       </p>
     );
   }
 
   function handleChange(levelIndex, nodeId) {
-    const next = {};
-    MAK_LEVELS.forEach((lv, i) => {
-      if (i < levelIndex && pilihan[lv]) next[lv] = pilihan[lv];
-    });
-    if (nodeId) next[MAK_LEVELS[levelIndex]] = nodeId;
-
     const node = byId[nodeId];
-    if (node && isAkun(node)) {
-      onChange({
-        pilihan: next,
-        akunNodeId: nodeId,
-        kode: makKodeFromAkun(byId, nodeId),
-        tahunNodeId: makTahunOf(byId, nodeId)?.id || '',
-      });
-    } else {
-      onChange({ pilihan: next, akunNodeId: '', kode: '', tahunNodeId: '' });
+    if (node?.tingkat === 'akun') {
+      onChange(makDariAkun(byId, nodeId));
+      return;
     }
+    const next = {};
+    TINGKAT_PILIHAN.forEach((t, i) => {
+      if (i < levelIndex && pilihan[t]) next[t] = pilihan[t];
+    });
+    if (nodeId) next[TINGKAT_PILIHAN[levelIndex]] = nodeId;
+    onChange({ pilihan: next, akunNodeId: '', kode: '', tahunNodeId: '' });
   }
 
   return (
     <div>
-      {MAK_LEVELS.map((level, i) => {
-        const parentId = i === 0 ? null : pilihan[MAK_LEVELS[i - 1]];
+      {TINGKAT_PILIHAN.map((tingkat, i) => {
+        const indukId = i === 0 ? null : pilihan[TINGKAT_PILIHAN[i - 1]];
         // Tingkat setelah Akun tidak perlu dipilih lagi
-        const sesudahAkun = MAK_LEVELS.slice(0, i).some((lv) => isAkun(byId[pilihan[lv]]));
-        const disabled = sesudahAkun || (i > 0 && !parentId);
+        const sesudahAkun = TINGKAT_PILIHAN.slice(0, i).some(
+          (t) => byId[pilihan[t]]?.tingkat === 'akun',
+        );
+        const disabled = sesudahAkun || (i > 0 && !indukId);
         if (bertahap && disabled) return null;
-        const opts = disabled ? [] : makOptions(nodes, i, parentId);
+        const opts = disabled ? [] : pilihanTingkat(nodes, i, indukId);
         return (
           // bertahap: tingkat yang baru terbuka muncul halus di bawah tingkat sebelumnya
-          <div key={level} className={`mb-2.5 ${bertahap ? ANIM.muncul : ''}`}>
+          <div key={tingkat} className={`mb-2.5 ${bertahap ? ANIM.muncul : ''}`}>
             <label
-              htmlFor={`mak-${level}`}
+              htmlFor={`mak-${tingkat}`}
               className={
                 disabled ? `block text-[12.5px] font-semibold mb-1.5 ${T.inkMuted}` : FORM.label
               }
             >
-              {level}
+              {LABEL_TINGKAT[tingkat]}
             </label>
             <select
-              id={`mak-${level}`}
+              id={`mak-${tingkat}`}
               disabled={disabled}
-              value={pilihan[level] || ''}
+              value={pilihan[tingkat] || ''}
               onChange={(e) => handleChange(i, e.target.value)}
               className={`${FORM.select} ${FORM.borderOk}`}
             >
               <option value="">— Pilih —</option>
               {opts.map((o) => (
                 <option key={o.id} value={o.id}>
-                  {makNodeLabel(o)}
+                  {labelNode(o)}
                 </option>
               ))}
             </select>

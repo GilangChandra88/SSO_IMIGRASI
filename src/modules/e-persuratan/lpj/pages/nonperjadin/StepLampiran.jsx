@@ -8,19 +8,33 @@ import {
   FaRegTrashAlt,
   FaUpload,
 } from 'react-icons/fa';
-import { NP_LAMPIRAN_MAX_COUNT, NP_PACK_DOCS, SCAN_MAX_BYTES } from '../../data/masterLpj';
+import { formatUkuran } from '@/utils/berkasStorage';
+import { NP_PACK_DOCS } from '../../data/masterLpj';
 import { formatTanggal } from '../../utils/formatTanggal';
 import { lpjIdOf, lpjRowTotal } from '../../utils/lpjLogic';
-import { deleteLpjFile, pesanGagalUnggah, uploadLpjFile } from '../../services/lpjStorage';
+import {
+  ATURAN_UNGGAHAN,
+  DAFTAR_GAMBAR,
+  hapusGambar,
+  pesanUnggah,
+  tambahGambar,
+} from '../../services/unggahan';
+import FotoBerkas from '../../components/FotoBerkas';
 import ProgressBar from '../../ui/ProgressBar';
 import { BTN, FONT, LAYOUT, NAVY, STATUS, T } from '@/utils/uiTokens';
 import { ANIM, hapusBaris } from '@/utils/animasi';
 
-/** Fase 2 Non-Perjadin — unggah Foto Bukti/Produk & Nota Pembayaran, lalu berkas selesai. */
+const UKURAN = formatUkuran(ATURAN_UNGGAHAN.lampiran.maksByte);
+
+/**
+ * Fase 2 Non-Perjadin — unggah Foto Bukti/Produk & Nota Pembayaran (bagian `lampiran`), lalu
+ * berkas selesai. Foto langsung tersimpan begitu terunggah (diperkecil otomatis).
+ */
 export default function StepLampiran({ ctx }) {
-  const { pack, packView, pf, persist, askConfirm, closeConfirm, showToast, user, dok } = ctx;
-  const np = pf.np;
-  const lampiran = np.lampiran || {};
+  const { pack, packView, persist, askConfirm, closeConfirm, showToast, user, dok } = ctx;
+  // SPBy sudah final dan lampiran selalu dari berkas live
+  const spby = pack.spby || {};
+  const lampiran = pack.lampiran || {};
   const [uploadingKey, setUploadingKey] = useState('');
   const [errKey, setErrKey] = useState({});
 
@@ -29,73 +43,40 @@ export default function StepLampiran({ ctx }) {
   const pctUploaded = Math.round((uploadedCount / NP_PACK_DOCS.length) * 100);
   const total = lpjRowTotal(packView);
 
-  async function handleFiles(key, fileList) {
+  async function handleFiles(doc, fileList) {
     const files = Array.from(fileList || []);
     if (!files.length) return;
-    const existing = ctx.pfRef.current.np.lampiran?.[key] || [];
-    const room = NP_LAMPIRAN_MAX_COUNT - existing.length;
-    const valid = files.filter((f) => f.type.startsWith('image/') && f.size <= SCAN_MAX_BYTES);
+    const maks = DAFTAR_GAMBAR[doc.daftar].maks;
+    const room = maks - (lampiran[doc.key] || []).length;
+    const valid = files.filter((f) => ATURAN_UNGGAHAN.lampiran.tipe.includes(f.type));
     const toAdd = valid.slice(0, room);
     setErrKey((prev) => ({
       ...prev,
-      [key]:
+      [doc.key]:
         valid.length < files.length
-          ? 'Sebagian file dilewati (harus gambar, maks. 5 MB).'
+          ? 'Sebagian file dilewati (harus gambar JPG/PNG).'
           : valid.length > room
-            ? `Maksimal ${NP_LAMPIRAN_MAX_COUNT} foto.`
+            ? `Maksimal ${maks} foto.`
             : '',
     }));
     if (!toAdd.length) return;
 
-    setUploadingKey(key);
-    try {
-      const metas = [];
-      for (const f of toAdd) {
-        metas.push(await uploadLpjFile(pack.id, `lampiran/${key}`, f, user.uid));
+    setUploadingKey(doc.key);
+    for (const f of toAdd) {
+      try {
+        await tambahGambar(pack.id, doc.daftar, f, user.uid);
+      } catch (err) {
+        setErrKey((prev) => ({ ...prev, [doc.key]: pesanUnggah(err) }));
       }
-      await persist(
-        (prev) => ({
-          ...prev,
-          np: {
-            ...prev.np,
-            lampiran: {
-              ...(prev.np.lampiran || {}),
-              [key]: [...(prev.np.lampiran?.[key] || []), ...metas],
-            },
-          },
-        }),
-        {
-          quiet: true,
-          teks: `mengunggah lampiran ${NP_PACK_DOCS.find((d) => d.key === key)?.label}`,
-        },
-      );
-    } catch (err) {
-      console.error('upload lampiran error:', err);
-      setErrKey((prev) => ({ ...prev, [key]: pesanGagalUnggah(err) }));
-    } finally {
-      setUploadingKey('');
     }
+    setUploadingKey('');
   }
 
-  async function removeFile(key, file) {
+  async function removeFile(doc, file) {
     try {
-      await deleteLpjFile(file.path);
-      await persist(
-        (prev) => ({
-          ...prev,
-          np: {
-            ...prev.np,
-            lampiran: {
-              ...(prev.np.lampiran || {}),
-              [key]: (prev.np.lampiran?.[key] || []).filter((f) => f.path !== file.path),
-            },
-          },
-        }),
-        { quiet: true },
-      );
+      await hapusGambar(pack.id, doc.daftar, file, user.uid);
     } catch (err) {
-      console.error('hapus lampiran error:', err);
-      showToast('Gagal menghapus berkas.', 'error');
+      showToast(pesanUnggah(err), 'error');
     }
   }
 
@@ -103,14 +84,12 @@ export default function StepLampiran({ ctx }) {
     askConfirm({
       label: 'Lampiran',
       onYes: async () => {
-        const ok = await persist(
-          (prev) => ({ ...prev, np: { ...prev.np, lampiranLocked: true } }),
-          {
-            quiet: true,
-            teks: `menyelesaikan berkas ${lpjIdOf(pack)}`,
-            extra: { status: 'selesai' },
-          },
-        );
+        // Bagian terakhir dikunci → status berkas "selesai" ditulis Function
+        const ok = await persist(ctx.pfRef.current, {
+          quiet: true,
+          kunci: 'lampiran',
+          tahanLangkah: true,
+        });
         closeConfirm();
         if (ok) {
           showToast(`LPJ ${lpjIdOf(pack)} berhasil diselesaikan.`);
@@ -145,10 +124,10 @@ export default function StepLampiran({ ctx }) {
         >
           <div className="text-white min-w-0">
             <div className={`${FONT.head} font-bold text-sm`}>
-              LPJ Non-Perjadin · {np.tanggal ? formatTanggal(np.tanggal) : '—'}
+              LPJ Non-Perjadin · {spby.tanggal ? formatTanggal(spby.tanggal) : '—'}
             </div>
             <div className="text-xs text-white/60 mt-[3px]">
-              {np.pelaksana.map((p) => p.nama).join(', ')} · {np.mak?.kode || '—'}
+              {(spby.pelaksana || []).map((p) => p.nama).join(', ')} · {spby.mak?.kode || '—'}
             </div>
           </div>
           <div className="text-right text-white">
@@ -176,8 +155,9 @@ export default function StepLampiran({ ctx }) {
         <div className="flex flex-col gap-2.5">
           {NP_PACK_DOCS.map((doc, i) => {
             const files = lampiran[doc.key] || [];
+            const maks = DAFTAR_GAMBAR[doc.daftar].maks;
             const uploaded = files.length > 0;
-            const room = NP_LAMPIRAN_MAX_COUNT - files.length;
+            const room = maks - files.length;
             const busy = uploadingKey === doc.key;
             const item = { key: doc.key, docKey: doc.key, label: doc.label };
             return (
@@ -203,7 +183,7 @@ export default function StepLampiran({ ctx }) {
                       {uploaded && (
                         <span className={`font-medium ${T.inkMuted}`}>
                           {' '}
-                          ({files.length}/{NP_LAMPIRAN_MAX_COUNT} foto)
+                          ({files.length}/{maks} foto)
                         </span>
                       )}
                     </div>
@@ -235,6 +215,7 @@ export default function StepLampiran({ ctx }) {
                             ? `${T.surface} ${T.ink2} ${T.border}`
                             : `${NAVY.bg} ${NAVY.border} text-white`
                         } ${busy ? 'opacity-60 pointer-events-none' : ''}`}
+                        title={`JPG/PNG, diperkecil otomatis ke maks. ${UKURAN}`}
                       >
                         {busy ? (
                           <FaCircleNotch className="animate-spin" size={12} />
@@ -242,23 +223,21 @@ export default function StepLampiran({ ctx }) {
                           <FaUpload size={12} />
                         )}{' '}
                         {busy ? 'Mengunggah…' : uploaded ? 'Tambah Foto' : 'Upload Dokumen'} · maks{' '}
-                        {NP_LAMPIRAN_MAX_COUNT}
+                        {maks}
                         <input
                           type="file"
-                          accept="image/*"
+                          accept="image/jpeg,image/png"
                           multiple
                           hidden
                           disabled={busy}
                           onChange={(e) => {
-                            handleFiles(doc.key, e.target.files);
+                            handleFiles(doc, e.target.files);
                             e.target.value = '';
                           }}
                         />
                       </label>
                     ) : (
-                      <span className={`text-[11px] ${T.inkMuted}`}>
-                        Maks {NP_LAMPIRAN_MAX_COUNT} foto tercapai
-                      </span>
+                      <span className={`text-[11px] ${T.inkMuted}`}>Maks {maks} foto tercapai</span>
                     )}
                   </div>
                 </div>
@@ -270,30 +249,21 @@ export default function StepLampiran({ ctx }) {
                         key={f.path}
                         className={`relative rounded-[10px] border overflow-hidden ${ANIM.meletup} ${T.border} ${T.surface2}`}
                       >
-                        <a href={f.url} target="_blank" rel="noreferrer" title="Buka di tab baru">
-                          <img
-                            src={f.url}
-                            alt={f.name}
-                            loading="lazy"
-                            className="block w-full h-24 object-cover"
-                          />
-                        </a>
+                        <FotoBerkas foto={f} />
                         <div
                           className={`px-1.5 py-[5px] text-[10.5px] truncate ${T.ink2}`}
-                          title={f.name}
+                          title={f.nama}
                         >
-                          {f.name}
+                          {f.nama}
                         </div>
                         <button
                           type="button"
                           title="Hapus foto"
-                          aria-label={`Hapus foto ${f.name}`}
+                          aria-label={`Hapus foto ${f.nama}`}
                           onClick={(e) =>
-                            hapusBaris(
-                              e.currentTarget.parentElement,
-                              () => removeFile(doc.key, f),
-                              { geser: false },
-                            )
+                            hapusBaris(e.currentTarget.parentElement, () => removeFile(doc, f), {
+                              geser: false,
+                            })
                           }
                           className="absolute top-[5px] right-[5px] w-[26px] h-[26px] rounded-full bg-[rgba(15,20,30,.65)] text-white flex items-center justify-center"
                         >
