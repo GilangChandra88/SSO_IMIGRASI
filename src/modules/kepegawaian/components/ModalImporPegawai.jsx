@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { FaCheck, FaDownload, FaFileCsv, FaFileImport, FaTimes } from 'react-icons/fa';
 import Modal from '@/components/Modal';
+import { ANIM } from '@/utils/animasi';
 import { showToast } from '@/utils/toastStore';
 import { formatNip, formatWa, labelPangkat, labelStatus } from '@/utils/dataPegawai';
 import { labelSeksi } from '@/utils/unitKerja';
@@ -164,12 +165,12 @@ export default function ModalImporPegawai({
       tinggiTetap
     >
       <div className="flex flex-col max-h-[88vh]">
-        <div className="p-4 sm:p-5 border-b border-slate-200 dark:border-slate-700 flex items-start justify-between gap-3">
+        <div className={`p-4 sm:p-5 border-b ${K.garis} flex items-start justify-between gap-3`}>
           <div>
-            <h2 id="judul-impor" className="font-bold text-lg text-slate-800 dark:text-slate-100">
+            <h2 id="judul-impor" className={K.modalJudul}>
               Impor Data Pegawai dari CSV
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            <p className={`text-[12.5px] mt-0.5 leading-[1.5] ${K.redup}`}>
               Dari Excel: File → Simpan Sebagai → <b>CSV UTF-8</b>. Kolom NIP sebaiknya berformat
               Teks agar tidak berubah menjadi angka ilmiah.
             </p>
@@ -179,7 +180,7 @@ export default function ModalImporPegawai({
             onClick={onTutup}
             disabled={menulis}
             aria-label="Tutup"
-            className={K.tombolIkon}
+            className={K.modalTutup}
           >
             <FaTimes />
           </button>
@@ -191,9 +192,9 @@ export default function ModalImporPegawai({
               type="button"
               onClick={() => inputRef.current?.click()}
               disabled={menulis}
-              className={K.tombolUtama}
+              className={K.tombolTambah}
             >
-              <FaFileCsv /> {berkas ? 'Pilih berkas lain' : 'Pilih berkas CSV'}
+              <FaFileCsv className={K.aksen} /> {berkas ? 'Pilih berkas lain' : 'Pilih berkas CSV'}
             </button>
             <input
               ref={inputRef}
@@ -203,18 +204,18 @@ export default function ModalImporPegawai({
               className="sr-only"
               tabIndex={-1}
             />
-            <button type="button" onClick={unduhTemplat} className={K.tombolKedua}>
-              <FaDownload /> Unduh templat
+            <button type="button" onClick={unduhTemplat} className={K.tombolKecil}>
+              <FaDownload size={11} /> Unduh templat
             </button>
             {berkas && (
-              <span className="text-xs text-slate-500 dark:text-slate-400 break-all">
+              <span className={`text-[12px] break-all ${K.redup}`}>
                 {berkas} · {dibaca?.baris.length || 0} baris
               </span>
             )}
           </div>
 
           {!dibaca && !galat && (
-            <div className="text-xs text-slate-500 dark:text-slate-400 space-y-1">
+            <div className={`text-[12.5px] leading-[1.6] space-y-1 ${K.redup}`}>
               <p>
                 Kolom yang dikenali: NIP, Nama, Tgl Lahir, Alamat, Email Pribadi, No. WA, Status,
                 Pangkat, Gol, Jabatan, Seksi / Bagian, Eselon. Urutan bebas; kolom lain diabaikan.
@@ -233,16 +234,14 @@ export default function ModalImporPegawai({
           )}
 
           {hasil && (
-            <>
+            <div className={`space-y-4 ${ANIM.muncul}`}>
               {dibaca.diabaikan.length > 0 && (
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Kolom diabaikan: {dibaca.diabaikan.join(', ')}.
-                </p>
+                <p className={K.bantuan}>Kolom diabaikan: {dibaca.diabaikan.join(', ')}.</p>
               )}
               {!pangkat.length && (
                 <p className={K.peringatan}>
-                  Master Pangkat masih kosong, jadi golongan belum terhubung ke pangkat. Tutup
-                  jendela ini, pakai "Isi pangkat baku" di tab Master Pangkat, lalu impor lagi.
+                  Master pangkat masih kosong, jadi golongan belum terhubung ke pangkat. Tutup
+                  jendela ini, pakai "Isi pangkat baku" di tab Pangkat, lalu impor lagi.
                 </p>
               )}
               {!unit.semua.length && (
@@ -253,15 +252,13 @@ export default function ModalImporPegawai({
               )}
 
               {hasil.unitTakDikenal.length > 0 && unit.semua.length > 0 && (
-                <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:p-4">
+                <div className={K.kotak}>
                   <h3 className={K.judulBagian}>Petakan unit yang belum dikenali</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {hasil.unitTakDikenal.map((u) => (
-                      <label key={u.kunci} className="block text-sm">
-                        <span className="text-slate-700 dark:text-slate-200 font-semibold">
-                          "{u.nilai}"
-                        </span>{' '}
-                        <span className="text-xs text-slate-400">({u.jumlah} baris)</span>
+                      <label key={u.kunci} className="block text-[13px]">
+                        <span className={`font-semibold ${K.teks}`}>"{u.nilai}"</span>{' '}
+                        <span className={`text-[11.5px] ${K.redup}`}>({u.jumlah} baris)</span>
                         <select
                           value={petaUnit[u.kunci] || ''}
                           onChange={(e) =>
@@ -272,7 +269,7 @@ export default function ModalImporPegawai({
                           <option value="">(biarkan kosong)</option>
                           {unit.aktif.map((x) => (
                             <option key={x.id} value={x.id}>
-                              {'\u2003'.repeat(x.kedalaman)}
+                              {' '.repeat(x.kedalaman)}
                               {x.nama}
                             </option>
                           ))}
@@ -284,22 +281,22 @@ export default function ModalImporPegawai({
               )}
 
               {hasil.jabatanBaru.length > 0 || !buatJabatan ? (
-                <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 sm:p-4">
-                  <label className="flex items-start gap-2.5 text-sm cursor-pointer">
+                <div className={K.kotak}>
+                  <label className="flex items-start gap-2.5 text-[13px] cursor-pointer">
                     <input
                       type="checkbox"
                       checked={buatJabatan}
                       onChange={(e) => setBuatJabatan(e.target.checked)}
-                      className="mt-1 accent-indigo-600"
+                      className={K.centang}
                     />
-                    <span className="text-slate-700 dark:text-slate-200">
-                      Tambahkan jabatan yang belum ada ke Master Jabatan
+                    <span className={K.teks2}>
+                      Tambahkan jabatan yang belum ada ke master jabatan
                       {buatJabatan && ` (${hasil.jabatanBaru.length} jabatan)`}. Jenis ditebak dari
-                      nama & eselon; periksa lagi di tab Master Jabatan.
+                      nama & eselon; periksa lagi di tab Jabatan.
                     </span>
                   </label>
                   {buatJabatan && hasil.jabatanBaru.length > 0 && (
-                    <details className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                    <details className={`mt-2 text-[12px] ${K.redup}`}>
                       <summary className="cursor-pointer font-semibold">Lihat daftar</summary>
                       <ul className="mt-2 space-y-1 max-h-40 overflow-y-auto">
                         {hasil.jabatanBaru.map((j) => (
@@ -314,7 +311,7 @@ export default function ModalImporPegawai({
                 </div>
               ) : null}
 
-              <div className="flex flex-wrap gap-1.5 text-xs">
+              <div className="flex flex-wrap gap-1.5">
                 <span className={`${K.lencana} ${K.lencanaInfo}`}>{ringkas.baru} baru</span>
                 <span className={`${K.lencana} ${K.lencanaOk}`}>{ringkas.perbarui} diperbarui</span>
                 <span className={`${K.lencana} ${K.lencanaNetral}`}>
@@ -326,26 +323,24 @@ export default function ModalImporPegawai({
                 <span className={`${K.lencana} ${K.lencanaBahaya}`}>{ringkas.tolak} ditolak</span>
               </div>
 
-              <div className="flex gap-1 border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
+              <div className={K.seg} role="tablist" aria-label="Saring baris">
                 {SARINGAN.map(([id, label]) => (
                   <button
                     key={id}
                     type="button"
+                    role="tab"
+                    aria-selected={saring === id}
                     onClick={() => setSaring(id)}
-                    className={`px-3 py-2 text-xs font-bold border-b-2 whitespace-nowrap ${
-                      saring === id
-                        ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 dark:border-indigo-400'
-                        : 'border-transparent text-slate-500 dark:text-slate-400'
-                    }`}
+                    className={saring === id ? K.segAktif : K.segBtn}
                   >
                     {label}
                   </button>
                 ))}
               </div>
 
-              <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
-                <table className="w-full text-left text-xs border-collapse min-w-[860px]">
-                  <thead className="bg-slate-50 dark:bg-slate-800/60">
+              <div key={saring} className={`${K.tabelWadah} ${ANIM.muncul}`}>
+                <table className={`${K.tabel} min-w-[860px]`}>
+                  <thead>
                     <tr>
                       {[
                         'Baris',
@@ -365,7 +360,7 @@ export default function ModalImporPegawai({
                   <tbody>
                     {barisTampil.length === 0 && (
                       <tr>
-                        <td colSpan={7} className="p-6 text-center text-slate-400">
+                        <td colSpan={7} className={K.kosong}>
                           Tidak ada baris.
                         </td>
                       </tr>
@@ -375,19 +370,17 @@ export default function ModalImporPegawai({
                       const u = unit.byId[b.data.unitId];
                       const kontakTampil = b.kontak || {};
                       return (
-                        <tr key={b.no} className="border-t border-slate-100 dark:border-slate-800">
-                          <td className={`${K.td} text-slate-400 font-mono`}>{b.no}</td>
+                        <tr key={b.no} className={K.tr}>
                           <td className={K.td}>
-                            <div className="font-semibold text-slate-800 dark:text-slate-100">
-                              {b.nama || '—'}
-                            </div>
-                            <div className="font-mono text-slate-500">
-                              {formatNip(b.data.nip) || '—'}
-                            </div>
+                            <span className={`${K.mono} ${K.redup}`}>{b.no}</span>
+                          </td>
+                          <td className={K.td}>
+                            <div className={`font-semibold ${K.teks}`}>{b.nama || '—'}</div>
+                            <div className={K.mono}>{formatNip(b.data.nip) || '—'}</div>
                           </td>
                           <td className={K.td}>
                             <div>{labelStatus(b.data.statusKepegawaian) || '—'}</div>
-                            <div className="text-slate-500">
+                            <div className={`text-[12px] ${K.redup}`}>
                               {labelPangkat(b.data.pangkatNama, b.data.golongan) || '—'}
                             </div>
                           </td>
@@ -396,7 +389,7 @@ export default function ModalImporPegawai({
                             {u ? (
                               <>
                                 <div>{u.nama}</div>
-                                <div className="text-slate-500">
+                                <div className={`text-[12px] ${K.redup}`}>
                                   seksi {labelSeksi(unit.byId, u.id)}
                                 </div>
                               </>
@@ -406,24 +399,24 @@ export default function ModalImporPegawai({
                           </td>
                           <td className={`${K.td} max-w-[14rem] break-words`}>
                             {kontakTampil.noWa && (
-                              <div className="font-mono">{formatWa(kontakTampil.noWa)}</div>
+                              <div className={K.mono}>{formatWa(kontakTampil.noWa)}</div>
                             )}
                             {kontakTampil.emailPribadi && <div>{kontakTampil.emailPribadi}</div>}
                             {kontakTampil.alamat && (
-                              <div className="text-slate-500 line-clamp-2">
+                              <div className={`text-[12px] line-clamp-2 ${K.redup}`}>
                                 {kontakTampil.alamat}
                               </div>
                             )}
-                            {!b.kontak && <span className="text-slate-400">tidak berubah</span>}
+                            {!b.kontak && <span className={K.redup}>tidak berubah</span>}
                           </td>
                           <td className={`${K.td} min-w-[12rem]`}>
                             <span className={`${K.lencana} ${warna}`}>{labelAksi}</span>
                             {b.tolak && (
-                              <p className="mt-1 text-rose-600 dark:text-rose-300">{b.tolak}</p>
+                              <p className={`mt-1 text-[12px] ${K.teksBahaya}`}>{b.tolak}</p>
                             )}
                             {!b.tolak &&
                               b.catatan.map((c) => (
-                                <p key={c} className="mt-1 text-amber-700 dark:text-amber-300">
+                                <p key={c} className={`mt-1 text-[12px] ${K.teksWaspada}`}>
                                   {c}
                                 </p>
                               ))}
@@ -434,14 +427,16 @@ export default function ModalImporPegawai({
                   </tbody>
                 </table>
               </div>
-            </>
+            </div>
           )}
         </div>
 
-        <div className="p-4 sm:p-5 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
-          <div className="text-xs text-slate-500 dark:text-slate-400 flex-1 min-w-[12rem]">
+        <div
+          className={`p-4 sm:p-5 border-t ${K.garis} flex flex-wrap items-center justify-between gap-3`}
+        >
+          <div className={`text-[12px] flex-1 min-w-[12rem] ${K.redup}`}>
             {hasilAkhir ? (
-              <span className="text-emerald-700 dark:text-emerald-300 font-semibold flex items-center gap-1.5">
+              <span className={`font-semibold flex items-center gap-1.5 ${K.teksOk}`}>
                 <FaCheck /> Selesai: {hasilAkhir.dibuat} pegawai baru, {hasilAkhir.diperbarui}{' '}
                 diperbarui
                 {hasilAkhir.jabatan ? `, ${hasilAkhir.jabatan} jabatan baru` : ''}.
@@ -451,7 +446,7 @@ export default function ModalImporPegawai({
                 <progress
                   value={kemajuan.selesai}
                   max={Math.max(1, kemajuan.total)}
-                  className="w-40 h-2 accent-indigo-600"
+                  className={K.progres}
                 />
                 Menyimpan {kemajuan.selesai}/{kemajuan.total}…
               </span>
@@ -460,7 +455,7 @@ export default function ModalImporPegawai({
             ) : null}
           </div>
           <div className="flex gap-2">
-            <button type="button" onClick={onTutup} disabled={menulis} className={K.tombolBatal}>
+            <button type="button" onClick={onTutup} disabled={menulis} className={K.tombolKedua}>
               {hasilAkhir ? 'Tutup' : 'Batal'}
             </button>
             {!hasilAkhir && (
@@ -470,7 +465,8 @@ export default function ModalImporPegawai({
                 disabled={!jumlahTulis || menulis}
                 className={K.tombolUtama}
               >
-                <FaFileImport /> {menulis ? 'Mengimpor…' : `Impor ${jumlahTulis} baris`}
+                <FaFileImport size={12} />
+                {menulis ? 'Mengimpor…' : `Impor ${jumlahTulis} baris`}
               </button>
             )}
           </div>

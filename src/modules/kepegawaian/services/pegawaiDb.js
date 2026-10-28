@@ -82,13 +82,9 @@ const jejakBuat = (uid) => ({
 });
 const jejakUbah = (uid) => ({ diubahPada: serverTimestamp(), diubahOleh: uid });
 
-export function pantauPegawai(onData, onGalat) {
-  return pantau(
-    query(collection(db, KOLEKSI.pegawai), orderBy('nama'), limit(LIMIT_KUERI.pegawaiRingkas)),
-    (snap) => onData(daftarDokumen(snap)),
-    { onGalat, pesan: 'Tidak punya akses atau gagal memuat data pegawai.' },
-  );
-}
+/** Semua pegawai (lengkap, hanya Kepegawaian), urut nama. Dibaca lewat hooks/useDaftarPegawai. */
+export const kueriPegawai = () =>
+  query(collection(db, KOLEKSI.pegawai), orderBy('nama'), limit(LIMIT_KUERI.pegawaiRingkas));
 
 /** Semua kontak pribadi (hanya Kepegawaian) → { [pegawaiId]: kontak }. */
 export function pantauKontak(onData, onGalat) {
@@ -212,6 +208,8 @@ export const nonaktifkanPegawai = (pegawaiId, alasan) =>
   panggil('nonaktifkanPegawai')({ pegawaiId, alasan });
 export const aktifkanPegawai = (pegawaiId, alasan = '') =>
   panggil('aktifkanPegawai')({ pegawaiId, alasan });
+/** Kata sandi sementara baru untuk pegawai yang lupa sandi → { email, sandiSementara } */
+export const aturUlangSandi = (pegawaiId) => panggil('aturUlangSandi')({ pegawaiId });
 
 /** Pesan galat Firestore/Functions untuk pengguna (bersama semua modul). */
 export { pesanGalat } from '@/utils/pesanGalat';

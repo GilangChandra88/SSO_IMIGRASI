@@ -11,11 +11,8 @@ import {
 } from '@/context/usePejabat';
 import { pesanGalat } from '../services/pegawaiDb';
 import { akhiriPejabat, sehariSebelum, tetapkanPejabat } from '../services/pejabatDb';
-
-const masukan =
-  'w-full text-sm py-2 px-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100';
-const masukanTanggal = `${masukan} dark:[color-scheme:dark]`;
-const labelKelas = 'block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1';
+import { K } from '../ui/kelas';
+import CariPegawai from './CariPegawai';
 
 const tgl = (iso) => {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(iso || '')) return '';
@@ -39,13 +36,7 @@ const PEMAKAIAN = {
   plh: 'Pilihan cepat penandatangan Surat Perintah.',
 };
 
-const CHIP = {
-  berlaku:
-    'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/50',
-  datang:
-    'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-900/50',
-  lalu: 'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700',
-};
+const WARNA_STATUS = { berlaku: K.lencanaOk, datang: K.lencanaInfo, lalu: K.lencanaNetral };
 
 function statusPenetapan(p, kini, hariIni) {
   if (p.id === kini?.id) return ['berlaku', 'Berlaku'];
@@ -57,13 +48,13 @@ function statusPenetapan(p, kini, hariIni) {
 /**
  * Pejabat penandatangan (PPK, Bendahara, KPA, Kepala, PLT, PLH) dengan masa berlaku. PPK &
  * Bendahara dipakai otomatis di dokumen LPJ dan form surat sesuai tanggal dokumennya; Kepala/PLT/PLH
- * menjadi pilihan cepat penandatangan Surat Perintah. Penetapan tidak diubah atau
- * dihapus (rules); jabatan diakhiri lewat tanggal akhir. Menetapkan pejabat baru otomatis
- * mengakhiri penetapan jenis yang sama yang masih berjalan, sehari sebelum tanggal mulai baru.
+ * menjadi pilihan cepat penandatangan Surat Perintah. Penetapan tidak diubah atau dihapus (rules);
+ * jabatan diakhiri lewat tanggal akhir. Menetapkan pejabat baru otomatis mengakhiri penetapan jenis
+ * yang sama yang masih berjalan, sehari sebelum tanggal mulai baru.
  */
 export default function TabPejabat({ pegawai, uid, bolehUbah }) {
   const { daftar, memuat } = usePenetapanPejabat();
-  const [form, setForm] = useState(null); // null = tertutup
+  const [form, setForm] = useState(null); // null = popup tertutup
   const [galatForm, setGalatForm] = useState('');
   const [proses, setProses] = useState(false);
   const [akhiri, setAkhiri] = useState(null); // { penetapan, tanggal }
@@ -89,7 +80,7 @@ export default function TabPejabat({ pegawai, uid, bolehUbah }) {
   async function simpan(e) {
     e.preventDefault();
     if (!form.jenis || !form.pegawaiId || !form.berlakuMulai)
-      return setGalatForm('Jenis, pegawai, dan tanggal mulai wajib diisi.');
+      return setGalatForm('Jabatan, pegawai, dan tanggal mulai wajib diisi.');
     if (form.berlakuSampai && form.berlakuSampai < form.berlakuMulai)
       return setGalatForm('Tanggal akhir tidak boleh sebelum tanggal mulai.');
     setGalatForm('');
@@ -137,163 +128,64 @@ export default function TabPejabat({ pegawai, uid, bolehUbah }) {
             tanggal: p.berlakuMulai > hariIni ? p.berlakuMulai : hariIni,
           })
         }
-        className="shrink-0 text-[11px] font-bold text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-500/10 px-2 py-1 rounded-lg"
+        className={`${K.tombolKecil} ${K.teksBahaya} shrink-0`}
       >
         Akhiri
       </button>
     );
 
+  const kepalaPopup = (id, judul, tutup) => (
+    <div className="flex items-start justify-between gap-3">
+      <h2 id={id} className={K.modalJudul}>
+        {judul}
+      </h2>
+      <button
+        type="button"
+        onClick={tutup}
+        disabled={proses}
+        aria-label="Tutup"
+        className={K.modalTutup}
+      >
+        <FaTimes />
+      </button>
+    </div>
+  );
+
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden">
-      <div className="p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex flex-wrap justify-between items-center gap-3">
+    <div>
+      <div className={K.kepala}>
         <div>
-          <h2 className="font-bold text-slate-700 dark:text-slate-200">Pejabat Penandatangan</h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+          <h2 className={K.judulSeksi}>Pejabat Penandatangan</h2>
+          <p className={K.subSeksi}>
             PPK & Bendahara dipakai otomatis di dokumen LPJ dan form surat sesuai tanggal
             dokumennya.
           </p>
         </div>
-        {bolehUbah && !form && (
-          <button
-            type="button"
-            onClick={buka}
-            className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 flex items-center gap-2 shadow-sm"
-          >
-            <FaPlus /> Tetapkan Pejabat
+        {bolehUbah && (
+          <button type="button" onClick={buka} className={K.tombolTambah}>
+            <FaPlus size={11} className={K.aksen} /> Tetapkan Pejabat
           </button>
         )}
       </div>
 
-      {form && (
-        <form
-          onSubmit={simpan}
-          className="p-4 border-b border-indigo-100 dark:border-indigo-900 bg-indigo-50/30 dark:bg-indigo-900/10 grid grid-cols-1 md:grid-cols-4 gap-4 items-end"
-        >
-          <div>
-            <label htmlFor="pj-jenis" className={labelKelas}>
-              JABATAN
-            </label>
-            <select
-              id="pj-jenis"
-              required
-              value={form.jenis}
-              onChange={(e) => setForm({ ...form, jenis: e.target.value })}
-              className={masukan}
-            >
-              <option value="">-- Pilih --</option>
-              {JENIS_PEJABAT.map((j) => (
-                <option key={j.id} value={j.id}>
-                  {j.label}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="pj-pegawai" className={labelKelas}>
-              PEGAWAI
-            </label>
-            <select
-              id="pj-pegawai"
-              required
-              value={form.pegawaiId}
-              onChange={(e) => setForm({ ...form, pegawaiId: e.target.value })}
-              className={masukan}
-            >
-              <option value="">-- Pilih --</option>
-              {pilihanPegawai.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.nama}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label htmlFor="pj-mulai" className={labelKelas}>
-              BERLAKU MULAI
-            </label>
-            <input
-              id="pj-mulai"
-              type="date"
-              required
-              value={form.berlakuMulai}
-              onChange={(e) => setForm({ ...form, berlakuMulai: e.target.value })}
-              className={masukanTanggal}
-            />
-          </div>
-          <div>
-            <label htmlFor="pj-sampai" className={labelKelas}>
-              BERLAKU SAMPAI (opsional)
-            </label>
-            <input
-              id="pj-sampai"
-              type="date"
-              min={form.berlakuMulai || undefined}
-              value={form.berlakuSampai}
-              onChange={(e) => setForm({ ...form, berlakuSampai: e.target.value })}
-              className={masukanTanggal}
-            />
-          </div>
-          {diakhiri.length > 0 && (
-            <p className="md:col-span-4 text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/50 rounded-lg px-3 py-2">
-              Penetapan {diakhiri.map(nama).join(', ')} yang masih berjalan akan diakhiri pada{' '}
-              {tgl(sehariSebelum(form.berlakuMulai))}.
-            </p>
-          )}
-          {galatForm && (
-            <p
-              role="alert"
-              className="md:col-span-4 text-sm text-rose-600 dark:text-rose-300 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-900/50 rounded-lg px-3 py-2"
-            >
-              {galatForm}
-            </p>
-          )}
-          <div className="md:col-span-4 flex flex-wrap justify-between items-center gap-2">
-            <p className="text-[11px] text-slate-400">
-              Kosongkan tanggal akhir bila masih menjabat. Penetapan tidak bisa dihapus; salah input
-              diperbaiki dengan penetapan baru.
-            </p>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setForm(null)}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2"
-              >
-                <FaTimes /> Batal
-              </button>
-              <button
-                type="submit"
-                disabled={proses}
-                className="bg-indigo-600 text-white px-6 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 flex items-center gap-2 shadow-sm"
-              >
-                <FaSave /> {proses ? 'Menyimpan…' : 'Simpan'}
-              </button>
-            </div>
-          </div>
-        </form>
-      )}
-
       {memuat ? (
-        <p className="p-8 text-center text-sm text-slate-400">Memuat data pejabat…</p>
+        <p className={K.kosong}>Memuat data pejabat…</p>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-px bg-slate-100 dark:bg-slate-800">
+        <div className={`${K.wadah} grid grid-cols-1 md:grid-cols-2 gap-px ${K.permukaan2}`}>
           {JENIS_PEJABAT.map((j) => {
             const riwayat = daftar.filter((p) => p.jenis === j.id);
             const kini = penetapanPada(daftar, j.id, hariIni);
             const lain = riwayat.filter((p) => p.id !== kini?.id);
             const orangKini = kini && pegawaiById[kini.pegawaiId];
             return (
-              <section key={j.id} className="bg-white dark:bg-slate-900 p-4">
-                <h3 className="text-[11px] font-bold uppercase tracking-wider text-indigo-500">
-                  {j.label}
-                </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">{PEMAKAIAN[j.id]}</p>
+              <section key={j.id} className={`${K.permukaan} p-4`}>
+                <h3 className={K.labelAksen}>{j.label}</h3>
+                <p className={`text-[11.5px] mt-0.5 ${K.redup}`}>{PEMAKAIAN[j.id]}</p>
                 {kini ? (
-                  <div className="mt-2 flex items-start justify-between gap-3">
+                  <div className="mt-2.5 flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="font-bold text-slate-800 dark:text-slate-100 truncate">
-                        {nama(kini)}
-                      </p>
-                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                      <p className={`font-bold truncate ${K.teks}`}>{nama(kini)}</p>
+                      <p className={`text-[12px] mt-0.5 ${K.teks2}`}>
                         {orangKini?.nip ? `NIP ${orangKini.nip} · ` : ''}
                         {rentang(kini)}
                       </p>
@@ -301,23 +193,22 @@ export default function TabPejabat({ pegawai, uid, bolehUbah }) {
                     {tombolAkhiri(kini)}
                   </div>
                 ) : (
-                  <p className="mt-2 text-sm text-slate-400">Belum ditetapkan</p>
+                  <p className={`mt-2.5 text-[13px] ${K.redup}`}>Belum ditetapkan</p>
                 )}
                 {lain.length > 0 && (
-                  <ul className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+                  <ul className={`mt-3 pt-3 border-t ${K.garis} space-y-1.5`}>
                     {lain.map((p) => {
                       const [warna, label] = statusPenetapan(p, kini, hariIni);
                       return (
-                        <li key={p.id} className="flex items-center justify-between gap-2 text-xs">
-                          <span className="min-w-0 text-slate-600 dark:text-slate-300">
+                        <li
+                          key={p.id}
+                          className="flex items-center justify-between gap-2 text-[12px]"
+                        >
+                          <span className={`min-w-0 ${K.teks2}`}>
                             <span className="font-semibold">{nama(p)}</span> · {rentang(p)}
                           </span>
                           <span className="flex items-center gap-1 shrink-0">
-                            <span
-                              className={`text-[10px] font-bold px-1.5 py-0.5 rounded border ${CHIP[warna]}`}
-                            >
-                              {label}
-                            </span>
+                            <span className={`${K.lencana} ${WARNA_STATUS[warna]}`}>{label}</span>
                             {tombolAkhiri(p)}
                           </span>
                         </li>
@@ -331,25 +222,117 @@ export default function TabPejabat({ pegawai, uid, bolehUbah }) {
         </div>
       )}
 
+      {form && (
+        <Modal
+          onClose={proses ? () => {} : () => setForm(null)}
+          labelledBy="judul-tetapkan-pejabat"
+          widthClass="max-w-lg"
+          lembar
+        >
+          <form onSubmit={simpan} noValidate className={K.modalIsi}>
+            {kepalaPopup('judul-tetapkan-pejabat', 'Tetapkan Pejabat', () => setForm(null))}
+            <p className={K.modalSub}>
+              Kosongkan tanggal akhir bila masih menjabat. Penetapan tidak bisa dihapus; salah input
+              diperbaiki dengan penetapan baru.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <label htmlFor="pj-jenis" className={K.label}>
+                  Jabatan
+                </label>
+                <select
+                  id="pj-jenis"
+                  value={form.jenis}
+                  onChange={(e) => setForm({ ...form, jenis: e.target.value })}
+                  className={K.masukan}
+                >
+                  <option value="">-- Pilih --</option>
+                  {JENIS_PEJABAT.map((j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <label htmlFor="pj-pegawai" className={K.label}>
+                  Pegawai
+                </label>
+                <CariPegawai
+                  id="pj-pegawai"
+                  pegawai={pilihanPegawai}
+                  nilai={form.pegawaiId}
+                  onPilih={(pegawaiId) => setForm((f) => ({ ...f, pegawaiId }))}
+                />
+              </div>
+              <div>
+                <label htmlFor="pj-mulai" className={K.label}>
+                  Berlaku mulai
+                </label>
+                <input
+                  id="pj-mulai"
+                  type="date"
+                  value={form.berlakuMulai}
+                  onChange={(e) => setForm({ ...form, berlakuMulai: e.target.value })}
+                  className={K.masukan}
+                />
+              </div>
+              <div>
+                <label htmlFor="pj-sampai" className={K.label}>
+                  Berlaku sampai (opsional)
+                </label>
+                <input
+                  id="pj-sampai"
+                  type="date"
+                  min={form.berlakuMulai || undefined}
+                  value={form.berlakuSampai}
+                  onChange={(e) => setForm({ ...form, berlakuSampai: e.target.value })}
+                  className={K.masukan}
+                />
+              </div>
+            </div>
+            {diakhiri.length > 0 && (
+              <p className={`${K.peringatan} mt-4 mb-0`}>
+                Penetapan {diakhiri.map(nama).join(', ')} yang masih berjalan akan diakhiri pada{' '}
+                {tgl(sehariSebelum(form.berlakuMulai))}.
+              </p>
+            )}
+            {galatForm && (
+              <p role="alert" className={`${K.galat} mt-4 mb-0`}>
+                {galatForm}
+              </p>
+            )}
+            <div className={K.modalAksi}>
+              <button
+                type="button"
+                onClick={() => setForm(null)}
+                disabled={proses}
+                className={K.tombolKedua}
+              >
+                Batal
+              </button>
+              <button type="submit" disabled={proses} className={K.tombolUtama}>
+                <FaSave /> {proses ? 'Menyimpan…' : 'Simpan'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
       {akhiri && (
         <Modal
           onClose={proses ? () => {} : () => setAkhiri(null)}
           labelledBy="judul-akhiri-pejabat"
           widthClass="max-w-sm"
         >
-          <form onSubmit={simpanAkhir} className="p-5">
-            <h2
-              id="judul-akhiri-pejabat"
-              className="font-bold text-slate-800 dark:text-slate-100 text-lg"
-            >
-              Akhiri Masa Jabatan
-            </h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+          <form onSubmit={simpanAkhir} className={K.modalIsi}>
+            {kepalaPopup('judul-akhiri-pejabat', 'Akhiri Masa Jabatan', () => setAkhiri(null))}
+            <p className={K.modalSub}>
               {nama(akhiri.penetapan)} ·{' '}
               {JENIS_PEJABAT.find((j) => j.id === akhiri.penetapan.jenis)?.label}
             </p>
-            <label htmlFor="pj-akhir" className={`${labelKelas} mt-4`}>
-              TANGGAL TERAKHIR MENJABAT
+            <label htmlFor="pj-akhir" className={K.label}>
+              Tanggal terakhir menjabat
             </label>
             <input
               id="pj-akhir"
@@ -358,14 +341,14 @@ export default function TabPejabat({ pegawai, uid, bolehUbah }) {
               min={akhiri.penetapan.berlakuMulai}
               value={akhiri.tanggal}
               onChange={(e) => setAkhiri({ ...akhiri, tanggal: e.target.value })}
-              className={masukanTanggal}
+              className={K.masukan}
             />
-            <div className="flex justify-end gap-2 mt-5">
+            <div className={K.modalAksi}>
               <button
                 type="button"
                 onClick={() => setAkhiri(null)}
                 disabled={proses}
-                className="px-4 py-2 rounded-lg text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                className={K.tombolKedua}
               >
                 Batal
               </button>
@@ -374,7 +357,7 @@ export default function TabPejabat({ pegawai, uid, bolehUbah }) {
                 disabled={
                   proses || !akhiri.tanggal || akhiri.tanggal < akhiri.penetapan.berlakuMulai
                 }
-                className="bg-rose-600 text-white px-5 py-2 rounded-lg text-sm font-semibold hover:bg-rose-700 disabled:opacity-60"
+                className={K.tombolBahaya}
               >
                 {proses ? 'Menyimpan…' : 'Akhiri'}
               </button>

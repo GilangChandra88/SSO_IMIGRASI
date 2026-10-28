@@ -17,6 +17,7 @@ const {
   KODE_PERAN,
   pemanggil,
   superadmin,
+  punya,
   wajibPeran,
   idSah: idSahUmum,
   teksSah,
@@ -235,6 +236,59 @@ exports.nonaktifkanPegawai = onCall(OPSI_CALLABLE, (req) => aturStatus(req, fals
 
 /** Mengaktifkan kembali pegawai nonaktif. Masukan: { pegawaiId, alasan? }. */
 exports.aktifkanPegawai = onCall(OPSI_CALLABLE, (req) => aturStatus(req, true));
+
+/**
+ * Mengatur ulang kata sandi pegawai yang lupa: kata sandi sementara baru (tampilkan sekali ke
+ * pemanggil), semua sesi dicabut, dan pegawai wajib menggantinya saat login berikutnya (claim
+ * wajibGantiSandi, sama dengan akun baru). Tidak untuk akun sendiri (pakai Ganti Sandi). Supaya
+ * Kepegawaian tidak bisa mengambil alih akun berhak lebih, akun yang punya peran yang tidak
+ * dimiliki pemanggil (mis. Keuangan, Super Admin) hanya bisa diatur ulang Super Admin.
+ * Masukan: { pegawaiId }. Keluaran: { email, sandiSementara }.
+ */
+exports.aturUlangSandi = onCall(OPSI_CALLABLE, async (req) => {
+  const p = pemanggil(req);
+  wajibPeran(p, 'kepegawaian');
+  const pegawaiId = idSah(req.data?.pegawaiId);
+  if (pegawaiId === p.pegawaiId) {
+    throw new HttpsError(
+      'failed-precondition',
+      'Kata sandi akun sendiri diganti lewat menu Ganti Sandi.',
+    );
+  }
+
+  const { ref, data } = await ambilPegawai(pegawaiId);
+  jagaSuperAdmin(p, data);
+  if (!data.authUid) throw new HttpsError('failed-precondition', 'Pegawai ini belum punya akun.');
+  if (data.aktif === false) {
+    throw new HttpsError('failed-precondition', 'Pegawai ini nonaktif; aktifkan dulu.');
+  }
+  const klaim = await klaimDari(data.authUid);
+  if ((klaim.peran || []).some((r) => !punya(p, r))) {
+    throw new HttpsError(
+      'permission-denied',
+      'Akun ini punya peran yang tidak Anda miliki; kata sandinya hanya bisa diatur ulang Super Admin.',
+    );
+  }
+
+  const sandi = sandiSementara();
+  let user;
+  try {
+    user = await authAdmin.updateUser(data.authUid, { password: sandi });
+  } catch {
+    throw new HttpsError('internal', 'Kata sandi gagal diatur ulang.');
+  }
+  // Acuan tandaiSandiDiganti diambil SETELAH kata sandi diganti, supaya penggantian oleh server
+  // ini tidak terhitung sebagai "pegawai sudah mengganti kata sandi".
+  const acuan = Math.max(Date.now(), await waktuSandiDiubah(data.authUid));
+  await authAdmin.setCustomUserClaims(data.authUid, {
+    ...klaim,
+    wajibGantiSandi: true,
+    sandiSementaraPada: acuan,
+  });
+  await authAdmin.revokeRefreshTokens(data.authUid);
+  await catatLog(null, { modul: 'pegawai', aksi: 'aturUlangSandi', target: ref.path, oleh: p.uid });
+  return { email: user.email || data.email || '', sandiSementara: sandi };
+});
 
 /**
  * Mencabut claim wajibGantiSandi SETELAH server memastikan kata sandi benar-benar sudah diganti:
