@@ -4,6 +4,7 @@
  * Surat (CLAUDE.md §5). Tombol aksi utama navy; aksen Kepegawaian (amber) memakai token `GOLD`.
  * Jangan menulis kode warna baru di komponen; tambahkan susunan token di sini bila perlu.
  */
+import { ANIM } from '@/utils/animasi';
 import { ADMIN, BTN, FONT, GOLD, NAVY, STATUS, T } from '@/utils/uiTokens';
 
 const LENCANA =
@@ -38,6 +39,8 @@ export const K = Object.freeze({
   permukaan2: T.surface2,
   sorot: T.hoverSurface2,
   mono: ADMIN.mono,
+  monoRedup: `${FONT.mono} text-[12.5px] ${T.inkMuted} whitespace-nowrap`,
+  judulLayar: `${FONT.head} text-[19px] font-bold leading-[1.35] ${T.ink}`,
   kosong: ADMIN.empty,
   aksen: GOLD.text,
 
@@ -69,6 +72,8 @@ export const K = Object.freeze({
   tombolKecil: BTN.sm,
   tombolBahaya: BTN.danger,
   tombolIkon: ADMIN.rowBtn,
+  tombolIkonBahaya: `w-[30px] h-[30px] rounded-lg grid place-items-center shrink-0 cursor-pointer ${STATUS.critInk} ${T.hoverSurface2}`,
+  tombolKecilBahaya: `inline-flex items-center gap-1.5 cursor-pointer px-3.5 py-[7px] border rounded-lg text-[12.5px] ${T.surface} ${T.border} ${STATUS.critInk} ${T.hoverSurface2} ${ANIM.tekan} disabled:opacity-50 disabled:cursor-not-allowed`,
   tombolBuangKecil: `absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full grid place-items-center text-white shadow ${NAVY.bg} ${NAVY.hoverBg} disabled:opacity-60`,
   garisAksen: GOLD.strongBorder,
 
@@ -97,4 +102,28 @@ export const K = Object.freeze({
   modalSub: ADMIN.modalSub,
   modalTutup: ADMIN.modalClose,
   modalAksi: 'flex flex-wrap justify-end gap-2.5 mt-5',
+});
+
+/** Lencana per nada (status kehadiran & predikat): ok, info, waspada, bahaya. */
+export const NADA_LENCANA = Object.freeze({
+  ok: K.lencanaOk,
+  info: K.lencanaInfo,
+  waspada: K.lencanaWaspada,
+  bahaya: K.lencanaBahaya,
+});
+
+// Bilah % hadir (<progress>, lebar lewat atribut value) dengan warna nada; sama dengan STATUS.*Ink.
+const PROGRES = `${ANIM.tumbuhX} block w-full h-2 rounded-full overflow-hidden appearance-none border-0 ${T.surface2} [&::-webkit-progress-bar]:bg-[#F3F5F8] dark:[&::-webkit-progress-bar]:bg-[#16243A] [&::-webkit-progress-value]:rounded-full`;
+export const PROGRES_NADA = Object.freeze({
+  ok: `${PROGRES} [&::-webkit-progress-value]:bg-[#147C55] [&::-moz-progress-bar]:bg-[#147C55] dark:[&::-webkit-progress-value]:bg-[#4FD39B] dark:[&::-moz-progress-bar]:bg-[#4FD39B]`,
+  info: `${PROGRES} [&::-webkit-progress-value]:bg-[#1D5CA8] [&::-moz-progress-bar]:bg-[#1D5CA8] dark:[&::-webkit-progress-value]:bg-[#7DB6F3] dark:[&::-moz-progress-bar]:bg-[#7DB6F3]`,
+  waspada: `${PROGRES} [&::-webkit-progress-value]:bg-[#8A5B00] [&::-moz-progress-bar]:bg-[#8A5B00] dark:[&::-webkit-progress-value]:bg-[#F0B93E] dark:[&::-moz-progress-bar]:bg-[#F0B93E]`,
+  bahaya: `${PROGRES} [&::-webkit-progress-value]:bg-[#A62D2D] [&::-moz-progress-bar]:bg-[#A62D2D] dark:[&::-webkit-progress-value]:bg-[#F19191] dark:[&::-moz-progress-bar]:bg-[#F19191]`,
+});
+
+/** Pilihan status kehadiran per pegawai (Hadir/Cuti/Sakit/Alpa): satu kelompok tombol. */
+export const SEG_STATUS = Object.freeze({
+  wadah: `flex w-full sm:w-auto sm:inline-flex border ${T.border} rounded-[10px] overflow-hidden`,
+  tombol: `flex-1 sm:flex-none px-3 py-2 text-[12.5px] font-bold border-r last:border-r-0 ${T.border} cursor-pointer ${ANIM.tekan}`,
+  mati: `${T.surface} ${T.inkMuted} ${T.hoverSurface2}`,
 });

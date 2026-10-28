@@ -17,6 +17,9 @@ export const PANJANG = Object.freeze({
   teksLaporan: 5000, // tiap bagian Laporan Kegiatan
   labelBukti: 120,
   pesanUcapan: 200,
+  namaKegiatan: 120, // pegawai_kegiatan: nama & tempat
+  keteranganKegiatan: 300,
+  keteranganHadir: 150, // per pegawai di peta kehadiran (dijaga klien; rules tidak bisa memeriksa isi peta)
   alasanBatal: 300,
   kodeMak: 40,
   namaMak: 300,
@@ -38,6 +41,7 @@ export const JUMLAH = Object.freeze({
   fotoLaporan: 10,
   lampiranPerJenis: 10, // foto & nota Non-Perjadin
   fotoPegawai: 9,
+  pesertaKegiatan: 500, // isi peta kehadiran satu kegiatan
   barangKeluar: 50,
   berkasDrpp: 100, // LPJ pada satu DRPP (Function buatDrpp/ubahDaftarDrpp)
 });
@@ -67,6 +71,8 @@ export const LIMIT_KUERI = Object.freeze({
   pegawaiRingkas: 500,
   masterPegawai: 200, // pangkat, jabatan, unit kerja, pejabat
   kontakPegawai: 500,
+  kegiatanPegawai: 200, // pegawai_kegiatan per tahun/semester
+  rekapHadir: 10, // pegawai_rekap_hadir per tahun (2 dokumen)
   transaksiInventory: 200,
   kategoriInventory: 500,
   barangInventory: 2000,

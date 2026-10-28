@@ -372,7 +372,7 @@ export default function ModalImporPegawai({
                       return (
                         <tr key={b.no} className={K.tr}>
                           <td className={K.td}>
-                            <span className={`${K.mono} ${K.redup}`}>{b.no}</span>
+                            <span className={`${K.monoRedup}`}>{b.no}</span>
                           </td>
                           <td className={K.td}>
                             <div className={`font-semibold ${K.teks}`}>{b.nama || '—'}</div>

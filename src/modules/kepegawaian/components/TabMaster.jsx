@@ -144,7 +144,9 @@ export default function TabMaster({ jenis, daftar, uid, bolehUbah = true }) {
               const lengkap = pangkat ? !!m.golongan : !!m.jenis;
               return (
                 <tr key={m.id} className={`${K.tr} ${nonaktif ? 'opacity-60' : ''}`}>
-                  <td className={`${K.td} ${K.mono}`}>{m.urutan}</td>
+                  <td className={K.td}>
+                    <span className={K.mono}>{m.urutan}</span>
+                  </td>
                   <td className={K.td}>
                     <div className={`font-semibold ${nonaktif ? 'line-through' : ''}`}>
                       {pangkat ? labelPangkat(m.nama, m.golongan) : m.nama}

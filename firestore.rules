@@ -249,6 +249,51 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // ─── Kegiatan & kehadiran ───────────────────────────────────────────────
+    // Kehadiran = peta pegawaiId → { status, keterangan } di dokumen kegiatannya. Rules tidak bisa
+    // memeriksa setiap isi peta, jadi hanya bentuk & ukurannya; Function rekap mengabaikan status
+    // yang tidak dikenal. Kegiatan tidak dihapus, melainkan dibatalkan (aktif: false + alasan).
+    function kunciKegiatan() {
+      return ['nama', 'jenis', 'tanggal', 'jam', 'tempat', 'keterangan', 'kehadiran',
+        'kehadiranPada', 'kehadiranOleh', 'aktif', 'alasanBatal'].concat(kunciAudit());
+    }
+    function kegiatanSah(d) {
+      return teksIsi(d.nama, 120)
+        && d.jenis in ['apel', 'upacara', 'rapat', 'senam', 'lainnya']
+        && tanggal(d.tanggal) && tahun(int(d.tanggal[0:4]))
+        && d.jam is string && d.jam.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$')
+        && teksIsi(d.tempat, 120) && teks(d.keterangan, 300)
+        && ((d.kehadiran == null && d.kehadiranPada == null && d.kehadiranOleh == null)
+          || (d.kehadiran is map && d.kehadiran.size() <= 500
+            && d.kehadiranPada is timestamp && d.kehadiranOleh is string))
+        && ((d.aktif == true && d.alasanBatal == '')
+          || (d.aktif == false && teksIsi(d.alasanBatal, 300)));
+    }
+
+    match /pegawai_kegiatan/{id} {
+      allow get: if kepegawaian();
+      allow list: if kepegawaian() && batasDaftar(200);
+      allow create: if kepegawaian()
+        && hanya(kunciKegiatan()) && wajib(kunciKegiatan())
+        && kegiatanSah(baru()) && auditBuat()
+        && baru().aktif == true && baru().kehadiran == null;
+      // Kegiatan batal tidak diubah lagi; kehadiran berubah bersama waktu & pelaku simpannya.
+      allow update: if kepegawaian()
+        && hanya(kunciKegiatan())
+        && kegiatanSah(baru()) && auditUbah() && lama().aktif == true
+        && (!berubah().hasAny(['kehadiran', 'kehadiranPada', 'kehadiranOleh'])
+          || (baru().kehadiran is map && baru().kehadiranPada == request.time
+            && baru().kehadiranOleh == uid()));
+      allow delete: if false;
+    }
+
+    // Rekap kehadiran per semester ({tahun}-{semester}), ditulis Function diKegiatanDitulis.
+    match /pegawai_rekap_hadir/{id} {
+      allow get: if kepegawaian();
+      allow list: if kepegawaian() && batasDaftar(10);
+      allow write: if false;
+    }
+
     match /pengguna_preferensi/{u} {
       allow get: if masuk() && u == uid();
       allow list: if false;

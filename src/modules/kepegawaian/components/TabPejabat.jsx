@@ -128,7 +128,7 @@ export default function TabPejabat({ pegawai, uid, bolehUbah }) {
             tanggal: p.berlakuMulai > hariIni ? p.berlakuMulai : hariIni,
           })
         }
-        className={`${K.tombolKecil} ${K.teksBahaya} shrink-0`}
+        className={`${K.tombolKecilBahaya} shrink-0`}
       >
         Akhiri
       </button>

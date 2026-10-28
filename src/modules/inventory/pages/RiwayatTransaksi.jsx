@@ -13,7 +13,7 @@ import { useTutupLuar } from '../hooks/useTutupLuar';
 import { useTransaksi } from '../hooks/useTransaksi';
 import { batalkanTransaksi } from '../services/inventoryDb';
 import { bandingRiwayat, formatSisa, formatTanggal, idTransaksi } from '../utils/stokLogic';
-import { buatXlsx, simpanBerkas, TIPE_XLSX } from '../utils/xlsx';
+import { buatXlsx, simpanBerkas, TIPE_XLSX } from '@/utils/xlsx';
 import KepalaHalaman from '../components/KepalaHalaman';
 import TabTransaksi from '../components/TabTransaksi';
 import TombolTambah from '../components/TombolTambah';

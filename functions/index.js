@@ -24,6 +24,7 @@ setGlobalOptions({
 Object.assign(
   exports,
   require('./src/akun'),
+  require('./src/kehadiran'),
   require('./src/lpj'),
   require('./src/drpp'),
   require('./src/mak'),

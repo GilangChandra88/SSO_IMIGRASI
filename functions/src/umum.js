@@ -20,6 +20,8 @@ const OPSI_CALLABLE = { enforceAppCheck: !DI_EMULATOR };
 const KOLEKSI = {
   pegawai: 'pegawai',
   pegawaiRingkas: 'pegawai_ringkas',
+  pegawaiKegiatan: 'pegawai_kegiatan',
+  pegawaiRekapHadir: 'pegawai_rekap_hadir',
   lpjBerkas: 'lpj_berkas',
   lpjRingkas: 'lpj_ringkas',
   lpjNomor: 'lpj_nomor',
