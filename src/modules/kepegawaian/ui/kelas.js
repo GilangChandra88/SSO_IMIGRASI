@@ -1,39 +1,100 @@
-/** Kelas Tailwind yang dipakai berulang di modul Kepegawaian (terang & gelap). */
+/**
+ * Kelas UI modul Kepegawaian, disusun dari token purwarupa admin di `@/utils/uiTokens` (`ADMIN`,
+ * `T`, `STATUS`, `BTN`, `GOLD`) supaya tampilan terang/gelapnya sama dengan MAK Setup & Nomor
+ * Surat (CLAUDE.md §5). Tombol aksi utama navy; aksen Kepegawaian (amber) memakai token `GOLD`.
+ * Jangan menulis kode warna baru di komponen; tambahkan susunan token di sini bila perlu.
+ */
+import { ADMIN, BTN, FONT, GOLD, NAVY, STATUS, T } from '@/utils/uiTokens';
+
+const LENCANA =
+  'inline-flex items-center gap-1 text-[10.5px] font-bold tracking-[.02em] px-2 py-[3px] rounded-md whitespace-nowrap';
+
 export const K = Object.freeze({
-  masukan:
-    'w-full text-sm py-2 px-3 border border-slate-300 dark:border-slate-700 rounded-lg focus:ring-2 focus:ring-indigo-500 outline-none bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 disabled:opacity-60 aria-[invalid=true]:border-rose-400 dark:aria-[invalid=true]:border-rose-500',
-  label: 'block text-xs font-bold text-slate-500 dark:text-slate-400 mb-1',
-  bantuan: 'text-[11px] text-slate-400 mt-1',
-  kartu:
-    'bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 overflow-hidden',
-  kepalaKartu:
-    'p-4 border-b border-slate-200 dark:border-slate-700 bg-slate-50/50 dark:bg-slate-900/50 flex flex-wrap justify-between items-center gap-3',
-  judulKartu: 'font-bold text-slate-700 dark:text-slate-200',
-  judulBagian:
-    'text-[11px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-400 mb-3',
-  tombolUtama:
-    'bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-60 flex items-center justify-center gap-2 shadow-sm transition-colors',
-  tombolKedua:
-    'px-4 py-2 rounded-lg text-sm font-semibold border border-slate-300 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60 flex items-center justify-center gap-2 transition-colors',
-  tombolBatal:
-    'px-4 py-2 rounded-lg text-sm font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-60 flex items-center gap-2',
-  tombolIkon:
-    'p-2 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 rounded-lg disabled:opacity-40',
-  galat:
-    'text-sm text-rose-600 dark:text-rose-300 bg-rose-50 dark:bg-rose-500/10 border border-rose-100 dark:border-rose-900/50 rounded-lg px-3 py-2',
-  peringatan:
-    'text-xs text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-900/50 rounded-lg px-3 py-2',
-  lencana: 'text-[10px] font-bold px-1.5 py-0.5 rounded border whitespace-nowrap',
-  lencanaNetral:
-    'bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700',
-  lencanaInfo:
-    'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border-indigo-200 dark:border-indigo-900/50',
-  lencanaOk:
-    'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-900/50',
-  lencanaWaspada:
-    'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-900/50',
-  lencanaBahaya:
-    'bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-300 border-rose-200 dark:border-rose-900/50',
-  th: 'p-3 sm:p-4 text-xs font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap',
-  td: 'p-3 sm:p-4 align-top',
+  // Halaman
+  latar: `min-h-full ${T.ground}`,
+  halaman: ADMIN.page,
+  kartu: ADMIN.card,
+  h1: ADMIN.h1,
+  sub: ADMIN.sub,
+  seg: `${ADMIN.seg} w-fit`,
+  segBtn: ADMIN.segBtn,
+  segAktif: ADMIN.segActive,
+  toolbar: ADMIN.toolbar,
+  cari: ADMIN.search,
+  cariInput: ADMIN.searchInput,
+  kontrol: ADMIN.control,
+  kepala: 'flex flex-wrap items-start justify-between gap-3 mb-4',
+  judulSeksi: `${FONT.head} text-[15px] font-bold ${T.ink}`,
+  subSeksi: `text-[12.5px] mt-0.5 ${T.inkMuted}`,
+  labelAksen: `${FONT.head} text-[11px] font-bold uppercase tracking-[.06em] ${GOLD.strongText}`,
+  judulBagian: `${FONT.head} text-[11px] font-bold uppercase tracking-[.06em] ${GOLD.strongText} mb-3`,
+  wadah: `border ${T.border} rounded-[14px] overflow-hidden`,
+  teks: T.ink,
+  teks2: T.ink2,
+  redup: T.inkMuted,
+  garis: T.border,
+  pembatas: T.divide,
+  permukaan: T.surface,
+  permukaan2: T.surface2,
+  sorot: T.hoverSurface2,
+  mono: ADMIN.mono,
+  kosong: ADMIN.empty,
+  aksen: GOLD.text,
+
+  // Form
+  label: ADMIN.label,
+  masukan: ADMIN.input,
+  masukanGalat: ADMIN.inputErr,
+  bantuan: ADMIN.hint,
+  pesanGalat: `text-[11.5px] font-semibold mt-1 ${STATUS.critInk}`,
+  galat: ADMIN.errorBanner,
+  peringatan: ADMIN.warnBanner,
+  berhasil: `flex gap-2.5 items-start rounded-[10px] px-3.5 py-3 text-[12.5px] leading-[1.5] mb-3.5 ${STATUS.goodBg} ${STATUS.goodInk}`,
+  pilihan: `border ${T.surface} ${T.border} ${T.hoverSurface2}`,
+  pilihanAktif: `border ${GOLD.tintBg} ${GOLD.strongBorder}`,
+  centang: 'mt-0.5 accent-[#0f2040] dark:accent-[#7DB6F3]',
+  progres: 'w-40 h-2 accent-[#0f2040] dark:accent-[#7DB6F3]',
+  kotak: `border ${T.border} rounded-[14px] p-3 sm:p-4`,
+  // Kotak isian dengan saran (CariPegawai)
+  ikonMasukan: `absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none ${T.inkMuted}`,
+  hapusMasukan: `absolute right-2 top-1/2 -translate-y-1/2 w-6 h-6 grid place-items-center rounded-md cursor-pointer ${T.inkMuted} ${T.hoverSurface2}`,
+  saranDaftar: `mt-1.5 p-1 max-h-60 overflow-y-auto rounded-[10px] border ${T.surface} ${T.borderStrong} ${T.shadowMd}`,
+  saranOpsi: 'flex flex-col px-3 py-2 rounded-lg cursor-pointer',
+  sorotCocok: `bg-transparent font-bold ${GOLD.strongText}`,
+
+  // Tombol
+  tombolUtama: ADMIN.btnSubmit,
+  tombolTambah: ADMIN.btnAdd,
+  tombolKedua: BTN.ghost,
+  tombolKecil: BTN.sm,
+  tombolBahaya: BTN.danger,
+  tombolIkon: ADMIN.rowBtn,
+  tombolBuangKecil: `absolute -top-1.5 -right-1.5 w-5 h-5 rounded-full grid place-items-center text-white shadow ${NAVY.bg} ${NAVY.hoverBg} disabled:opacity-60`,
+  garisAksen: GOLD.strongBorder,
+
+  // Tabel
+  tabelWadah: ADMIN.tableWrap,
+  tabel: ADMIN.table,
+  th: ADMIN.th,
+  td: ADMIN.td,
+  tr: ADMIN.tr,
+
+  // Lencana
+  lencana: LENCANA,
+  lencanaNetral: `${T.surface2} ${T.ink2}`,
+  lencanaInfo: `${STATUS.infoBg} ${STATUS.infoInk}`,
+  lencanaOk: `${STATUS.goodBg} ${STATUS.goodInk}`,
+  lencanaWaspada: `${STATUS.warnBg} ${STATUS.warnInk}`,
+  lencanaBahaya: `${STATUS.critBg} ${STATUS.critInk}`,
+  lencanaAksen: `${GOLD.tintBg} ${GOLD.strongText}`,
+  teksOk: STATUS.goodInk,
+  teksWaspada: STATUS.warnInk,
+  teksBahaya: STATUS.critInk,
+
+  // Modal (komponen @/components/Modal)
+  modalIsi: ADMIN.modalBody,
+  modalJudul: ADMIN.modalTitle,
+  modalSub: ADMIN.modalSub,
+  modalTutup: ADMIN.modalClose,
+  modalAksi: 'flex flex-wrap justify-end gap-2.5 mt-5',
 });

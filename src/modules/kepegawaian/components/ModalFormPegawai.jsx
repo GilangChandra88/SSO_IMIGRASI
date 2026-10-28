@@ -2,7 +2,7 @@ import { useRef, useState } from 'react';
 import { FaSave, FaTimes } from 'react-icons/fa';
 import Modal from '@/components/Modal';
 import { showToast } from '@/utils/toastStore';
-import { T } from '@/utils/uiTokens';
+import { ANIM } from '@/utils/animasi';
 import { PANJANG } from '@/utils/batas';
 import { pesanGagalUnggah } from '@/utils/berkasStorage';
 import { labelSeksi } from '@/utils/unitKerja';
@@ -188,8 +188,8 @@ export default function ModalFormPegawai({
     emailPribadi: kontakForm.emailPribadi.trim(),
     noWa: kontakForm.noWa.trim(),
   });
-  const pesanGalatIsian = (f) =>
-    galat[f] && <p className="text-[11px] text-rose-600 dark:text-rose-300 mt-1">{galat[f]}</p>;
+  const pesanGalatIsian = (f) => galat[f] && <p className={K.pesanGalat}>{galat[f]}</p>;
+  const kelasMasukan = (f) => (galat[f] ? K.masukanGalat : K.masukan);
 
   return (
     <Modal
@@ -201,16 +201,13 @@ export default function ModalFormPegawai({
     >
       <form ref={formRef} onSubmit={simpan} noValidate>
         <div
-          className={`sticky top-0 z-10 ${T.surface} border-b ${T.border} px-4 sm:px-6 py-4 flex items-start justify-between gap-3`}
+          className={`sticky top-0 z-10 ${K.permukaan} border-b ${K.garis} px-4 sm:px-6 py-4 flex items-start justify-between gap-3`}
         >
           <div className="min-w-0">
-            <h2
-              id="judul-form-pegawai"
-              className="font-bold text-lg text-slate-800 dark:text-slate-100"
-            >
+            <h2 id="judul-form-pegawai" className={K.modalJudul}>
               {form.id ? 'Ubah Data Pegawai' : 'Tambah Pegawai'}
             </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+            <p className={`text-[12.5px] mt-0.5 truncate ${K.redup}`}>
               {form.id
                 ? pegawai?.nama
                 : 'Isi sesuai SK. Kolom yang belum diketahui boleh dikosongkan dulu.'}
@@ -221,7 +218,7 @@ export default function ModalFormPegawai({
             onClick={mintaTutup}
             disabled={menyimpan}
             aria-label="Tutup"
-            className={K.tombolIkon}
+            className={K.modalTutup}
           >
             <FaTimes />
           </button>
@@ -233,7 +230,7 @@ export default function ModalFormPegawai({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-2">
                 <label htmlFor="f-nama" className={K.label}>
-                  NAMA LENGKAP (DENGAN GELAR SESUAI SK)
+                  Nama lengkap (dengan gelar sesuai SK)
                 </label>
                 <input
                   id="f-nama"
@@ -241,13 +238,13 @@ export default function ModalFormPegawai({
                   value={form.nama}
                   aria-invalid={!!galat.nama || undefined}
                   onChange={(e) => ubah({ nama: e.target.value })}
-                  className={K.masukan}
+                  className={kelasMasukan('nama')}
                 />
                 {pesanGalatIsian('nama')}
               </div>
               <div>
                 <label htmlFor="f-status" className={K.label}>
-                  STATUS KEPEGAWAIAN
+                  Status kepegawaian
                 </label>
                 <select
                   id="f-status"
@@ -266,7 +263,9 @@ export default function ModalFormPegawai({
               <div>
                 <label htmlFor="f-nip" className={K.label}>
                   NIP{' '}
-                  {statusAsn(form.statusKepegawaian) ? '(18 DIGIT)' : '(KOSONGKAN BILA NON-ASN)'}
+                  <span className={`font-normal ${K.redup}`}>
+                    {statusAsn(form.statusKepegawaian) ? '(18 digit)' : '(kosongkan bila non-ASN)'}
+                  </span>
                 </label>
                 <input
                   id="f-nip"
@@ -274,13 +273,13 @@ export default function ModalFormPegawai({
                   value={form.nip}
                   aria-invalid={!!galat.nip || undefined}
                   onChange={(e) => ubahNip(e.target.value)}
-                  className={`${K.masukan} font-mono`}
+                  className={`${kelasMasukan('nip')} ${K.mono}`}
                 />
                 {pesanGalatIsian('nip')}
               </div>
               <div>
                 <label htmlFor="f-lahir" className={K.label}>
-                  TANGGAL LAHIR
+                  Tanggal lahir
                 </label>
                 <input
                   id="f-lahir"
@@ -290,7 +289,7 @@ export default function ModalFormPegawai({
                   className={`${K.masukan} dark:[color-scheme:dark]`}
                 />
                 {tglNip && form.tanggalLahir && tglNip !== form.tanggalLahir && (
-                  <p className="text-[11px] text-amber-700 dark:text-amber-300 mt-1">
+                  <p className={`text-[11.5px] mt-1 ${K.teksWaspada}`}>
                     Berbeda dengan tanggal di NIP.{' '}
                     <button
                       type="button"
@@ -310,7 +309,7 @@ export default function ModalFormPegawai({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div>
                 <label htmlFor="f-pangkat" className={K.label}>
-                  PANGKAT/GOLONGAN
+                  Pangkat/golongan
                 </label>
                 <select
                   id="f-pangkat"
@@ -329,12 +328,12 @@ export default function ModalFormPegawai({
                   ))}
                 </select>
                 {jenisPangkat && !opsiPangkat.length && (
-                  <p className={K.bantuan}>Master pangkat masih kosong (tab Master Pangkat).</p>
+                  <p className={K.bantuan}>Master pangkat masih kosong (tab Pangkat).</p>
                 )}
               </div>
               <div>
                 <label htmlFor="f-jabatan" className={K.label}>
-                  JABATAN
+                  Jabatan
                 </label>
                 <select
                   id="f-jabatan"
@@ -353,7 +352,7 @@ export default function ModalFormPegawai({
               </div>
               <div>
                 <label htmlFor="f-unit" className={K.label}>
-                  UNIT KERJA
+                  Unit kerja
                 </label>
                 <select
                   id="f-unit"
@@ -364,7 +363,7 @@ export default function ModalFormPegawai({
                   <option value="">-- Pilih --</option>
                   {opsiUnit.map((u) => (
                     <option key={u.id} value={u.id}>
-                      {'\u2003'.repeat(u.kedalaman)}
+                      {' '.repeat(u.kedalaman)}
                       {u.nama}
                     </option>
                   ))}
@@ -385,7 +384,7 @@ export default function ModalFormPegawai({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-3">
                 <label htmlFor="f-alamat" className={K.label}>
-                  ALAMAT
+                  Alamat
                 </label>
                 <textarea
                   id="f-alamat"
@@ -398,7 +397,7 @@ export default function ModalFormPegawai({
               </div>
               <div className="md:col-span-2">
                 <label htmlFor="f-email" className={K.label}>
-                  E-MAIL PRIBADI
+                  E-mail pribadi
                 </label>
                 <input
                   id="f-email"
@@ -408,13 +407,13 @@ export default function ModalFormPegawai({
                   value={kontakForm.emailPribadi}
                   aria-invalid={!!galat.emailPribadi || undefined}
                   onChange={(e) => ubahKontak({ emailPribadi: e.target.value })}
-                  className={K.masukan}
+                  className={kelasMasukan('emailPribadi')}
                 />
                 {pesanGalatIsian('emailPribadi')}
               </div>
               <div>
                 <label htmlFor="f-wa" className={K.label}>
-                  NO. WHATSAPP
+                  No. WhatsApp
                 </label>
                 <input
                   id="f-wa"
@@ -425,7 +424,7 @@ export default function ModalFormPegawai({
                   value={kontakForm.noWa}
                   aria-invalid={!!galat.noWa || undefined}
                   onChange={(e) => ubahKontak({ noWa: e.target.value })}
-                  className={`${K.masukan} font-mono`}
+                  className={`${kelasMasukan('noWa')} ${K.mono}`}
                 />
                 {pesanGalatIsian('noWa')}
               </div>
@@ -444,13 +443,13 @@ export default function ModalFormPegawai({
             disabled={menyimpan}
           />
 
-          <p className="text-[11px] text-slate-400">
+          <p className={K.bantuan}>
             Akun login, peran, dan status aktif diatur dari tombol di daftar pegawai.
           </p>
         </div>
 
         <div
-          className={`sticky bottom-0 z-10 ${T.surface} border-t ${T.border} px-4 sm:px-6 py-3 space-y-2`}
+          className={`sticky bottom-0 z-10 ${K.permukaan} border-t ${K.garis} px-4 sm:px-6 py-3 space-y-2`}
         >
           {galat.umum && (
             <p role="alert" className={K.galat}>
@@ -458,8 +457,11 @@ export default function ModalFormPegawai({
             </p>
           )}
           {konfirmasiTutup ? (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm font-semibold text-amber-700 dark:text-amber-300">
+            <div
+              key="konfirmasi"
+              className={`flex flex-wrap items-center justify-between gap-2 ${ANIM.muncul}`}
+            >
+              <p className={`text-[13px] font-semibold ${K.teksWaspada}`}>
                 Ada perubahan yang belum disimpan. Tutup tanpa menyimpan?
               </p>
               <div className="flex gap-2 ml-auto">
@@ -470,20 +472,14 @@ export default function ModalFormPegawai({
                 >
                   Lanjut mengisi
                 </button>
-                <button
-                  type="button"
-                  onClick={onTutup}
-                  className="px-4 py-2 rounded-lg text-sm font-semibold bg-rose-600 hover:bg-rose-700 text-white"
-                >
+                <button type="button" onClick={onTutup} className={K.tombolBahaya}>
                   Tutup tanpa menyimpan
                 </button>
               </div>
             </div>
           ) : (
-            <div className="flex flex-wrap justify-between items-center gap-3">
-              <p
-                className={`text-[11px] max-w-xl ${kurang.length ? 'text-amber-700 dark:text-amber-300' : 'text-emerald-700 dark:text-emerald-300'}`}
-              >
+            <div key="aksi" className="flex flex-wrap justify-between items-center gap-3">
+              <p className={`text-[11.5px] max-w-xl ${kurang.length ? K.teksWaspada : K.teksOk}`}>
                 {kurang.length
                   ? `Belum lengkap: ${kurang.join(', ')}. Tetap bisa disimpan.`
                   : 'Data lengkap.'}
@@ -493,12 +489,12 @@ export default function ModalFormPegawai({
                   type="button"
                   onClick={mintaTutup}
                   disabled={menyimpan}
-                  className={K.tombolBatal}
+                  className={K.tombolKedua}
                 >
                   Batal
                 </button>
-                <button type="submit" disabled={menyimpan} className={`${K.tombolUtama} px-6`}>
-                  <FaSave />{' '}
+                <button type="submit" disabled={menyimpan} className={K.tombolUtama}>
+                  <FaSave size={12} />
                   {menyimpan ? (fotoBaru.length ? 'Mengunggah foto…' : 'Menyimpan…') : 'Simpan'}
                 </button>
               </div>

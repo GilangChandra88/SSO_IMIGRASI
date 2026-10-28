@@ -1,9 +1,10 @@
 import React from 'react';
 import { Routes, Route, Link, Navigate } from 'react-router-dom';
-import { FaUsers, FaArrowLeft } from 'react-icons/fa';
+import { FaArrowLeft, FaBirthdayCake, FaUsers } from 'react-icons/fa';
 import AppLayout from '@/layouts/AppLayout';
 import { useAuth } from '@/context/AuthContext';
 import Pegawai from './pages/Pegawai';
+import UlangTahun from './pages/UlangTahun';
 
 const BRAND = {
   code: 'SDM',
@@ -22,9 +23,21 @@ const renderNav = ({ isCollapsed, navItemClass, isActive }) => (
       <FaArrowLeft size={14} />{' '}
       <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Portal Utama</span>
     </Link>
-    <Link to="/kepegawaian" title="Data Pegawai" className={navItemClass(isActive('/kepegawaian'))}>
+    <Link
+      to="/kepegawaian"
+      title="Data Pegawai"
+      className={navItemClass(isActive('/kepegawaian') && !isActive('/kepegawaian/ulang-tahun'))}
+    >
       <FaUsers size={16} className="shrink-0" />
       <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Data Pegawai</span>
+    </Link>
+    <Link
+      to="/kepegawaian/ulang-tahun"
+      title="Ulang Tahun"
+      className={navItemClass(isActive('/kepegawaian/ulang-tahun'))}
+    >
+      <FaBirthdayCake size={16} className="shrink-0" />
+      <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Ulang Tahun</span>
     </Link>
   </>
 );
@@ -44,6 +57,7 @@ export default function AppModule() {
       }}
     >
       <Routes>
+        <Route path="/ulang-tahun" element={<UlangTahun />} />
         <Route path="/*" element={<Pegawai />} />
       </Routes>
     </AppLayout>

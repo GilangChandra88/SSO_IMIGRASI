@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { FaPen, FaPlus, FaSave, FaSitemap, FaToggleOff, FaToggleOn } from 'react-icons/fa';
+import { FaPen, FaPlus, FaSave, FaSitemap, FaTimes, FaToggleOff, FaToggleOn } from 'react-icons/fa';
 import Modal from '@/components/Modal';
 import { showToast } from '@/utils/toastStore';
 import { PANJANG } from '@/utils/batas';
@@ -159,11 +159,11 @@ export default function TabUnitKerja({ unit, pegawai, uid, bolehUbah, superAdmin
     : [];
 
   return (
-    <div className={K.kartu}>
-      <div className={K.kepalaKartu}>
+    <div>
+      <div className={K.kepala}>
         <div>
-          <h2 className={K.judulKartu}>Struktur Unit Kerja ({unit.semua.length})</h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+          <h2 className={K.judulSeksi}>Struktur Unit Kerja ({unit.semua.length})</h2>
+          <p className={K.subSeksi}>
             Dipakai untuk unit kerja pegawai dan pilihan "Seksi / Bagian" di LPJ, Nomor Surat, dan
             Inventory.
           </p>
@@ -171,32 +171,32 @@ export default function TabUnitKerja({ unit, pegawai, uid, bolehUbah, superAdmin
         {bolehUbah && (
           <div className="flex flex-wrap gap-2">
             {!unit.memuat && unit.semua.length === 0 && (
-              <button type="button" onClick={isiAwal} disabled={proses} className={K.tombolKedua}>
-                <FaSitemap /> Isi struktur awal ({STRUKTUR_AWAL.length} unit)
+              <button type="button" onClick={isiAwal} disabled={proses} className={K.tombolKecil}>
+                <FaSitemap className={K.aksen} /> Isi struktur awal ({STRUKTUR_AWAL.length} unit)
               </button>
             )}
-            <button type="button" onClick={() => buka(null)} className={K.tombolUtama}>
-              <FaPlus /> Tambah Unit
+            <button type="button" onClick={() => buka(null)} className={K.tombolTambah}>
+              <FaPlus size={11} className={K.aksen} /> Tambah Unit
             </button>
           </div>
         )}
       </div>
 
       {unit.memuat ? (
-        <p className="p-8 text-center text-sm text-slate-400">Memuat unit kerja…</p>
+        <p className={K.kosong}>Memuat unit kerja…</p>
       ) : unit.pohon.length === 0 ? (
-        <p className="p-8 text-center text-sm text-slate-400">
+        <p className={K.kosong}>
           Belum ada unit kerja. Pakai "Isi struktur awal" untuk memulai dari struktur kantor, lalu
           sesuaikan.
         </p>
       ) : (
-        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
+        <ul className={`${K.wadah} divide-y ${K.pembatas}`}>
           {unit.pohon.map((u) => {
             const nonaktif = u.aktif === false;
             return (
               <li
                 key={u.id}
-                className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-4 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 ${nonaktif ? 'opacity-60' : ''}`}
+                className={`flex flex-wrap items-center gap-x-3 gap-y-1 px-3.5 py-3 ${K.sorot} ${nonaktif ? 'opacity-60' : ''}`}
               >
                 <div className={`flex-1 min-w-[14rem] ${INDEN[Math.min(u.kedalaman, 2)]}`}>
                   <div className="flex flex-wrap items-center gap-1.5">
@@ -204,7 +204,7 @@ export default function TabUnitKerja({ unit, pegawai, uid, bolehUbah, superAdmin
                       {labelJenisUnit(u.jenis)}
                     </span>
                     <span
-                      className={`font-semibold text-sm text-slate-800 dark:text-slate-100 ${nonaktif ? 'line-through' : ''}`}
+                      className={`font-semibold text-[13.5px] ${K.teks} ${nonaktif ? 'line-through' : ''}`}
                     >
                       {u.nama}
                     </span>
@@ -212,8 +212,8 @@ export default function TabUnitKerja({ unit, pegawai, uid, bolehUbah, superAdmin
                       <span className={`${K.lencana} ${K.lencanaBahaya}`}>Nonaktif</span>
                     )}
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    <span className="font-mono">{u.kode}</span>
+                  <div className={`text-[11.5px] mt-0.5 ${K.redup}`}>
+                    <span className={K.mono}>{u.kode}</span>
                     {u.singkatan && <> · label "{u.singkatan}"</>} · {jumlahPegawai[u.id] || 0}{' '}
                     pegawai
                   </div>
@@ -245,9 +245,13 @@ export default function TabUnitKerja({ unit, pegawai, uid, bolehUbah, superAdmin
                       onClick={() => aturAktif(u)}
                       title={nonaktif ? 'Aktifkan' : 'Nonaktifkan'}
                       aria-label={`${nonaktif ? 'Aktifkan' : 'Nonaktifkan'} ${u.nama}`}
-                      className={`p-2 rounded-lg ${nonaktif ? 'text-slate-400 hover:text-emerald-600' : 'text-emerald-600 hover:text-slate-500'}`}
+                      className={K.tombolIkon}
                     >
-                      {nonaktif ? <FaToggleOff size={18} /> : <FaToggleOn size={18} />}
+                      {nonaktif ? (
+                        <FaToggleOff size={18} />
+                      ) : (
+                        <FaToggleOn size={18} className={K.teksOk} />
+                      )}
                     </button>
                   </div>
                 )}
@@ -264,17 +268,28 @@ export default function TabUnitKerja({ unit, pegawai, uid, bolehUbah, superAdmin
           widthClass="max-w-lg"
           lembar
         >
-          <form onSubmit={simpan} noValidate className="p-5 space-y-4">
-            <h2
-              id="judul-form-unit"
-              className="font-bold text-lg text-slate-800 dark:text-slate-100"
-            >
-              {form.id ? 'Ubah Unit Kerja' : 'Tambah Unit Kerja'}
-            </h2>
+          <form onSubmit={simpan} noValidate className={K.modalIsi}>
+            <div className="flex items-start justify-between gap-3">
+              <h2 id="judul-form-unit" className={K.modalJudul}>
+                {form.id ? 'Ubah Unit Kerja' : 'Tambah Unit Kerja'}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setForm(null)}
+                disabled={proses}
+                aria-label="Tutup"
+                className={K.modalTutup}
+              >
+                <FaTimes />
+              </button>
+            </div>
+            <p className={K.modalSub}>
+              Induk harus satu tingkat di atasnya: kantor → subbagian/seksi → urusan/subseksi.
+            </p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label htmlFor="u-jenis" className={K.label}>
-                  JENIS UNIT
+                  Jenis unit
                 </label>
                 <select
                   id="u-jenis"
@@ -298,7 +313,7 @@ export default function TabUnitKerja({ unit, pegawai, uid, bolehUbah, superAdmin
               </div>
               <div>
                 <label htmlFor="u-kode" className={K.label}>
-                  KODE
+                  Kode
                 </label>
                 <input
                   id="u-kode"
@@ -306,13 +321,13 @@ export default function TabUnitKerja({ unit, pegawai, uid, bolehUbah, superAdmin
                   value={form.kode}
                   placeholder="mis. SUB-TI"
                   onChange={(e) => setForm({ ...form, kode: e.target.value.toUpperCase() })}
-                  className={`${K.masukan} font-mono uppercase`}
+                  className={`${K.masukan} uppercase`}
                 />
               </div>
               {form.jenis !== 'kantor' && (
                 <div className="sm:col-span-2">
                   <label htmlFor="u-induk" className={K.label}>
-                    UNIT INDUK
+                    Unit induk
                   </label>
                   <select
                     id="u-induk"
@@ -336,7 +351,7 @@ export default function TabUnitKerja({ unit, pegawai, uid, bolehUbah, superAdmin
               )}
               <div className="sm:col-span-2">
                 <label htmlFor="u-nama" className={K.label}>
-                  NAMA UNIT
+                  Nama unit
                 </label>
                 <input
                   id="u-nama"
@@ -349,7 +364,7 @@ export default function TabUnitKerja({ unit, pegawai, uid, bolehUbah, superAdmin
               </div>
               <div>
                 <label htmlFor="u-singkatan" className={K.label}>
-                  LABEL PENDEK
+                  Label pendek
                 </label>
                 <input
                   id="u-singkatan"
@@ -363,7 +378,7 @@ export default function TabUnitKerja({ unit, pegawai, uid, bolehUbah, superAdmin
               </div>
               <div>
                 <label htmlFor="u-urutan" className={K.label}>
-                  URUTAN
+                  Urutan
                 </label>
                 <input
                   id="u-urutan"
@@ -377,16 +392,16 @@ export default function TabUnitKerja({ unit, pegawai, uid, bolehUbah, superAdmin
               </div>
             </div>
             {galat && (
-              <p role="alert" className={K.galat}>
+              <p role="alert" className={`${K.galat} mt-4 mb-0`}>
                 {galat}
               </p>
             )}
-            <div className="flex justify-end gap-2">
+            <div className={K.modalAksi}>
               <button
                 type="button"
                 onClick={() => setForm(null)}
                 disabled={proses}
-                className={K.tombolBatal}
+                className={K.tombolKedua}
               >
                 Batal
               </button>

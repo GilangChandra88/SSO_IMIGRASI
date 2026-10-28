@@ -313,6 +313,110 @@ cek(
   !!(await masuk('siti@contoh.test', akun.hasil.sandiSementara)).token,
 );
 
+// 7b. atur ulang kata sandi (pegawai lupa sandi)
+const rr = await fetch(`${FS}:commit`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sa.token}` },
+  body: JSON.stringify({
+    writes: [
+      {
+        update: {
+          name: `projects/${P}/databases/(default)/documents/pegawai/pRudi`,
+          fields: Object.fromEntries(
+            Object.entries({
+              ...pegawai,
+              nama: 'Rudi Contoh',
+              nip: '000000000000000002',
+              tanggalLahir: '1990-01-02',
+              fotoPaths: [],
+            }).map(([k, v]) => [k, nilai(v)]),
+          ),
+        },
+        updateTransforms: [
+          { fieldPath: 'dibuatPada', setToServerValue: 'REQUEST_TIME' },
+          { fieldPath: 'diubahPada', setToServerValue: 'REQUEST_TIME' },
+        ],
+        currentDocument: { exists: false },
+      },
+    ],
+  }),
+});
+cek('Super Admin membuat dokumen pegawai kedua', rr.ok, await rr.text());
+cek(
+  'atur ulang sandi pegawai yang belum punya akun ditolak',
+  (await panggil('aturUlangSandi', { pegawaiId: 'pRudi' }, sa.token)).galat ===
+    'FAILED_PRECONDITION',
+);
+const akunRudi = await panggil(
+  'buatAkunPegawai',
+  { pegawaiId: 'pRudi', email: 'rudi@contoh.test' },
+  sa.token,
+);
+await panggil('aturPeran', { pegawaiId: 'pRudi', peran: ['kepegawaian'] }, sa.token);
+const rudi = await masuk('rudi@contoh.test', akunRudi.hasil?.sandiSementara);
+cek(
+  'akun Kepegawaian kedua siap',
+  rudi.klaim?.peran?.includes('kepegawaian'),
+  JSON.stringify(rudi.klaim),
+);
+siti = await masuk('siti@contoh.test', akun.hasil.sandiSementara);
+cek(
+  'tanpa login memanggil aturUlangSandi ditolak',
+  (await panggil('aturUlangSandi', { pegawaiId: 'pSiti' })).galat === 'UNAUTHENTICATED',
+);
+cek(
+  'Keuangan (bukan Kepegawaian) mengatur ulang sandi ditolak',
+  (await panggil('aturUlangSandi', { pegawaiId: 'pRudi' }, siti.token)).galat ===
+    'PERMISSION_DENIED',
+);
+cek(
+  'Kepegawaian mengatur ulang sandi akun sendiri ditolak',
+  (await panggil('aturUlangSandi', { pegawaiId: 'pRudi' }, rudi.token)).galat ===
+    'FAILED_PRECONDITION',
+);
+cek(
+  'Kepegawaian mengatur ulang sandi Super Admin ditolak',
+  (await panggil('aturUlangSandi', { pegawaiId: sa.klaim.pegawaiId }, rudi.token)).galat ===
+    'PERMISSION_DENIED',
+);
+cek(
+  'Kepegawaian mengatur ulang sandi akun berperan Keuangan ditolak',
+  (await panggil('aturUlangSandi', { pegawaiId: 'pSiti' }, rudi.token)).galat ===
+    'PERMISSION_DENIED',
+);
+const ulangSA = await panggil('aturUlangSandi', { pegawaiId: 'pSiti' }, sa.token);
+cek(
+  'Super Admin mengatur ulang sandi akun Keuangan',
+  !!ulangSA.hasil?.sandiSementara && ulangSA.hasil.email === 'siti@contoh.test',
+  JSON.stringify(ulangSA),
+);
+cek('kata sandi lama tidak berlaku lagi', !!(await masuk('siti@contoh.test', SANDI_BARU)).galat);
+siti = await masuk('siti@contoh.test', ulangSA.hasil?.sandiSementara);
+cek(
+  'login dengan sandi sementara baru: wajib ganti sandi, peran tetap',
+  siti.klaim?.wajibGantiSandi === true && siti.klaim?.peran?.includes('keuangan'),
+  JSON.stringify(siti.klaim),
+);
+cek(
+  'tandaiSandiDiganti setelah atur ulang TANPA mengganti sandi ditolak',
+  (await panggil('tandaiSandiDiganti', {}, siti.token)).galat === 'FAILED_PRECONDITION',
+);
+await panggil('aturPeran', { pegawaiId: 'pSiti', peran: [] }, sa.token);
+const ulangKep = await panggil('aturUlangSandi', { pegawaiId: 'pSiti' }, rudi.token);
+cek(
+  'Kepegawaian mengatur ulang sandi pegawai biasa',
+  !!ulangKep.hasil?.sandiSementara,
+  JSON.stringify(ulangKep),
+);
+cek(
+  'sandi sementara sebelumnya ikut tidak berlaku',
+  !!(await masuk('siti@contoh.test', ulangSA.hasil?.sandiSementara)).galat,
+);
+cek(
+  'login dengan sandi sementara terbaru',
+  !!(await masuk('siti@contoh.test', ulangKep.hasil?.sandiSementara)).token,
+);
+
 // 8. log
 const lg = await (
   await fetch(`${FS}:runQuery`, {
@@ -327,9 +431,15 @@ const aksi = lg
   .sort();
 cek(
   'sistem_log mencatat aksi sensitif',
-  ['aktifkan', 'aturPeran', 'buatAkun', 'gantiSandiPertama', 'nonaktifkan', 'seedSuperAdmin'].every(
-    (a) => aksi.includes(a),
-  ),
+  [
+    'aktifkan',
+    'aturPeran',
+    'aturUlangSandi',
+    'buatAkun',
+    'gantiSandiPertama',
+    'nonaktifkan',
+    'seedSuperAdmin',
+  ].every((a) => aksi.includes(a)),
   aksi.join(','),
 );
 

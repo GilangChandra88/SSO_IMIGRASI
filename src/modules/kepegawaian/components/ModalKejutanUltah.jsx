@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { FaPlay, FaRedo } from 'react-icons/fa';
 import Modal from '@/components/Modal';
+import { K } from '../ui/kelas';
 import { T, BTN, FONT, FORM } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
 import { showToast } from '@/utils/toastStore';
@@ -93,7 +94,7 @@ export default function ModalKejutanUltah({ pegawai, uid, onUji, onClose }) {
             type="checkbox"
             checked={kejutan}
             onChange={(e) => setKejutan(e.target.checked)}
-            className="mt-0.5 accent-[#0f2040]"
+            className={K.centang}
           />
           Tampilkan lagi captcha pada login berikutnya
         </label>
@@ -102,7 +103,7 @@ export default function ModalKejutanUltah({ pegawai, uid, onUji, onClose }) {
             type="checkbox"
             checked={hapusUcapan}
             onChange={(e) => setHapusUcapan(e.target.checked)}
-            className="mt-0.5 accent-[#0f2040]"
+            className={K.centang}
           />
           Hapus semua ucapan tahun ini untuk pegawai ini
         </label>
