@@ -17,7 +17,8 @@ function RekapBaris({ node, depth, ctx }) {
   const tutup = tertutup.has(node.id);
   const agg = agregat(node.id);
   const sisa = agg.sisa;
-  const pct = agg.pagu > 0 ? Math.round((agg.realisasi / agg.pagu) * 100) : 0;
+  // Persentase terpakai, selaras dengan kolom Pagu & Sisa (lebih dari 100% bila sisa minus)
+  const pct = agg.pagu > 0 ? Math.round(((agg.pagu - sisa) / agg.pagu) * 100) : 0;
 
   return (
     <>
@@ -70,8 +71,9 @@ function RekapBaris({ node, depth, ctx }) {
 
 /**
  * Tampilan Rekap MAK Setup (MakRekapRow purwarupa): Pagu, Realisasi pada bulan terpilih,
- * Sisa (pagu − terpakai di luar aplikasi − realisasi s.d. bulan terpilih), dan persentase per
- * node. `onAturSisa(node)` (opsional) memunculkan tombol Atur Sisa Awal di baris Item.
+ * Sisa (pagu − terpakai di luar aplikasi − realisasi s.d. bulan terpilih), dan persentase terpakai
+ * ((pagu − sisa) ÷ pagu) per node. `onAturSisa(node)` (opsional) memunculkan tombol Atur Sisa Awal
+ * di baris Item.
  */
 export default function MakRekap({ indeks, agregat, tertutup, onToggle, onAturSisa }) {
   const akar = indeks.anakDari(null);
@@ -91,7 +93,12 @@ export default function MakRekap({ indeks, agregat, tertutup, onToggle, onAturSi
             <span className="min-w-[92px] text-right">Realisasi</span>
             <span className="min-w-[92px] text-right">Sisa</span>
           </span>
-          <span className="min-w-[38px] shrink-0 text-right">%</span>
+          <span
+            className="min-w-[38px] shrink-0 text-right"
+            title="Persentase terpakai: (Pagu − Sisa) ÷ Pagu"
+          >
+            %
+          </span>
           <span className="w-14 shrink-0" />
         </div>
         <div className="max-h-[560px] overflow-y-auto">
