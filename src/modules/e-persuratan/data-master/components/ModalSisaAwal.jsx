@@ -7,7 +7,7 @@ import { ADMIN, FONT, STATUS, T } from '@/utils/uiTokens';
 /**
  * Jendela "Sisa Awal" Item MAK: sisa anggaran sebelum ada realisasi yang tercatat di aplikasi
  * (mis. sisa per SAKTI saat aplikasi mulai dipakai). Disimpan sebagai `realisasiAwal` = pagu − sisa
- * awal, sehingga revisi pagu sesudahnya tetap menambah sisa.
+ * awal, sehingga revisi pagu sesudahnya tetap menambah sisa. Boleh minus (realisasi melampaui pagu).
  * @param {{ id, kode, name, pagu, realisasiAwal }} item  node tampilan MAK Setup
  * @param {number} realisasiAplikasi  total realisasi Item ini setahun (`mak_rekap`)
  * @param {(realisasiAwal: number) => void} onSubmit
@@ -19,16 +19,17 @@ export default function ModalSisaAwal({ item, realisasiAplikasi, onClose, onSubm
   const [galat, setGalat] = useState(false);
 
   const angka = teks.trim() === '' ? NaN : Number(teks);
-  const sah = Number.isInteger(angka) && angka >= 0 && angka <= pagu;
+  const sah = Number.isInteger(angka) && angka <= pagu && pagu - angka <= 1e12;
   const sisaKini = sah ? angka - realisasiAplikasi : null;
+  const rp = (n) => `${n < 0 ? '−' : ''}Rp ${formatRupiah(Math.abs(n))}`;
 
   const baris = [
-    ['Pagu', `Rp ${formatRupiah(pagu)}`, T.ink],
-    ['Terpakai di luar aplikasi', sah ? `Rp ${formatRupiah(pagu - angka)}` : '—', STATUS.warnInk],
-    ['Realisasi tercatat di aplikasi', `Rp ${formatRupiah(realisasiAplikasi)}`, STATUS.warnInk],
+    ['Pagu', rp(pagu), T.ink],
+    ['Terpakai di luar aplikasi', sah ? rp(pagu - angka) : '—', STATUS.warnInk],
+    ['Realisasi tercatat di aplikasi', rp(realisasiAplikasi), STATUS.warnInk],
     [
       'Sisa anggaran saat ini',
-      sisaKini == null ? '—' : `${sisaKini < 0 ? '−' : ''}Rp ${formatRupiah(Math.abs(sisaKini))}`,
+      sisaKini == null ? '—' : rp(sisaKini),
       sisaKini != null && sisaKini < 0 ? STATUS.critInk : STATUS.goodInk,
     ],
   ];
@@ -73,7 +74,6 @@ export default function ModalSisaAwal({ item, realisasiAplikasi, onClose, onSubm
             id="sisa-awal"
             className={`${galat ? ADMIN.inputErr : ADMIN.input} ${FONT.mono}`}
             type="number"
-            min="0"
             max={pagu}
             step="1"
             value={teks}
@@ -86,8 +86,8 @@ export default function ModalSisaAwal({ item, realisasiAplikasi, onClose, onSubm
           />
           <p className={galat ? `${ADMIN.hint} ${STATUS.critInk}` : ADMIN.hint}>
             {galat
-              ? `Isi rupiah bulat dari 0 sampai Rp ${formatRupiah(pagu)}.`
-              : 'Sisa anggaran sebelum ada realisasi yang tercatat di aplikasi (mis. sisa per SAKTI saat aplikasi mulai dipakai). Sama dengan pagu bila belum ada yang terpakai.'}
+              ? `Isi rupiah bulat, paling besar Rp ${formatRupiah(pagu)} (boleh minus).`
+              : 'Sisa anggaran sebelum ada realisasi yang tercatat di aplikasi (mis. sisa per SAKTI saat aplikasi mulai dipakai). Sama dengan pagu bila belum ada yang terpakai; minus bila realisasi sudah melampaui pagu.'}
           </p>
         </div>
         <div className="mt-3">

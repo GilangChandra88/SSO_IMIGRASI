@@ -911,12 +911,22 @@ await cek(
   ),
 );
 await cek(
-  'realisasi awal melebihi pagu',
-  false,
+  'realisasi awal melebihi pagu (Sisa Awal minus)',
+  true,
   buat(
     U.keu,
     'mak_node/M7',
-    { ...nodeTahun, tingkat: 'item', indukId: 'M1', pagu: 1500000, realisasiAwal: 2000000 },
+    { ...nodeTahun, tingkat: 'item', indukId: 'M1', pagu: 1500000, realisasiAwal: 1500634 },
+    AUDIT,
+  ),
+);
+await cek(
+  'realisasi awal negatif',
+  false,
+  buat(
+    U.keu,
+    'mak_node/M9',
+    { ...nodeTahun, tingkat: 'item', indukId: 'M1', pagu: 1500000, realisasiAwal: -1 },
     AUDIT,
   ),
 );
@@ -936,8 +946,8 @@ await cek(
   ubah(U.keu, 'mak_node/M5', { realisasiAwal: 1000000, diubahOleh: 'uKEU' }, ['diubahPada']),
 );
 await cek(
-  'pagu diturunkan di bawah realisasi awal',
-  false,
+  'pagu diturunkan di bawah realisasi awal (Sisa Awal jadi minus)',
+  true,
   ubah(U.keu, 'mak_node/M5', { pagu: 900000, diubahOleh: 'uKEU' }, ['diubahPada']),
 );
 await cek('menulis realisasi dari klien', false, buat(U.keu, 'mak_realisasi/R1', { jumlah: 1 }));

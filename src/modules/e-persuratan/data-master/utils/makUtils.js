@@ -107,14 +107,27 @@ export function parseCSV(text) {
   return result;
 }
 
-/** Rupiah CSV → bilangan bulat ('5000000', '5.000.000', 'Rp 5,000,000'); kosong = null, desimal ditolak. */
-function bacaRupiah(raw, baris, kolom) {
-  const s = String(raw ?? '')
-    .trim()
-    .replace(/^rp\.?\s*/i, '');
-  if (!s) return null;
-  if (/^\d+$|^\d{1,3}([.,]\d{3})+$/.test(s)) return Number(s.replace(/[.,]/g, ''));
-  throw new Error(`Baris ${baris}: ${kolom} "${raw}" tidak sah (isi rupiah bulat, mis. 5000000).`);
+/**
+ * Rupiah CSV → bilangan bulat ('5000000', '5.000.000', 'Rp 5,000,000'); kosong = null, desimal
+ * ditolak. Dengan `bolehMinus`: '-634', '−634', '-Rp 634', 'Rp -634', atau format akuntansi
+ * Excel '(634)'; tanda '-' saja (nol pada format akuntansi) = 0.
+ */
+function bacaRupiah(raw, baris, kolom, { bolehMinus = false } = {}) {
+  const tanpaRp = (t) => t.replace(/^rp\.?\s*/i, '');
+  let s = String(raw ?? '').trim();
+  let minus = false;
+  const kurung = /^\((.*)\)$/.exec(s);
+  if (kurung) [minus, s] = [true, kurung[1].trim()];
+  s = tanpaRp(s);
+  if (/^[-−]/.test(s)) [minus, s] = [true, tanpaRp(s.slice(1).trim())];
+  if (!s) return minus ? 0 : null;
+  if ((!minus || bolehMinus) && /^\d+$|^\d{1,3}([.,]\d{3})+$/.test(s)) {
+    const n = Number(s.replace(/[.,]/g, ''));
+    return minus && n ? -n : n;
+  }
+  throw new Error(
+    `Baris ${baris}: ${kolom} "${raw}" tidak sah (isi rupiah bulat${bolehMinus ? ', boleh minus' : ''}, mis. 5000000).`,
+  );
 }
 
 /**
@@ -122,7 +135,8 @@ function bacaRupiah(raw, baris, kolom) {
  * dan perubahan pagu/Sisa Awal Item yang sudah ada. Node yang cocok (tingkat + induk + kode/nama
  * sama) dipakai ulang. Kolom Tahun wajib sama dengan `tahunAnggaran`; Pagu dan Sisa Awal hanya di
  * tingkat Item. Pagu kosong/0 dan Sisa Awal kosong berarti tidak diubah (Sisa Awal 0 = sudah habis
- * terpakai di luar aplikasi). Sisa Awal disimpan sebagai `realisasiAwal` = pagu − sisa awal.
+ * terpakai di luar aplikasi; minus = realisasi melampaui pagu). Sisa Awal disimpan sebagai
+ * `realisasiAwal` = pagu − sisa awal.
  * Tidak mengubah `nodes`.
  * @param {object[]} nodes  node mak_node tahun itu
  * @param {string} text  isi berkas CSV
@@ -188,7 +202,8 @@ export function rencanaImportCsv(nodes, text, buatId, tahunAnggaran) {
       indukId = terdalam.id;
     });
     const pagu = idxPagu !== -1 ? bacaRupiah(row[idxPagu], baris, 'Pagu') : null;
-    const sisa = idxSisa !== -1 ? bacaRupiah(row[idxSisa], baris, 'Sisa Awal') : null;
+    const sisa =
+      idxSisa !== -1 ? bacaRupiah(row[idxSisa], baris, 'Sisa Awal', { bolehMinus: true }) : null;
     if (!terdalam || (!(pagu > 0) && sisa === null)) return;
     if (terdalam.tingkat !== 'item') {
       throw new Error(`Baris ${baris}: Pagu dan Sisa Awal hanya boleh diisi pada tingkat Item.`);
@@ -206,10 +221,7 @@ export function rencanaImportCsv(nodes, text, buatId, tahunAnggaran) {
         );
       }
       awalBaru = paguBaru - sisa;
-    } else if (paguBaru < awalBaru) {
-      throw new Error(
-        `Baris ${baris}: Pagu ${formatRupiah(paguBaru)} lebih kecil dari anggaran yang sudah terpakai di luar aplikasi (${formatRupiah(awalBaru)}). Isi juga kolom Sisa Awal.`,
-      );
+      if (awalBaru > 1e12) throw new Error(`Baris ${baris}: Sisa Awal terlalu kecil.`);
     }
 
     if (baru.has(id)) {

@@ -43,7 +43,7 @@ function RekapBaris({ node, depth, ctx }) {
           <AngkaBerjalan
             nilai={sisa}
             format={formatRupiah}
-            className={`${NUM} ${STATUS.goodInk}`}
+            className={`${NUM} ${sisa < 0 ? STATUS.critInk : STATUS.goodInk}`}
           />
         </span>
         <AngkaBerjalan nilai={pct} format={persen} className={PCT} />

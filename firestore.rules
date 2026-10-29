@@ -583,7 +583,8 @@ service cloud.firestore {
     function kunciMak() {
       return ['tahunAnggaran', 'tingkat', 'kode', 'nama', 'indukId', 'pagu', 'aktif', 'urutan'].concat(kunciAudit());
     }
-    // realisasiAwal (opsional, tanpa field = 0) = anggaran Item yang terpakai di luar aplikasi
+    // realisasiAwal (opsional, tanpa field = 0) = anggaran Item yang terpakai di luar aplikasi;
+    // boleh melebihi pagu (Sisa Awal minus, mis. realisasi detail POK melampaui pagu Item)
     function kunciMakBoleh() { return kunciMak().concat(['realisasiAwal']); }
     function makSah(d) {
       let awal = d.get('realisasiAwal', 0);
@@ -593,7 +594,7 @@ service cloud.firestore {
         && teksIsi(d.nama, 300)
         && ((d.tingkat == 'tahun' && d.indukId == null) || (d.tingkat != 'tahun' && idSah(d.indukId)))
         && rupiah(d.pagu) && (d.tingkat == 'item' || d.pagu == 0)
-        && rupiah(awal) && awal <= d.pagu
+        && rupiah(awal) && (d.tingkat == 'item' || awal == 0)
         && d.aktif is bool
         && bulat(d.urutan, 0, 99999);
     }

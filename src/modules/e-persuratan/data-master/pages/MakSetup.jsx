@@ -118,12 +118,6 @@ export default function MakSetup() {
     if (tingkat === 'item' && !(Number.isInteger(pagu) && pagu >= 0 && pagu <= 1e12)) {
       throw galatPengguna('Pagu harus berupa rupiah bulat.');
     }
-    const terpakaiLuar = mode === 'edit' ? indeks.byId.get(id)?.realisasiAwal || 0 : 0;
-    if (tingkat === 'item' && pagu < terpakaiLuar) {
-      throw galatPengguna(
-        `Pagu tidak boleh kurang dari anggaran yang sudah terpakai di luar aplikasi (Rp ${formatRupiah(terpakaiLuar)}). Ubah dulu Sisa Awal Item ini di tampilan Rekap.`,
-      );
-    }
     if (mode !== 'edit' && tingkat === 'tahun') {
       if (akarTahun) throw galatPengguna(`Tahun anggaran ${tahun} sudah ada.`);
       if (name !== String(tahun)) {
