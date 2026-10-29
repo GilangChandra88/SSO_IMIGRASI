@@ -1,5 +1,7 @@
 {
   "projects": {
-    "default": "imigrasi-database-v2"
+    "default": "imigrasi-database",
+    "dev": "imigrasi-database",
+    "produksi": "imigrasi-database-v2"
   }
 }
