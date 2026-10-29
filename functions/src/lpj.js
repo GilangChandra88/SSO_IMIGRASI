@@ -15,6 +15,7 @@ const {
   KOLEKSI,
   pemanggil,
   superadmin,
+  wajibPeran,
   idSah,
   teksSah,
   tanggalSah,
@@ -504,4 +505,34 @@ exports.hapusBerkas = onCall(OPSI_CALLABLE, async (req) => {
     });
   }
   return { terhapus: true };
+});
+
+// ─── Dashboard Keuangan ───────────────────────────────────────────────────────
+
+const TAHAP_RINGKAS = ['draft', 'verif', 'sakti', 'transfer', 'arsip', 'drpp', 'selesai'];
+
+/**
+ * Jumlah berkas satu tahun anggaran per tahap dan per jenis untuk Dashboard Keuangan. Kueri
+ * hitung Admin SDK tidak terikat batas 50 dokumen kueri klien, jadi angkanya tepat berapa pun
+ * banyaknya berkas. Hanya membaca. Masukan: { tahunAnggaran }.
+ * Hasil: { tahap: { draft, verif, sakti, transfer, arsip, drpp, selesai }, jenis: { perjadin, nonperjadin } }.
+ */
+exports.hitungTahapLpj = onCall(OPSI_CALLABLE, async (req) => {
+  const p = pemanggil(req);
+  wajibPeran(p, 'keuangan');
+  const tahunAnggaran = Number(req.data?.tahunAnggaran);
+  if (!Number.isInteger(tahunAnggaran) || tahunAnggaran < 2024 || tahunAnggaran > 2100) {
+    throw new HttpsError('invalid-argument', 'Tahun anggaran tidak sah.');
+  }
+  const tahunIni = db.collection(KOLEKSI.lpjRingkas).where('tahunAnggaran', '==', tahunAnggaran);
+  const hitung = (q) => q.count().get().then((s) => s.data().count);
+  const [perTahap, perjadinN, nonperjadinN] = await Promise.all([
+    Promise.all(TAHAP_RINGKAS.map((t) => hitung(tahunIni.where('tahap', '==', t)))),
+    hitung(tahunIni.where('jenis', '==', 'perjadin')),
+    hitung(tahunIni.where('jenis', '==', 'nonperjadin')),
+  ]);
+  return {
+    tahap: Object.fromEntries(TAHAP_RINGKAS.map((t, i) => [t, perTahap[i]])),
+    jenis: { perjadin: perjadinN, nonperjadin: nonperjadinN },
+  };
 });

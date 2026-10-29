@@ -2,8 +2,9 @@
 // Uji alur Cloud Functions LPJ, MAK, Persuratan & Inventory (P3–P6) di Firebase Emulator (proyek demo, tidak
 // menyentuh cloud): buat berkas → kunci SP/TTE/SPD lewat rules → selesaikanSpby (nomor + realisasi
 // + rekap) → Keuangan → hapusBerkas; Batal/Pulihkan realisasi, revisi pagu, hapus node MAK; DRPP;
-// nomor surat (terbitkanNomorSurat, aturPenghitung, nomor SP Srikandi); lalu Inventory (catat,
-// ubah, batalkan transaksi, tutup buku, ganti kode SAKTI).
+// jumlah per tahap Dashboard Keuangan (hitungTahapLpj); nomor surat (terbitkanNomorSurat,
+// aturPenghitung, nomor SP Srikandi); lalu Inventory (catat, ubah, batalkan transaksi, tutup buku,
+// ganti kode SAKTI).
 // Butuh emulator auth + firestore + functions (lihat docs/skema-database.md §10).
 // Jalankan: node scripts/uji-lpj.mjs
 const P = 'demo-imigrasi';
@@ -777,6 +778,44 @@ cek(
   'arsip ulang otomatis masuk lagi ke DRPP yang mencantumkannya',
   !!d7 && r7?.keuangan?.drppId === drppId2,
   JSON.stringify({ masuk: d7?.masuk, r7: r7?.keuangan }),
+);
+
+// ── Dashboard Keuangan: hitungTahapLpj ───────────────────────────────────
+cek(
+  'pegawai meminta jumlah per tahap ditolak',
+  (await panggil('hitungTahapLpj', { tahunAnggaran: T }, T0.pg)).galat === 'PERMISSION_DENIED',
+);
+cek(
+  'jumlah per tahap dengan tahun anggaran tidak sah ditolak',
+  (await panggil('hitungTahapLpj', { tahunAnggaran: 'semua' }, T0.keu)).galat ===
+    'INVALID_ARGUMENT',
+);
+const ringkasT = await daftar('lpj_ringkas', ['tahunAnggaran', T]);
+const harapTahap = Object.fromEntries(
+  ['draft', 'verif', 'sakti', 'transfer', 'arsip', 'drpp', 'selesai'].map((t) => [
+    t,
+    ringkasT.filter((x) => x.tahap === t).length,
+  ]),
+);
+const harapJenis = {
+  perjadin: ringkasT.filter((x) => x.jenis === 'perjadin').length,
+  nonperjadin: ringkasT.filter((x) => x.jenis === 'nonperjadin').length,
+};
+const hitungKeu = await panggil('hitungTahapLpj', { tahunAnggaran: T }, T0.keu);
+const hitungSa = await panggil('hitungTahapLpj', { tahunAnggaran: T }, T0.sa);
+cek(
+  'Keuangan & Super Admin: jumlah per tahap dan per jenis sama dengan isi lpj_ringkas',
+  ringkasT.length > 0 &&
+    JSON.stringify(hitungKeu.hasil) === JSON.stringify({ tahap: harapTahap, jenis: harapJenis }) &&
+    JSON.stringify(hitungSa.hasil) === JSON.stringify(hitungKeu.hasil),
+  JSON.stringify({ keu: hitungKeu, sa: hitungSa, harapTahap, harapJenis }),
+);
+const hitungKosong = await panggil('hitungTahapLpj', { tahunAnggaran: T + 1 }, T0.keu);
+cek(
+  'tahun anggaran tanpa berkas → semua nol',
+  Object.values(hitungKosong.hasil?.tahap || { x: 1 }).every((n) => n === 0) &&
+    hitungKosong.hasil?.jenis?.perjadin === 0,
+  JSON.stringify(hitungKosong),
 );
 
 // ── Persuratan ────────────────────────────────────────────────────────────
