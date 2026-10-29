@@ -223,6 +223,13 @@ const panggil = (nama, data) => httpsCallable(functions, nama)(data).then((hasil
 export const selesaikanSpby = (berkasId) => panggil('selesaikanSpby', { berkasId });
 
 /**
+ * Jumlah berkas satu tahun anggaran per tahap dan per jenis (Keuangan; dihitung di server, tidak
+ * terbatas 50 seperti kueri hitung klien).
+ * @returns {Promise<{ tahap: Record<string, number>, jenis: { perjadin: number, nonperjadin: number } }>}
+ */
+export const hitungTahapLpj = (tahunAnggaran) => panggil('hitungTahapLpj', { tahunAnggaran });
+
+/**
  * Hapus berkas beserta subkoleksi dan berkas Storage-nya (draf: pembuat/Super Admin; bernomor:
  * Super Admin + alasan, realisasinya dibatalkan). Listener berkas ini dihentikan dulu, karena
  * listener dokumen yang terhapus ditolak rules.

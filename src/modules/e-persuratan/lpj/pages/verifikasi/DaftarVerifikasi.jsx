@@ -7,7 +7,8 @@
  *   Transfer     → jendela unggah bukti transfer
  *   Arsip        → jendela unggah pindaian berkas; setelah itu berkas pindah ke menu Arsip
  * Daftar tiap tab dibaca dari `lpj_ringkas` (tahap dihitung Function, 50 per halaman); jumlah per
- * tab lewat kueri hitung. Tab aktif tersimpan di URL (?tab=).
+ * tab lewat kueri hitung. Tab aktif tersimpan di URL (?tab=). Dibuka dengan state `{ buka: id }`
+ * (dari Dashboard) → jendela aksi berkas itu langsung terbuka bila berkasnya masih di tab ini.
  */
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -30,7 +31,6 @@ import {
   jenisLabel,
   lpjIdLabel,
   lpjIdOf,
-  lpjRowTotal,
   pelaksanaOf,
   rupiah,
   stagesWithStatus,
@@ -42,6 +42,7 @@ import {
   cocokCari,
   labelTahap,
   nominalBerkas,
+  nominalRingkas,
   tanggalUrut,
   verifOf,
 } from '../../utils/verifikasiLogic';
@@ -70,9 +71,6 @@ function faseBerjalan(r) {
   const cur = list.find((s) => s.raw !== 'selesai') || list[list.length - 1];
   return { teks: `Fase ${cur.stage.num}/${list.length} — ${cur.stage.label}`, list };
 }
-
-/** Nominal baris: total setelah koreksi Keuangan bila verifikasi sudah selesai. */
-const nominalBaris = (r) => r.keuangan?.totalVerifikasi ?? lpjRowTotal(r);
 
 export default function DaftarVerifikasi() {
   const navigate = useNavigate();
@@ -118,6 +116,20 @@ export default function DaftarVerifikasi() {
   }, [location.state, location.pathname, location.search, navigate]);
   useEffect(() => () => clearTimeout(sorotTimer.current), []);
   const tutupInfo = useCallback(() => setInfo(null), []);
+
+  // Dibuka dari Dashboard (state `buka`): jendela aksi berkas itu terbuka setelah tab termuat
+  const bukaId = location.state?.buka;
+  const bukaTerakhir = useRef(null);
+  useEffect(() => {
+    if (!bukaId || loading || bukaTerakhir.current === bukaId) return;
+    bukaTerakhir.current = bukaId;
+    if (daftarTab.some((r) => r.id === bukaId) && ['sakti', 'transfer', 'arsip'].includes(tab)) {
+      setJendela({ jenis: tab, id: bukaId });
+    } else {
+      showToast('Berkas itu sudah tidak berada di tahap ini.', 'error');
+    }
+    navigate(`${location.pathname}${location.search}`, { replace: true, state: null });
+  }, [bukaId, loading, daftarTab, tab, showToast, navigate, location.pathname, location.search]);
 
   // Jumlah tiap tab dari server (pencarian & filter jenis hanya menyaring tab yang dibuka)
   const jumlah = Object.fromEntries(
@@ -370,7 +382,7 @@ export default function DaftarVerifikasi() {
                     <span
                       className={`font-bold text-[13px] max-md:text-[15px] whitespace-nowrap ${T.ink}`}
                     >
-                      {rupiah(nominalBaris(r))}
+                      {rupiah(nominalRingkas(r))}
                     </span>
                   </td>
                   <td

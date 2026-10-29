@@ -11,6 +11,7 @@ import {
   ambilRingkas,
   ambilRingkasBerikutnya,
   hitungRingkas,
+  hitungTahapLpj,
   kueriBukti,
   kueriRingkas,
   kueriRiwayat,
@@ -103,6 +104,32 @@ export function useJumlahTahap({ tahunAnggaran, daftarTahap, segar = '' }) {
     };
   }, [tahunAnggaran, kunci, segar]);
   return jumlah;
+}
+
+/**
+ * Jumlah berkas per tahap & per jenis satu tahun anggaran (Dashboard Keuangan) lewat Function
+ * `hitungTahapLpj` — tepat berapa pun banyaknya berkas. Dihitung ulang saat `segar` berubah.
+ * Nonaktif (tanpa panggilan) bila `aktif` false.
+ * @returns {{ rekap: { tahap: Record<string, number>, jenis: object } | null, galat: boolean }}
+ */
+export function useRekapTahap({ tahunAnggaran, aktif = true, segar = 0 }) {
+  const [hasil, setHasil] = useState({ rekap: null, galat: false });
+  useEffect(() => {
+    if (!aktif || !tahunAnggaran) return undefined;
+    let hidup = true;
+    hitungTahapLpj(tahunAnggaran).then(
+      (rekap) => hidup && setHasil({ rekap, galat: false }),
+      () => {
+        if (!hidup) return;
+        setHasil((h) => ({ ...h, galat: true }));
+        showToast('Tidak punya akses atau gagal memuat jumlah berkas per tahap.', 'error');
+      },
+    );
+    return () => {
+      hidup = false;
+    };
+  }, [tahunAnggaran, aktif, segar]);
+  return hasil;
 }
 
 /**

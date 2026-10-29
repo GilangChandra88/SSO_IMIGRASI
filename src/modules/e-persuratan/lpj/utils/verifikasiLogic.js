@@ -12,7 +12,15 @@
  * Transfer → Arsip; setelah arsip selesai berkas pindah ke menu Arsip (DRPP).
  */
 
-import { isPerjadin, lpjIdOf, makOf, pelaksanaOf, transaksiOf, uraianOf } from './lpjLogic';
+import {
+  isPerjadin,
+  lpjIdOf,
+  lpjRowTotal,
+  makOf,
+  pelaksanaOf,
+  transaksiOf,
+  uraianOf,
+} from './lpjLogic';
 
 export const TAHAP = [
   { key: 'draft', label: 'Draft', kosong: 'Belum ada berkas yang belum memiliki ID LPJ.' },
@@ -45,6 +53,9 @@ export function tahapDariKeuangan(k) {
  * null bila sudah diarsipkan (menunggu/masuk DRPP → tampil di menu Arsip).
  */
 export const tahapBerkas = (r) => (TAHAP_KEYS.includes(r?.tahap) ? r.tahap : null);
+
+/** Nominal berkas ringkas: total setelah koreksi Keuangan bila verifikasi sudah selesai. */
+export const nominalRingkas = (r) => r?.keuangan?.totalVerifikasi ?? lpjRowTotal(r);
 
 /** Cocok dengan ID LPJ, pelaksana, uraian, atau no. kwitansi SAKTI (dokumen ringkas). */
 export function cocokCari(r, q) {
