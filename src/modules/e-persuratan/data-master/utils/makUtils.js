@@ -4,6 +4,7 @@
  */
 
 import { PANJANG } from '@/utils/batas';
+import { formatRupiah } from '@/utils/nilai';
 import { LABEL_TINGKAT, TINGKAT_MAK } from '../../makPohon';
 
 /** Label tingkat dari Tahun sampai Item (urutan StrukturHierarki). */
@@ -32,12 +33,13 @@ export function formatTanggalID(str) {
 }
 
 /**
- * Pagu & realisasi per node (makComputeAgg purwarupa). Node tanpa anak: pagu sendiri (hanya Item
- * yang berpagu) dan realisasi bulan itu dari mak_rekap; node berinduk menjumlahkan anak-anaknya.
+ * Pagu, realisasi, & sisa per node (makComputeAgg purwarupa). Node tanpa anak: pagu sendiri (hanya
+ * Item yang berpagu), realisasi bulan itu dari mak_rekap, dan sisa = pagu − terpakai di luar
+ * aplikasi (`realisasiAwal`) − realisasi Januari s.d. bulan itu; node berinduk menjumlahkan anaknya.
  * @param {{ byId: Map, anakDari: (id) => object[] }} indeks  indeks node tampilan
  * @param {{ item?: Record<string, { real?: Record<string, number> }> } | null} rekap
  * @param {number} bulan  1–12
- * @returns {(id: string) => { pagu: number, realisasi: number }}
+ * @returns {(id: string) => { pagu: number, realisasi: number, sisa: number }}
  */
 export function buatAgregat(indeks, rekap, bulan) {
   const memo = new Map();
@@ -46,16 +48,23 @@ export function buatAgregat(indeks, rekap, bulan) {
     const anak = indeks.anakDari(id);
     let hasil;
     if (anak.length === 0) {
+      const node = indeks.byId.get(id);
+      const real = rekap?.item?.[id]?.real || {};
+      const pagu = Number(node?.pagu) || 0;
+      let sampaiBulan = 0;
+      for (let b = 1; b <= bulan; b++) sampaiBulan += Number(real[b]) || 0;
       hasil = {
-        pagu: Number(indeks.byId.get(id)?.pagu) || 0,
-        realisasi: Number(rekap?.item?.[id]?.real?.[bulan]) || 0,
+        pagu,
+        realisasi: Number(real[bulan]) || 0,
+        sisa: pagu - (Number(node?.realisasiAwal) || 0) - sampaiBulan,
       };
     } else {
-      hasil = { pagu: 0, realisasi: 0 };
+      hasil = { pagu: 0, realisasi: 0, sisa: 0 };
       anak.forEach((c) => {
         const a = hitung(c.id);
         hasil.pagu += a.pagu;
         hasil.realisasi += a.realisasi;
+        hasil.sisa += a.sisa;
       });
     }
     memo.set(id, hasil);
@@ -98,25 +107,27 @@ export function parseCSV(text) {
   return result;
 }
 
-/** Pagu CSV → rupiah bulat ('5000000', '5.000.000', 'Rp 5,000,000'); desimal ditolak. */
-function bacaPagu(raw, baris) {
+/** Rupiah CSV → bilangan bulat ('5000000', '5.000.000', 'Rp 5,000,000'); kosong = null, desimal ditolak. */
+function bacaRupiah(raw, baris, kolom) {
   const s = String(raw ?? '')
     .trim()
     .replace(/^rp\.?\s*/i, '');
-  if (!s) return 0;
+  if (!s) return null;
   if (/^\d+$|^\d{1,3}([.,]\d{3})+$/.test(s)) return Number(s.replace(/[.,]/g, ''));
-  throw new Error(`Baris ${baris}: Pagu "${raw}" tidak sah (isi rupiah bulat, mis. 5000000).`);
+  throw new Error(`Baris ${baris}: ${kolom} "${raw}" tidak sah (isi rupiah bulat, mis. 5000000).`);
 }
 
 /**
  * Rencana Import CSV MAK untuk SATU tahun anggaran: node baru (Tahun → Item, format "KODE - NAMA")
- * dan perubahan pagu Item yang sudah ada. Node yang cocok (tingkat + induk + kode/nama sama)
- * dipakai ulang. Kolom Tahun wajib sama dengan `tahunAnggaran`; pagu hanya di tingkat Item.
+ * dan perubahan pagu/Sisa Awal Item yang sudah ada. Node yang cocok (tingkat + induk + kode/nama
+ * sama) dipakai ulang. Kolom Tahun wajib sama dengan `tahunAnggaran`; Pagu dan Sisa Awal hanya di
+ * tingkat Item. Pagu kosong/0 dan Sisa Awal kosong berarti tidak diubah (Sisa Awal 0 = sudah habis
+ * terpakai di luar aplikasi). Sisa Awal disimpan sebagai `realisasiAwal` = pagu − sisa awal.
  * Tidak mengubah `nodes`.
  * @param {object[]} nodes  node mak_node tahun itu
  * @param {string} text  isi berkas CSV
  * @param {() => string} buatId  pembuat id dokumen baru
- * @returns {{ baru: object[], ubahPagu: [string, number][] }}
+ * @returns {{ baru: object[], ubah: [string, { pagu?: number, realisasiAwal?: number }][] }}
  */
 export function rencanaImportCsv(nodes, text, buatId, tahunAnggaran) {
   const parsed = parseCSV(text);
@@ -125,13 +136,14 @@ export function rencanaImportCsv(nodes, text, buatId, tahunAnggaran) {
   const headers = parsed[0].map((h) => h.trim().toLowerCase());
   const indices = TINGKAT_MAK.map((t) => headers.indexOf(LABEL_TINGKAT[t].toLowerCase()));
   const idxPagu = headers.indexOf('pagu');
+  const idxSisa = headers.indexOf('sisa awal');
   if (indices[0] === -1 || indices[indices.length - 1] === -1) {
     throw new Error('Format kolom tidak sesuai template.');
   }
 
   const kerja = [...nodes];
   const baru = new Map();
-  const ubahPagu = new Map();
+  const ubah = new Map();
   parsed.slice(1).forEach((row, i) => {
     const baris = i + 2;
     const sel = (row[indices[0]] || '').trim();
@@ -175,20 +187,47 @@ export function rencanaImportCsv(nodes, text, buatId, tahunAnggaran) {
       }
       indukId = terdalam.id;
     });
-    const pagu = idxPagu !== -1 ? bacaPagu(row[idxPagu], baris) : 0;
-    if (!terdalam || !(pagu > 0)) return;
+    const pagu = idxPagu !== -1 ? bacaRupiah(row[idxPagu], baris, 'Pagu') : null;
+    const sisa = idxSisa !== -1 ? bacaRupiah(row[idxSisa], baris, 'Sisa Awal') : null;
+    if (!terdalam || (!(pagu > 0) && sisa === null)) return;
     if (terdalam.tingkat !== 'item') {
-      throw new Error(`Baris ${baris}: Pagu hanya boleh diisi pada tingkat Item.`);
+      throw new Error(`Baris ${baris}: Pagu dan Sisa Awal hanya boleh diisi pada tingkat Item.`);
     }
-    if (baru.has(terdalam.id)) baru.get(terdalam.id).pagu = pagu;
-    else if (Number(terdalam.pagu) !== pagu) ubahPagu.set(terdalam.id, pagu);
+
+    // Nilai sekarang = node + perubahan dari baris sebelumnya (Item yang sama bisa muncul lagi)
+    const id = terdalam.id;
+    const sekarang = baru.has(id) ? terdalam : { ...terdalam, ...ubah.get(id) };
+    const paguBaru = pagu > 0 ? pagu : Number(sekarang.pagu) || 0;
+    let awalBaru = Number(sekarang.realisasiAwal) || 0;
+    if (sisa !== null) {
+      if (sisa > paguBaru) {
+        throw new Error(
+          `Baris ${baris}: Sisa Awal (${formatRupiah(sisa)}) melebihi Pagu (${formatRupiah(paguBaru)}).`,
+        );
+      }
+      awalBaru = paguBaru - sisa;
+    } else if (paguBaru < awalBaru) {
+      throw new Error(
+        `Baris ${baris}: Pagu ${formatRupiah(paguBaru)} lebih kecil dari anggaran yang sudah terpakai di luar aplikasi (${formatRupiah(awalBaru)}). Isi juga kolom Sisa Awal.`,
+      );
+    }
+
+    if (baru.has(id)) {
+      Object.assign(terdalam, { pagu: paguBaru, realisasiAwal: awalBaru });
+      return;
+    }
+    const perubahan = {};
+    if (paguBaru !== Number(terdalam.pagu)) perubahan.pagu = paguBaru;
+    if (awalBaru !== (Number(terdalam.realisasiAwal) || 0)) perubahan.realisasiAwal = awalBaru;
+    if (Object.keys(perubahan).length) ubah.set(id, perubahan);
+    else ubah.delete(id);
   });
-  return { baru: [...baru.values()], ubahPagu: [...ubahPagu] };
+  return { baru: [...baru.values()], ubah: [...ubah] };
 }
 
 /** Isi berkas Template_Import_MAK.csv (contoh kode anggaran umum, bukan data pribadi). */
 export function templateCsvMak(tahun) {
-  const header = [...HIERARKI_MAK, 'Pagu'];
+  const header = [...HIERARKI_MAK, 'Pagu', 'Sisa Awal'];
   const contoh = [
     String(tahun),
     '054.01.WA - Program Dukungan Manajemen',
@@ -200,6 +239,7 @@ export function templateCsvMak(tahun) {
     '524111 - Belanja Perjalanan Dinas Biasa',
     '000001 - Perjalanan Dinas Dalam Kota',
     '5000000',
+    '3500000',
   ];
   return [header.join(','), `"${contoh.join('","')}"`].join('\n');
 }

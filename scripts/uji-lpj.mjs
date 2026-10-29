@@ -557,6 +557,24 @@ cek(
     logPagu[0].nilaiBaru?.pagu === 2000000,
   JSON.stringify(logPagu),
 );
+r = await tulis(
+  T0.keu,
+  'mak_node/I3',
+  { realisasiAwal: 500000, diubahOleh: AKUN.keu.uid },
+  { ubah: true, waktu: ['diubahPada'] },
+);
+cek('Keuangan mengisi Sisa Awal Item (rules)', r === true, r);
+const logAwal = await sampai(async () => {
+  const l = await daftar('sistem_log', ['aksi', 'ubahRealisasiAwal']);
+  return l.length ? l : null;
+});
+cek(
+  'Sisa Awal tercatat di sistem_log (terpakai di luar aplikasi 0 → 500 ribu)',
+  logAwal?.length === 1 &&
+    logAwal[0].nilaiLama?.realisasiAwal === 0 &&
+    logAwal[0].nilaiBaru?.realisasiAwal === 500000,
+  JSON.stringify(logAwal),
+);
 
 cek(
   'pegawai menghapus node MAK ditolak',

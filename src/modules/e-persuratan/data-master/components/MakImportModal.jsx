@@ -47,7 +47,9 @@ export default function MakImportModal({
           <span>
             Gunakan template CSV yang disediakan. Format kode &amp; nama:{' '}
             <strong>KODE - NAMA</strong>. Kolom Tahun harus sama dengan tahun anggaran yang dipilih,
-            dan Pagu (rupiah bulat) hanya diisi di level Item.
+            dan Pagu (rupiah bulat) hanya diisi di level Item. Kolom <strong>Sisa Awal</strong>{' '}
+            (opsional, level Item) = sisa anggaran sebelum ada realisasi yang tercatat di aplikasi;
+            kosongkan bila tidak ingin mengubahnya.
             <button
               type="button"
               onClick={onDownloadTemplate}

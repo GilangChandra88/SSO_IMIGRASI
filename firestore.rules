@@ -583,13 +583,17 @@ service cloud.firestore {
     function kunciMak() {
       return ['tahunAnggaran', 'tingkat', 'kode', 'nama', 'indukId', 'pagu', 'aktif', 'urutan'].concat(kunciAudit());
     }
+    // realisasiAwal (opsional, tanpa field = 0) = anggaran Item yang terpakai di luar aplikasi
+    function kunciMakBoleh() { return kunciMak().concat(['realisasiAwal']); }
     function makSah(d) {
+      let awal = d.get('realisasiAwal', 0);
       return tahun(d.tahunAnggaran)
         && d.tingkat in ['tahun', 'program', 'kegiatan', 'kro', 'output', 'komponen', 'subkomponen', 'akun', 'item']
         && teks(d.kode, 40)
         && teksIsi(d.nama, 300)
         && ((d.tingkat == 'tahun' && d.indukId == null) || (d.tingkat != 'tahun' && idSah(d.indukId)))
         && rupiah(d.pagu) && (d.tingkat == 'item' || d.pagu == 0)
+        && rupiah(awal) && awal <= d.pagu
         && d.aktif is bool
         && bulat(d.urutan, 0, 99999);
     }
@@ -600,9 +604,9 @@ service cloud.firestore {
       allow get: if masuk();
       allow list: if masuk() && batasDaftar(5000);
       allow create: if keuangan()
-        && hanya(kunciMak()) && wajib(kunciMak()) && makSah(baru()) && tahunTerbuka(baru()) && auditBuat();
+        && hanya(kunciMakBoleh()) && wajib(kunciMak()) && makSah(baru()) && tahunTerbuka(baru()) && auditBuat();
       allow update: if keuangan()
-        && hanya(kunciMak())
+        && hanya(kunciMakBoleh())
         && !berubah().hasAny(['tahunAnggaran', 'tingkat', 'indukId'])
         && makSah(baru()) && tahunTerbuka(lama()) && auditUbah();
       allow delete: if false; // lewat Function hapusNodeMak (node tanpa realisasi)

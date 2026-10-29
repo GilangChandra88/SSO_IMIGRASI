@@ -228,7 +228,8 @@ export const dokDicetak = (verif, key) => !!verif.dicetak?.[key];
 /**
  * POK Terakhir (sisa pagu Item sebelum tagihan ini). Konteks `mak`:
  *   - sebelum verifikasi selesai: { byId (node MAK), rekap (mak_rekap tahun itu),
- *     milikSendiri: { [itemNodeId]: realisasi berkas ini } } → pagu − (total − milikSendiri);
+ *     milikSendiri: { [itemNodeId]: realisasi berkas ini } } → pagu − terpakai di luar aplikasi
+ *     (`realisasiAwal`) − (total − milikSendiri);
  *   - sesudahnya: { pok } (= pokBeku, dibekukan saat verifikasi).
  * null bila Item tidak ditemukan.
  */
@@ -237,7 +238,8 @@ export function pokItem(mak, nodeId) {
   const node = mak?.byId?.[nodeId];
   if (!node) return null;
   const total = Number(mak.rekap?.item?.[nodeId]?.total) || 0;
-  return (Number(node.pagu) || 0) - (total - (mak.milikSendiri?.[nodeId] || 0));
+  const terpakaiLuar = Number(node.realisasiAwal) || 0;
+  return (Number(node.pagu) || 0) - terpakaiLuar - (total - (mak.milikSendiri?.[nodeId] || 0));
 }
 
 /** Kode & nama Item dari node MAK (cadangan: salinan di baris transaksi). */

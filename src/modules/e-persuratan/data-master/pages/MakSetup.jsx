@@ -2,6 +2,7 @@
  * MAK Setup (MakSetupPage purwarupa admin) untuk Keuangan: Struktur MAK satu tahun anggaran
  * (`mak_node`) dengan tampilan Rekap/Pohon/Explorer/Kolom, Import CSV, Copy Tahun, dan DIPA.
  * Realisasi di Rekap dibaca dari `mak_rekap` (ditulis Cloud Function), bukan dihitung dari riwayat.
+ * Sisa Awal Item (anggaran yang terpakai di luar aplikasi) diatur dari baris Item di Rekap.
  * Hapus node lewat Function: node yang sudah dipakai realisasi dinonaktifkan, bukan dihapus.
  */
 import React, { useMemo, useRef, useState } from 'react';
@@ -29,8 +30,10 @@ import KartuDipa from '../components/KartuDipa';
 import MakCopyModal from '../components/MakCopyModal';
 import MakImportModal from '../components/MakImportModal';
 import MakRekap from '../components/MakRekap';
+import ModalSisaAwal from '../components/ModalSisaAwal';
 import { useRekapMak } from '../hooks/useMakData';
 import {
+  aturRealisasiAwal,
   hapusNodeMak,
   idNodeBaru,
   salinTahun,
@@ -65,6 +68,7 @@ export default function MakSetup() {
   const [rekapTertutup, setRekapTertutup] = useState(() => new Set());
   const [copyKe, setCopyKe] = useState(null); // null = jendela tertutup
   const [importOpen, setImportOpen] = useState(false);
+  const [sisaItem, setSisaItem] = useState(null); // node Item yang Sisa Awal-nya diatur
   const [sibuk, setSibuk] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -86,6 +90,7 @@ export default function MakSetup() {
         type: LABEL_TINGKAT[n.tingkat],
         parentId: n.indukId ?? null,
         pagu: n.pagu,
+        realisasiAwal: Number(n.realisasiAwal) || 0,
         aktif: n.aktif !== false,
       })),
     [nodes],
@@ -112,6 +117,12 @@ export default function MakSetup() {
       throw galatPengguna(`Nama maksimal ${PANJANG.namaMak} karakter.`);
     if (tingkat === 'item' && !(Number.isInteger(pagu) && pagu >= 0 && pagu <= 1e12)) {
       throw galatPengguna('Pagu harus berupa rupiah bulat.');
+    }
+    const terpakaiLuar = mode === 'edit' ? indeks.byId.get(id)?.realisasiAwal || 0 : 0;
+    if (tingkat === 'item' && pagu < terpakaiLuar) {
+      throw galatPengguna(
+        `Pagu tidak boleh kurang dari anggaran yang sudah terpakai di luar aplikasi (Rp ${formatRupiah(terpakaiLuar)}). Ubah dulu Sisa Awal Item ini di tampilan Rekap.`,
+      );
     }
     if (mode !== 'edit' && tingkat === 'tahun') {
       if (akarTahun) throw galatPengguna(`Tahun anggaran ${tahun} sudah ada.`);
@@ -209,7 +220,7 @@ export default function MakSetup() {
       await simpanImport(rencana, uid);
       setImportOpen(false);
       showToast(
-        `Import CSV berhasil: ${rencana.baru.length} data baru, ${rencana.ubahPagu.length} pagu diperbarui.`,
+        `Import CSV berhasil: ${rencana.baru.length} data baru, ${rencana.ubah.length} Item diperbarui (pagu/Sisa Awal).`,
       );
     } catch (err) {
       showToast(pesanGalat(err, 'Gagal menyimpan hasil import.'), 'error');
@@ -225,6 +236,19 @@ export default function MakSetup() {
     } catch (err) {
       showToast(pesanGalat(err, 'Gagal menyimpan DIPA.'), 'error');
       throw err;
+    }
+  };
+
+  const simpanSisaAwal = async (realisasiAwal) => {
+    setSibuk(true);
+    try {
+      await aturRealisasiAwal(sisaItem.id, realisasiAwal, uid);
+      showToast(`Sisa Awal ${sisaItem.kode || sisaItem.name} tersimpan.`);
+      setSisaItem(null);
+    } catch (err) {
+      showToast(pesanGalat(err, 'Gagal menyimpan Sisa Awal.'), 'error');
+    } finally {
+      setSibuk(false);
     }
   };
 
@@ -292,7 +316,13 @@ export default function MakSetup() {
     label: 'Rekap',
     icon: FaTable,
     render: () => (
-      <MakRekap indeks={indeks} agregat={agregat} tertutup={rekapTertutup} onToggle={toggleRekap} />
+      <MakRekap
+        indeks={indeks}
+        agregat={agregat}
+        tertutup={rekapTertutup}
+        onToggle={toggleRekap}
+        onAturSisa={terbuka ? setSisaItem : undefined}
+      />
     ),
   };
 
@@ -300,8 +330,11 @@ export default function MakSetup() {
     const a = agregat(node.id);
     return [
       ['Pagu', `Rp ${formatRupiah(a.pagu)}`],
+      ...(node.realisasiAwal > 0
+        ? [['Terpakai di luar aplikasi', `Rp ${formatRupiah(node.realisasiAwal)}`]]
+        : []),
       ['Realisasi', `Rp ${formatRupiah(a.realisasi)}`],
-      ['Sisa', `Rp ${formatRupiah(a.pagu - a.realisasi)}`],
+      ['Sisa', `Rp ${formatRupiah(a.sisa)}`],
     ];
   };
 
@@ -339,8 +372,10 @@ export default function MakSetup() {
             </div>
           )}
 
+          {/* Kunci harus beda dengan StrukturHierarki di bawah: kunci kembar dalam satu induk
+              membuat kartu lama tidak dibuang React sehingga menumpuk setiap ganti tahun. */}
           <KartuDipa
-            key={tahun}
+            key={`dipa-${tahun}`}
             tahun={tahun}
             tahunNodeId={akarTahun?.id || ''}
             dipa={dipa}
@@ -352,7 +387,7 @@ export default function MakSetup() {
             <p className={ADMIN.empty}>Memuat struktur MAK...</p>
           ) : (
             <StrukturHierarki
-              key={tahun}
+              key={`struktur-${tahun}`}
               nodes={tampil}
               hierarchy={HIERARKI_MAK}
               denganPagu
@@ -384,6 +419,15 @@ export default function MakSetup() {
           onClose={() => setImportOpen(false)}
           onDownloadTemplate={downloadTemplate}
           onSubmit={prosesImport}
+          sibuk={sibuk}
+        />
+      )}
+      {sisaItem && (
+        <ModalSisaAwal
+          item={sisaItem}
+          realisasiAplikasi={Number(rekap?.item?.[sisaItem.id]?.total) || 0}
+          onClose={() => setSisaItem(null)}
+          onSubmit={simpanSisaAwal}
           sibuk={sibuk}
         />
       )}

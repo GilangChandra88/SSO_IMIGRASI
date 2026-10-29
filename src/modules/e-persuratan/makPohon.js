@@ -1,7 +1,7 @@
 /**
  * Pembantu pohon MAK (`mak_node`, docs/skema-database.md §5.3) untuk seluruh e-Persuratan:
  * MAK Setup, pilihan MAK di form LPJ/surat, dan verifikasi.
- * Node: { id, tahunAnggaran, tingkat, kode, nama, indukId, pagu, aktif, urutan }.
+ * Node: { id, tahunAnggaran, tingkat, kode, nama, indukId, pagu, realisasiAwal?, aktif, urutan }.
  */
 
 /** Tingkat dari akar ke daun (kode yang disimpan di field `tingkat`). */
