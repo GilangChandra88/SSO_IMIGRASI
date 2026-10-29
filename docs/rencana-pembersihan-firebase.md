@@ -27,8 +27,8 @@ Jalur A dipilih. Proyek produksi baru: **`imigrasi-database-v2`** (aplikasi web 
 | A7 App Check                              | ✅ reCAPTCHA Enterprise, kunci **berbasis skor** (nilainya di `VITE_FIREBASE_APPCHECK_SITE_KEY` dan Console App Check; tidak ditulis di repo publik) untuk domain `sso-imigrasi.vercel.app`, TTL token 4 jam. Token debug `localhost` terdaftar (cabut sebelum go-live). Penegakan Firestore/Storage belum (go-live); callable sudah mewajibkan App Check |
 | A8 Rules                                  | ✅ `firestore.rules` dan `storage.rules` terpasang (27 Okt 2026), termasuk peran IAM untuk aturan lintas layanan Storage → Firestore                                                                                                                                                                                                                      |
 | A9 IAM                                    | ✅ Hanya 1 pemilik, tanpa kunci _service account_                                                                                                                                                                                                                                                                                                         |
-| A10 Hapus proyek lama `imigrasi-database` | ⏳                                                                                                                                                                                                                                                                                                                                                        |
-| A11 Vercel                                | ⏳ Domain sementara `https://sso-imigrasi.vercel.app` (domain kantor menyusul, lihat "Bila domain berubah")                                                                                                                                                                                                                                               |
+| A10 Hapus proyek lama `imigrasi-database` | ✖️ Tidak jadi: proyek dipakai ulang sebagai proyek dev (A12, 29 Okt 2026)                                                                                                                                                                                                                                                                                 |
+| A11 Vercel                                | ⏳ Domain sementara `https://sso-imigrasi.vercel.app` (domain kantor menyusul, lihat "Bila domain berubah"). Variabel Firebase hanya untuk Production (29 Okt 2026); Preview diisi nilai proyek dev                                                                                                                                                       |
 
 `.firebaserc` sudah menunjuk `imigrasi-database-v2` (P0).
 
@@ -181,17 +181,16 @@ Sejak langkah ini proyek **aman walau masih kosong**. Tidak ada akun yang bisa m
 - **Production:** sampai aplikasi baru siap, pasang halaman pemeliharaan atau hentikan sementara deployment produksi. Web lama tidak akan berfungsi.
 - **Preview** (per branch/PR): jangan pernah memakai `.env` produksi.
 
-### A12. Proyek pengembangan (disarankan, boleh menyusul)
+### A12. Proyek pengembangan
 
-- Buat proyek terpisah, mis. `imigrasi-buleleng-dev`, dengan pengaturan dan rules yang sama, khusus data uji. Proyek ini dipakai tim dan pratinjau Vercel.
-- Sampai proyek ini ada, pengembangan memakai Firebase Emulator:
+Proyek baru `imigrasi-buleleng-dev` tidak bisa dibuat (kuota proyek akun pemilik penuh), jadi pemilik proyek memutuskan (29 Oktober 2026) memakai ulang proyek lama **`imigrasi-database`** sebagai proyek dev, alias `dev` di `.firebaserc`:
 
-```bash
-firebase emulators:start --only auth,firestore,storage,functions --project demo-imigrasi
-node scripts/uji-rules.mjs               # uji rules (Emulator Firestore + Storage harus menyala)
-```
+- Firestore `(default)` di `asia-southeast2` dibuat baru untuk aplikasi; database lama `imigrasi` (data uji aplikasi lama) tidak disentuh.
+- Aplikasi web baru `sso_imigrasi_dev` dengan App Check reCAPTCHA Enterprise berbasis skor (domain `vercel.app`, TTL 4 jam); `localhost` memakai token debug.
+- Blaze sudah aktif; CORS bucket sudah `*` (GET). Bucket bawaan ada di `US-EAST1`.
+- Masih dikerjakan pemilik: akun layanan Function (langkah "Cloud Functions: akun layanan" di atas, dengan `$P = "imigrasi-database"`), `firebase deploy --only "firestore,storage,functions" --project dev`, lalu `npm run dev:isi`.
 
-Firebase CLI terbaru butuh **Java 21** untuk Emulator. Di komputer yang masih Java 11, pakai sementara `npx firebase-tools@13 emulators:start …`.
+Pemakaian sehari-hari (Emulator, proyek dev, produksi) ada di `docs/pengembangan-lokal.md`.
 
 ## 3. Jalur B — bila tetap memakai proyek `imigrasi-database`
 

@@ -35,8 +35,11 @@ const jejakBuat = (uid) => ({
 });
 const jejakUbah = (uid) => ({ diubahPada: serverTimestamp(), diubahOleh: uid });
 
-/** Dokumen node baru dengan semua field yang diwajibkan rules. */
-function dataNodeBaru({ tahunAnggaran, tingkat, kode, nama, indukId, pagu }, uid) {
+/**
+ * Dokumen node baru dengan semua field yang diwajibkan rules. `realisasiAwal` (terpakai di luar
+ * aplikasi, hanya Item) opsional dan hanya ditulis bila ada.
+ */
+function dataNodeBaru({ tahunAnggaran, tingkat, kode, nama, indukId, pagu, realisasiAwal }, uid) {
   return {
     tahunAnggaran,
     tingkat,
@@ -44,6 +47,7 @@ function dataNodeBaru({ tahunAnggaran, tingkat, kode, nama, indukId, pagu }, uid
     nama: String(nama || '').trim(),
     indukId: tingkat === 'tahun' ? null : indukId,
     pagu: tingkat === 'item' ? keRupiah(pagu) : 0,
+    ...(tingkat === 'item' && realisasiAwal > 0 ? { realisasiAwal: keRupiah(realisasiAwal) } : {}),
     aktif: true,
     urutan: 0,
     ...jejakBuat(uid),
@@ -62,6 +66,10 @@ export const ubahNode = (id, { tingkat, kode, nama, pagu, aktif }, uid) =>
     ...jejakUbah(uid),
   });
 
+/** Sisa Awal Item disimpan sebagai `realisasiAwal` = pagu − sisa awal (rules: 0 … pagu). */
+export const aturRealisasiAwal = (id, realisasiAwal, uid) =>
+  updateDoc(doc(kolNode(), id), { realisasiAwal: keRupiah(realisasiAwal), ...jejakUbah(uid) });
+
 const BATAS_BATCH = 450;
 
 async function tulisBertahap(ops) {
@@ -78,25 +86,26 @@ export async function tahunSudahAda(tahun) {
   return !snap.empty;
 }
 
-/** Simpan hasil rencanaImportCsv: node baru + perubahan pagu. */
-export function simpanImport({ baru, ubahPagu }, uid) {
+/** Simpan hasil rencanaImportCsv: node baru + perubahan pagu/realisasiAwal Item lama. */
+export function simpanImport({ baru, ubah }, uid) {
   return tulisBertahap([
     ...baru.map(
       ({ id, ...n }) =>
         (b) =>
           b.set(doc(kolNode(), id), dataNodeBaru(n, uid)),
     ),
-    ...ubahPagu.map(
-      ([id, pagu]) =>
+    ...ubah.map(
+      ([id, perubahan]) =>
         (b) =>
-          b.update(doc(kolNode(), id), { pagu, ...jejakUbah(uid) }),
+          b.update(doc(kolNode(), id), { ...perubahan, ...jejakUbah(uid) }),
     ),
   ]);
 }
 
 /**
- * Salin pohon AKTIF satu tahun ke tahun anggaran baru (node baru, pagu ikut). Cabang di bawah node
- * nonaktif tidak ikut. Tahun tujuan harus masih kosong.
+ * Salin pohon AKTIF satu tahun ke tahun anggaran baru (node baru, pagu ikut; Sisa Awal tidak, karena
+ * tahun baru mulai dari pagu penuh). Cabang di bawah node nonaktif tidak ikut. Tahun tujuan harus
+ * masih kosong.
  * @returns {Promise<number>} jumlah node yang dibuat
  */
 export async function salinTahun(nodes, keTahun, uid) {

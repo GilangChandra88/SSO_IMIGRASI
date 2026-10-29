@@ -8,6 +8,11 @@
   },
   "scripts": {
     "dev": "vite",
+    "dev:emulator": "vite --mode emulator",
+    "dev:produksi": "vite --mode produksi",
+    "dev:isi": "node functions/scripts/isiDataContoh.js --dev",
+    "emulator": "node scripts/emulator.mjs",
+    "emulator:isi": "node functions/scripts/isiDataContoh.js",
     "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",

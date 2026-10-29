@@ -169,18 +169,24 @@ exports.pulihkanRealisasi = onCall(OPSI_CALLABLE, async (req) => {
   return { status: 'aktif' };
 });
 
-/** Jejak revisi pagu Item ke sistem_log (pembuatan/penghapusan node sudah berjejak sendiri). */
+/**
+ * Jejak revisi pagu dan realisasi di luar aplikasi (`realisasiAwal`, diisi sebagai Sisa Awal) Item
+ * ke sistem_log (pembuatan/penghapusan node sudah berjejak sendiri).
+ */
 exports.diMakNodeDitulis = onDocumentWritten(`${KOLEKSI.makNode}/{nodeId}`, async (event) => {
   const sebelum = event.data?.before?.exists ? event.data.before.data() : null;
   const sesudah = event.data?.after?.exists ? event.data.after.data() : null;
-  if (!sebelum || !sesudah || sesudah.tingkat !== 'item' || sebelum.pagu === sesudah.pagu) return;
+  if (!sebelum || !sesudah || sesudah.tingkat !== 'item') return;
+  const awal = (d) => d.realisasiAwal || 0;
+  const paguBerubah = sebelum.pagu !== sesudah.pagu;
+  if (!paguBerubah && awal(sebelum) === awal(sesudah)) return;
   await catatLog(null, {
     id: event.id, // pemicu bisa terkirim ulang: ID tetap mencegah entri ganda
     modul: 'mak',
-    aksi: 'ubahPagu',
+    aksi: paguBerubah ? 'ubahPagu' : 'ubahRealisasiAwal',
     target: `${KOLEKSI.makNode}/${event.params.nodeId}`,
-    nilaiLama: { pagu: sebelum.pagu },
-    nilaiBaru: { pagu: sesudah.pagu },
+    nilaiLama: { pagu: sebelum.pagu, realisasiAwal: awal(sebelum) },
+    nilaiBaru: { pagu: sesudah.pagu, realisasiAwal: awal(sesudah) },
     oleh: sesudah.diubahOleh || '',
   });
 });

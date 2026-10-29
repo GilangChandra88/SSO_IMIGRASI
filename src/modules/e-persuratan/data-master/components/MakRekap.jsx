@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaChevronRight } from 'react-icons/fa';
+import { FaChevronRight, FaPen } from 'react-icons/fa';
 import { ROW } from '@/components/StrukturHierarki/hierarkiKelas';
 import { formatRupiah, indentKelas } from '@/components/StrukturHierarki/hierarkiUtils';
 import { ADMIN, FONT, STATUS, T } from '@/utils/uiTokens';
@@ -11,13 +11,14 @@ const NUM = `${FONT.mono} text-xs text-right min-w-[92px]`;
 const PCT = `text-[11px] font-bold min-w-[38px] text-right shrink-0 ${T.inkMuted}`;
 
 function RekapBaris({ node, depth, ctx }) {
-  const { indeks, agregat, tertutup, onToggle } = ctx;
+  const { indeks, agregat, tertutup, onToggle, onAturSisa } = ctx;
   const anak = indeks.anakDari(node.id);
   const punyaAnak = anak.length > 0;
   const tutup = tertutup.has(node.id);
   const agg = agregat(node.id);
-  const sisa = agg.pagu - agg.realisasi;
-  const pct = agg.pagu > 0 ? Math.round((agg.realisasi / agg.pagu) * 100) : 0;
+  const sisa = agg.sisa;
+  // Persentase terpakai, selaras dengan kolom Pagu & Sisa (lebih dari 100% bila sisa minus)
+  const pct = agg.pagu > 0 ? Math.round(((agg.pagu - sisa) / agg.pagu) * 100) : 0;
 
   return (
     <>
@@ -43,11 +44,23 @@ function RekapBaris({ node, depth, ctx }) {
           <AngkaBerjalan
             nilai={sisa}
             format={formatRupiah}
-            className={`${NUM} ${STATUS.goodInk}`}
+            className={`${NUM} ${sisa < 0 ? STATUS.critInk : STATUS.goodInk}`}
           />
         </span>
         <AngkaBerjalan nilai={pct} format={persen} className={PCT} />
-        <span className="w-14 shrink-0" />
+        <span className={`${ROW.actions} w-14 justify-end`}>
+          {onAturSisa && node.type === 'Item' && (
+            <button
+              type="button"
+              className={ADMIN.rowBtn}
+              title="Atur Sisa Awal"
+              aria-label={`Atur Sisa Awal ${node.kode || node.name}`}
+              onClick={() => onAturSisa(node)}
+            >
+              <FaPen size={11} />
+            </button>
+          )}
+        </span>
       </div>
       {punyaAnak &&
         !tutup &&
@@ -58,11 +71,13 @@ function RekapBaris({ node, depth, ctx }) {
 
 /**
  * Tampilan Rekap MAK Setup (MakRekapRow purwarupa): Pagu, Realisasi pada bulan terpilih,
- * Sisa, dan persentase per node.
+ * Sisa (pagu − terpakai di luar aplikasi − realisasi s.d. bulan terpilih), dan persentase terpakai
+ * ((pagu − sisa) ÷ pagu) per node. `onAturSisa(node)` (opsional) memunculkan tombol Atur Sisa Awal
+ * di baris Item.
  */
-export default function MakRekap({ indeks, agregat, tertutup, onToggle }) {
+export default function MakRekap({ indeks, agregat, tertutup, onToggle, onAturSisa }) {
   const akar = indeks.anakDari(null);
-  const ctx = { indeks, agregat, tertutup, onToggle };
+  const ctx = { indeks, agregat, tertutup, onToggle, onAturSisa };
   return (
     <div className={ROW.wrap}>
       <div className="min-w-[760px]">
@@ -78,7 +93,12 @@ export default function MakRekap({ indeks, agregat, tertutup, onToggle }) {
             <span className="min-w-[92px] text-right">Realisasi</span>
             <span className="min-w-[92px] text-right">Sisa</span>
           </span>
-          <span className="min-w-[38px] shrink-0 text-right">%</span>
+          <span
+            className="min-w-[38px] shrink-0 text-right"
+            title="Persentase terpakai: (Pagu − Sisa) ÷ Pagu"
+          >
+            %
+          </span>
           <span className="w-14 shrink-0" />
         </div>
         <div className="max-h-[560px] overflow-y-auto">

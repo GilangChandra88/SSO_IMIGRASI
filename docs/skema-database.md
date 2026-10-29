@@ -217,19 +217,22 @@ Baca KEU, SA, anggota · tulis KEU, hanya untuk berkas yang sudah bernomor; taha
 
 **`mak_node/{id}`** (auto-id) — pohon MAK per tahun anggaran.
 
-| Field           | Tipe                                                                       | Keterangan                                           |
-| --------------- | -------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `tahunAnggaran` | int                                                                        | ada di **setiap** node (pohon dimuat per tahun)      |
-| `tingkat`       | `tahun\|program\|kegiatan\|kro\|output\|komponen\|subkomponen\|akun\|item` | tetap                                                |
-| `kode`          | string ≤40                                                                 |                                                      |
-| `nama`          | string 1–300                                                               |                                                      |
-| `indukId`       | string, atau `null` untuk `tahun`                                          | tetap                                                |
-| `pagu`          | int rupiah                                                                 | hanya `item`; tingkat lain `0`                       |
-| `aktif`         | bool                                                                       | node yang sudah dirujuk dinonaktifkan, bukan dihapus |
-| `urutan`        | int                                                                        |                                                      |
-| `Audit`         |                                                                            |                                                      |
+| Field           | Tipe                                                                       | Keterangan                                                    |
+| --------------- | -------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `tahunAnggaran` | int                                                                        | ada di **setiap** node (pohon dimuat per tahun)               |
+| `tingkat`       | `tahun\|program\|kegiatan\|kro\|output\|komponen\|subkomponen\|akun\|item` | tetap                                                         |
+| `kode`          | string ≤40                                                                 |                                                               |
+| `nama`          | string 1–300                                                               |                                                               |
+| `indukId`       | string, atau `null` untuk `tahun`                                          | tetap                                                         |
+| `pagu`          | int rupiah                                                                 | hanya `item`; tingkat lain `0`                                |
+| `realisasiAwal` | int rupiah, opsional                                                       | hanya `item` (tanpa field = `0`), boleh > `pagu`; lihat bawah |
+| `aktif`         | bool                                                                       | node yang sudah dirujuk dinonaktifkan, bukan dihapus          |
+| `urutan`        | int                                                                        |                                                               |
+| `Audit`         |                                                                            |                                                               |
 
-Baca PG (limit ≤5.000) · buat/ubah **KEU** (+SA) · node tahun anggaran lebih dari setahun lalu hanya diubah SA · hapus lewat `hapusNodeMak` (node beserta turunannya; bila ada Item yang sudah dipakai realisasi, seluruh cabang itu dinonaktifkan, bukan dihapus) · revisi pagu Item dicatat Fn `diMakNodeDitulis` ke `sistem_log`. Satu tahun anggaran punya tepat satu node `tahun` (akar).
+Baca PG (limit ≤5.000) · buat/ubah **KEU** (+SA) · node tahun anggaran lebih dari setahun lalu hanya diubah SA · hapus lewat `hapusNodeMak` (node beserta turunannya; bila ada Item yang sudah dipakai realisasi, seluruh cabang itu dinonaktifkan, bukan dihapus) · revisi pagu dan `realisasiAwal` Item dicatat Fn `diMakNodeDitulis` ke `sistem_log`. Satu tahun anggaran punya tepat satu node `tahun` (akar).
+
+`realisasiAwal` = anggaran Item yang terpakai **di luar aplikasi** (sebelum aplikasi dipakai). Keuangan mengisinya sebagai **Sisa Awal** (= `pagu − realisasiAwal`, sisa sebelum ada realisasi yang tercatat di aplikasi) lewat tombol di tampilan Rekap MAK Setup atau kolom `Sisa Awal` Import CSV; revisi pagu sesudahnya tetap menambah sisa. Sisa Awal boleh minus (`realisasiAwal` > `pagu`), mis. realisasi detail POK yang melampaui pagu Item atau selisih pembulatan; Sisa Awal tidak boleh melebihi pagu. Tidak ikut Copy Tahun. Sisa anggaran = `pagu − realisasiAwal − realisasi` (`mak_rekap`), dipakai Rekap MAK (realisasi Januari s.d. bulan terpilih) dan POK Terakhir Lembar Verifikasi.
 
 **`mak_realisasi/{berkasId}_{barisId}`** — ditulis **Fn**. Field: `tahunAnggaran`, `tahun`, `bulan`, `tanggal`, `itemNodeId`, `akunNodeId`, `berkasId`, `nomorLpj`, `jenis`, `jumlah` (int), `pelaksanaId`, `status`, `alasanBatal`, `salinan{ makKode, itemKode, itemNama, uraian }`, `Audit`. **Tanpa NIP/nama.** Baca KEU, SA (limit ≤100). Batal/Pulihkan lewat Function, hanya SA.
 
@@ -351,7 +354,7 @@ Node 22, region sama dengan database, `maxInstances` kecil (mis. 5), _callable_ 
 | `diKegiatanDitulis`                      | trigger `pegawai_kegiatan`                              | —                                                              | `pegawai_rekap_hadir` semester lama & baru (hitung ulang dalam satu transaksi)                                                                                                                                                                                                                 |
 | `diBerkasDitulis`                        | trigger `lpj_berkas/{id}`                               | —                                                              | `anggotaUids`, `tahap`, `status`, `lpj_ringkas`, `riwayat`; mencatat nomor SP ber-TTE ke `surat_nomor/sp_{id}` (sumber `srikandi`, sekali saat `tte` terkunci; urutan di `sistem_penghitung/srikandi_{tahun}`)                                                                                 |
 | `diKeuanganDitulis`                      | trigger `lpj_berkas/{id}/keuangan/{dok}`                | —                                                              | `tahap`, penanda keuangan di `lpj_ringkas`, `riwayat`; menautkan berkas yang baru diarsip ke DRPP yang mencantumkannya; `lpj_drpp.masuk` mengikuti `arsip.drppId`                                                                                                                              |
-| `diMakNodeDitulis`                       | trigger `mak_node`                                      | —                                                              | revisi pagu Item ke `sistem_log` (ID = ID kejadian, sehingga kiriman ulang tidak dobel)                                                                                                                                                                                                        |
+| `diMakNodeDitulis`                       | trigger `mak_node`                                      | —                                                              | revisi pagu (`ubahPagu`) dan `realisasiAwal` (`ubahRealisasiAwal`) Item ke `sistem_log` (ID = ID kejadian, sehingga kiriman ulang tidak dobel)                                                                                                                                                 |
 | `seedSuperAdmin`                         | skrip satu kali (`functions/scripts/seedSuperAdmin.js`) | pemilik proyek                                                 | Super Admin pertama; menolak bila Super Admin sudah ada                                                                                                                                                                                                                                        |
 
 ## 9. Kueri dari klien
