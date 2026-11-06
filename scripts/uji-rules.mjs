@@ -58,47 +58,49 @@ const medan = (o) => Object.fromEntries(Object.entries(o).map(([k, v]) => [k, ni
 const nama = (path) => `projects/${P}/databases/(default)/documents/${path}`;
 const auth = (t) => (t ? { Authorization: `Bearer ${t}` } : {});
 
+// write: satu tulisan, atau daftar tulisan yang dikirim sebagai satu batch
 async function commit(t, write) {
   const r = await fetch(`${FS}:commit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...auth(t) },
-    body: JSON.stringify({ writes: [write] }),
+    body: JSON.stringify({ writes: Array.isArray(write) ? write : [write] }),
   });
   return r.ok;
 }
 // waktu: daftar field yang diisi waktu server (serverTimestamp)
-const buat = (t, path, data, waktu = []) =>
-  commit(t, {
-    update: { name: nama(path), fields: medan(data) },
-    updateTransforms: waktu.map((f) => ({ fieldPath: f, setToServerValue: 'REQUEST_TIME' })),
-    currentDocument: { exists: false },
-  });
+const tulisanBuat = (path, data, waktu = []) => ({
+  update: { name: nama(path), fields: medan(data) },
+  updateTransforms: waktu.map((f) => ({ fieldPath: f, setToServerValue: 'REQUEST_TIME' })),
+  currentDocument: { exists: false },
+});
+const tulisanUbah = (path, data, waktu = []) => ({
+  update: { name: nama(path), fields: medan(data) },
+  updateMask: {
+    fieldPaths: [...Object.keys(data)].map((k) =>
+      /^[A-Za-z_][A-Za-z0-9_]*$/.test(k) ? k : `\`${k}\``,
+    ),
+  },
+  updateTransforms: waktu.map((f) => ({ fieldPath: f, setToServerValue: 'REQUEST_TIME' })),
+  currentDocument: { exists: true },
+});
+const buat = (t, path, data, waktu = []) => commit(t, tulisanBuat(path, data, waktu));
 const tulisUlang = (t, path, data, waktu = []) =>
   commit(t, {
     update: { name: nama(path), fields: medan(data) },
     updateTransforms: waktu.map((f) => ({ fieldPath: f, setToServerValue: 'REQUEST_TIME' })),
   });
-const ubah = (t, path, data, waktu = []) =>
-  commit(t, {
-    update: { name: nama(path), fields: medan(data) },
-    updateMask: {
-      fieldPaths: [...Object.keys(data)].map((k) =>
-        /^[A-Za-z_][A-Za-z0-9_]*$/.test(k) ? k : `\`${k}\``,
-      ),
-    },
-    updateTransforms: waktu.map((f) => ({ fieldPath: f, setToServerValue: 'REQUEST_TIME' })),
-    currentDocument: { exists: true },
-  });
+const ubah = (t, path, data, waktu = []) => commit(t, tulisanUbah(path, data, waktu));
 const hapusDok = (t, path) => commit(t, { delete: nama(path) });
 const ambil = async (t, path) => (await fetch(`${FS}/${path}`, { headers: auth(t) })).ok;
-async function daftar(t, koleksi, { limit, filter } = {}) {
+// induk: path dokumen induk untuk subkoleksi (mis. 'pegawai_absensi/AB1')
+async function daftar(t, koleksi, { limit, filter, induk } = {}) {
   const q = { from: [{ collectionId: koleksi }] };
   if (limit) q.limit = limit;
   if (filter)
     q.where = {
       fieldFilter: { field: { fieldPath: filter[0] }, op: filter[1], value: nilai(filter[2]) },
     };
-  const r = await fetch(`${FS}:runQuery`, {
+  const r = await fetch(`${FS}${induk ? `/${induk}` : ''}:runQuery`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...auth(t) },
     body: JSON.stringify({ structuredQuery: q }),
@@ -1912,6 +1914,284 @@ await cek(
   'Kepegawaian menulis rekap kehadiran (hanya Function)',
   false,
   buat(U.kep, `pegawai_rekap_hadir/${TAHUN}-1`, { tahun: TAHUN, semester: 1 }),
+);
+
+// ── Rekap absensi mesin ───────────────────────────────────────────────────
+const absensiUji = (lain = {}) => ({
+  nama: 'Absensi Contoh',
+  keterangan: '',
+  jumlahImpor: 0,
+  dari: '',
+  sampai: '',
+  aktif: true,
+  alasanBatal: '',
+  ...lain,
+});
+const buatAbsensi = (t, id, lain, uid = 'uKEP') =>
+  buat(t, `pegawai_absensi/${id}`, { ...absensiUji(lain), ...audit(uid) }, AUDIT);
+const pindaianUji = () => ({
+  nama: 'BUDI CONTOH',
+  waktu: `${TAHUN}1001073726 ${TAHUN}1001160512 ${TAHUN}1002074501`,
+});
+const imporUji = (lain = {}) => ({
+  namaBerkas: 'absensi-contoh.csv',
+  jumlahBaris: 3,
+  jumlahPindaian: 3,
+  dari: `${TAHUN}-10-01`,
+  sampai: `${TAHUN}-10-02`,
+  pindaian: { 2: pindaianUji() },
+  aktif: true,
+  alasanBatal: '',
+  ...lain,
+});
+const buatImpor = (t, rekap, id, lain, uid = 'uKEP') =>
+  buat(t, `pegawai_absensi/${rekap}/impor/${id}`, { ...imporUji(lain), ...audit(uid) }, AUDIT);
+const ubahAbsensi = (path, data) =>
+  ubah(U.kep, path, { ...data, diubahOleh: 'uKEP' }, ['diubahPada']);
+
+await cek('Kepegawaian membuat rekapan absensi', true, buatAbsensi(U.kep, 'AB1'));
+await cek('pegawai biasa membuat rekapan absensi', false, buatAbsensi(U.pg, 'AB2', {}, 'uPG'));
+await cek(
+  'rekapan absensi baru langsung berisi ringkasan impor',
+  false,
+  buatAbsensi(U.kep, 'AB2', { jumlahImpor: 1, dari: `${TAHUN}-10-01`, sampai: `${TAHUN}-10-31` }),
+);
+await cek('rekapan absensi tanpa nama', false, buatAbsensi(U.kep, 'AB2', { nama: '' }));
+await cek('Kepegawaian mengimpor CSV ke rekapan', true, buatImpor(U.kep, 'AB1', 'IM1'));
+await cek('Keuangan mengimpor CSV absensi', false, buatImpor(U.keu, 'AB1', 'IM2', {}, 'uKEU'));
+await cek('impor absensi tanpa pindaian', false, buatImpor(U.kep, 'AB1', 'IM2', { pindaian: {} }));
+await cek(
+  'impor absensi lebih dari 300 No.',
+  false,
+  buatImpor(U.kep, 'AB1', 'IM2', {
+    pindaian: Object.fromEntries(Array.from({ length: 301 }, (_, i) => [i + 1, pindaianUji()])),
+  }),
+);
+await cek(
+  'impor absensi dengan rentang tanggal terbalik',
+  false,
+  buatImpor(U.kep, 'AB1', 'IM2', { dari: `${TAHUN}-10-05`, sampai: `${TAHUN}-10-01` }),
+);
+await cek(
+  'impor absensi dengan pindaian unik melebihi jumlah baris',
+  false,
+  buatImpor(U.kep, 'AB1', 'IM2', { jumlahBaris: 2, jumlahPindaian: 3 }),
+);
+await cek('impor absensi ke rekapan yang tidak ada', false, buatImpor(U.kep, 'ABX', 'IM2'));
+await cek(
+  'Kepegawaian memperbarui ringkasan rekapan',
+  true,
+  ubahAbsensi('pegawai_absensi/AB1', {
+    jumlahImpor: 1,
+    dari: `${TAHUN}-10-01`,
+    sampai: `${TAHUN}-10-02`,
+  }),
+);
+await cek(
+  'ringkasan rekapan lebih dari 100 impor',
+  false,
+  ubahAbsensi('pegawai_absensi/AB1', { jumlahImpor: 101 }),
+);
+await cek(
+  'mengubah isi impor absensi',
+  false,
+  ubahAbsensi('pegawai_absensi/AB1/impor/IM1', { jumlahBaris: 5 }),
+);
+await cek(
+  'membatalkan impor tanpa alasan',
+  false,
+  ubahAbsensi('pegawai_absensi/AB1/impor/IM1', { aktif: false, alasanBatal: '' }),
+);
+await cek(
+  'Kepegawaian membatalkan impor dengan alasan',
+  true,
+  ubahAbsensi('pegawai_absensi/AB1/impor/IM1', { aktif: false, alasanBatal: 'Salah berkas (uji)' }),
+);
+await cek(
+  'mengaktifkan lagi impor yang sudah batal',
+  false,
+  ubahAbsensi('pegawai_absensi/AB1/impor/IM1', { aktif: true, alasanBatal: '' }),
+);
+await cek('menghapus impor absensi', false, hapusDok(U.kep, 'pegawai_absensi/AB1/impor/IM1'));
+await cek(
+  'Kepegawaian membaca daftar impor absensi (limit 100)',
+  true,
+  daftar(U.kep, 'impor', { limit: 100, induk: 'pegawai_absensi/AB1' }),
+);
+await cek(
+  'daftar impor absensi tanpa limit',
+  false,
+  daftar(U.kep, 'impor', { induk: 'pegawai_absensi/AB1' }),
+);
+await cek(
+  'pegawai biasa membaca impor absensi',
+  false,
+  ambil(U.pg, 'pegawai_absensi/AB1/impor/IM1'),
+);
+await cek(
+  'Kepegawaian membaca daftar rekapan absensi (limit 200)',
+  true,
+  daftar(U.kep, 'pegawai_absensi', { limit: 200 }),
+);
+await cek('daftar rekapan absensi tanpa limit', false, daftar(U.kep, 'pegawai_absensi'));
+await cek(
+  'pegawai biasa membaca daftar rekapan absensi',
+  false,
+  daftar(U.pg, 'pegawai_absensi', { limit: 10 }),
+);
+await cek(
+  'Kepegawaian membatalkan rekapan dengan alasan',
+  true,
+  ubahAbsensi('pegawai_absensi/AB1', { aktif: false, alasanBatal: 'Rekapan dobel (uji)' }),
+);
+await cek('mengimpor ke rekapan yang sudah batal', false, buatImpor(U.kep, 'AB1', 'IM3'));
+await cek(
+  'mengubah rekapan yang sudah batal',
+  false,
+  ubahAbsensi('pegawai_absensi/AB1', { nama: 'Absensi Lain' }),
+);
+await cek('menghapus rekapan absensi', false, hapusDok(U.kep, 'pegawai_absensi/AB1'));
+
+const buatNoAbsen = (t, id, data, uid = 'uKEP') =>
+  buat(
+    t,
+    `pegawai_no_absen/${id}`,
+    { no: Number(id), pegawaiId: 'pPG', namaMesin: 'BUDI CONTOH', ...data, ...audit(uid) },
+    AUDIT,
+  );
+await cek('Kepegawaian memetakan No. absen', true, buatNoAbsen(U.kep, '2'));
+await cek(
+  'Kepegawaian mencatat No. absen yang belum dipetakan',
+  true,
+  buatNoAbsen(U.kep, '3', { pegawaiId: '' }),
+);
+await cek('No. absen berbeda dengan ID dokumen', false, buatNoAbsen(U.kep, '4', { no: 5 }));
+await cek('ID No. absen bukan angka', false, buatNoAbsen(U.kep, 'A1', { no: 1 }));
+await cek('ID No. absen berawalan nol', false, buatNoAbsen(U.kep, '06', { no: 6 }));
+await cek('No. absen disimpan sebagai teks', false, buatNoAbsen(U.kep, '6', { no: '6' }));
+await cek('pegawai biasa memetakan No. absen', false, buatNoAbsen(U.pg, '7', {}, 'uPG'));
+await cek(
+  'Kepegawaian mengganti pegawai No. absen',
+  true,
+  ubahAbsensi('pegawai_no_absen/3', { pegawaiId: 'pPG2', namaMesin: 'SITI CONTOH' }),
+);
+await cek('mengganti angka No. absen', false, ubahAbsensi('pegawai_no_absen/3', { no: 9 }));
+await cek('menghapus No. absen', false, hapusDok(U.kep, 'pegawai_no_absen/2'));
+await cek(
+  'Kepegawaian membaca daftar No. absen (limit 500)',
+  true,
+  daftar(U.kep, 'pegawai_no_absen', { limit: 500 }),
+);
+await cek('pegawai biasa membaca No. absen', false, ambil(U.pg, 'pegawai_no_absen/2'));
+// Batch impor seperti klien: impor + ringkasan rekapan + banyak No. baru sekaligus (rules impor
+// memakai satu get(); rules No. tanpa get() supaya tidak melewati batas 20 panggilan per batch)
+await buatAbsensi(U.kep, 'AB3');
+await cek(
+  'Kepegawaian mengimpor CSV + ringkasan + 40 No. baru dalam satu batch',
+  true,
+  commit(U.kep, [
+    tulisanBuat('pegawai_absensi/AB3/impor/IM1', { ...imporUji(), ...audit('uKEP') }, AUDIT),
+    tulisanUbah(
+      'pegawai_absensi/AB3',
+      { jumlahImpor: 1, dari: `${TAHUN}-10-01`, sampai: `${TAHUN}-10-02`, diubahOleh: 'uKEP' },
+      ['diubahPada'],
+    ),
+    ...Array.from({ length: 40 }, (_, i) =>
+      tulisanBuat(
+        `pegawai_no_absen/${100 + i}`,
+        { no: 100 + i, pegawaiId: '', namaMesin: `PEGAWAI CONTOH ${i}`, ...audit('uKEP') },
+        AUDIT,
+      ),
+    ),
+  ]),
+);
+
+// Koreksi jam (rekapan AB3 masih aktif; AB1 sudah batal)
+const koreksiUji = (lain = {}) => ({
+  baris: 'pPG',
+  tanggal: `${TAHUN}-10-01`,
+  masuk: '07:30',
+  pulang: '16:00',
+  alasan: 'Lupa absen pulang (uji)',
+  aktif: true,
+  ...lain,
+});
+const buatKoreksi = (t, rekap, id, lain, uid = 'uKEP') =>
+  buat(t, `pegawai_absensi/${rekap}/koreksi/${id}`, { ...koreksiUji(lain), ...audit(uid) }, AUDIT);
+const idKoreksi = `pPG_${TAHUN}-10-01`;
+const tgl2 = { tanggal: `${TAHUN}-10-02` };
+const idKoreksi2 = `pPG_${TAHUN}-10-02`;
+await cek('Kepegawaian menyesuaikan jam absensi', true, buatKoreksi(U.kep, 'AB3', idKoreksi));
+await cek(
+  'pegawai biasa menyesuaikan jam absensi',
+  false,
+  buatKoreksi(U.pg, 'AB3', idKoreksi2, tgl2, 'uPG'),
+);
+await cek(
+  'ID koreksi jam tidak sesuai baris & tanggal',
+  false,
+  buatKoreksi(U.kep, 'AB3', `pPG_${TAHUN}-10-03`),
+);
+await cek(
+  'koreksi jam pulang sebelum jam masuk',
+  false,
+  buatKoreksi(U.kep, 'AB3', idKoreksi2, { ...tgl2, masuk: '16:00', pulang: '07:30' }),
+);
+await cek(
+  'koreksi jam tidak sah',
+  false,
+  buatKoreksi(U.kep, 'AB3', idKoreksi2, { ...tgl2, masuk: '7:30' }),
+);
+await cek(
+  'koreksi jam tanpa alasan',
+  false,
+  buatKoreksi(U.kep, 'AB3', idKoreksi2, { ...tgl2, alasan: '' }),
+);
+await cek(
+  'Kepegawaian mengosongkan kedua jam No. yang belum dipetakan',
+  true,
+  buatKoreksi(U.kep, 'AB3', `no-9_${TAHUN}-10-02`, {
+    ...tgl2,
+    baris: 'no-9',
+    masuk: '',
+    pulang: '',
+  }),
+);
+await cek('koreksi jam di rekapan yang sudah batal', false, buatKoreksi(U.kep, 'AB1', idKoreksi));
+await cek(
+  'Kepegawaian mengubah koreksi jam',
+  true,
+  ubahAbsensi(`pegawai_absensi/AB3/koreksi/${idKoreksi}`, { pulang: '16:30' }),
+);
+await cek(
+  'memindahkan koreksi jam ke tanggal lain',
+  false,
+  ubahAbsensi(`pegawai_absensi/AB3/koreksi/${idKoreksi}`, { tanggal: `${TAHUN}-10-05` }),
+);
+await cek(
+  'Kepegawaian mengembalikan sel ke jam mesin',
+  true,
+  ubahAbsensi(`pegawai_absensi/AB3/koreksi/${idKoreksi}`, { aktif: false }),
+);
+await cek(
+  'menghapus koreksi jam',
+  false,
+  hapusDok(U.kep, `pegawai_absensi/AB3/koreksi/${idKoreksi}`),
+);
+await cek(
+  'Kepegawaian membaca koreksi jam (limit 2000)',
+  true,
+  daftar(U.kep, 'koreksi', { limit: 2000, induk: 'pegawai_absensi/AB3' }),
+);
+await cek(
+  'daftar koreksi jam tanpa limit',
+  false,
+  daftar(U.kep, 'koreksi', { induk: 'pegawai_absensi/AB3' }),
+);
+await cek(
+  'pegawai biasa membaca koreksi jam',
+  false,
+  ambil(U.pg, `pegawai_absensi/AB3/koreksi/${idKoreksi}`),
 );
 
 console.log(`\n${lulus} lulus, ${gagal} gagal`);

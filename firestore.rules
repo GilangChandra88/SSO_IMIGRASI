@@ -294,6 +294,126 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ─── Rekap absensi mesin ────────────────────────────────────────────────
+    // Rekapan berisi impor CSV mesin absensi di subkoleksi impor: satu dokumen per berkas,
+    // pindaian = peta No. → { nama, waktu } (waktu = token YYYYMMDDHHmmss dipisah spasi; isi peta
+    // tidak bisa diperiksa satu per satu, hanya jumlahnya). Rekap per bulan dihitung klien dari
+    // gabungan impor aktif. jumlahImpor/dari/sampai rekapan = ringkasan tampilan yang ditulis klien.
+    // Rekapan & impor tidak dihapus, melainkan dibatalkan (aktif: false + alasan).
+    function batalSah(d) {
+      return (d.aktif == true && d.alasanBatal == '')
+        || (d.aktif == false && teksIsi(d.alasanBatal, 300));
+    }
+    function rentangSah(dari, sampai) {
+      return tanggal(dari) && tanggal(sampai) && dari <= sampai
+        && tahun(int(dari[0:4])) && tahun(int(sampai[0:4]));
+    }
+    function kunciAbsensi() {
+      return ['nama', 'keterangan', 'jumlahImpor', 'dari', 'sampai', 'aktif', 'alasanBatal']
+        .concat(kunciAudit());
+    }
+    function absensiSah(d) {
+      return teksIsi(d.nama, 120) && teks(d.keterangan, 300) && bulat(d.jumlahImpor, 0, 100)
+        && ((d.dari == '' && d.sampai == '') || rentangSah(d.dari, d.sampai))
+        && batalSah(d);
+    }
+    function kunciImporAbsensi() {
+      return ['namaBerkas', 'jumlahBaris', 'jumlahPindaian', 'dari', 'sampai', 'pindaian',
+        'aktif', 'alasanBatal'].concat(kunciAudit());
+    }
+    function imporAbsensiSah(d) {
+      return teksIsi(d.namaBerkas, 200)
+        && bulat(d.jumlahBaris, 1, 1000000) && bulat(d.jumlahPindaian, 1, d.jumlahBaris)
+        && rentangSah(d.dari, d.sampai)
+        && d.pindaian is map && d.pindaian.size() >= 1 && d.pindaian.size() <= 300
+        && batalSah(d);
+    }
+    // Penyesuaian jam manual satu baris rekap (ID pegawai, atau no-<No.> bila belum dipetakan) pada
+    // satu tanggal; ID dokumen = {baris}_{tanggal}. Jam kosong = dikosongkan; kembali ke jam mesin
+    // = aktif: false (tidak dihapus).
+    function kunciKoreksiAbsensi() {
+      return ['baris', 'tanggal', 'masuk', 'pulang', 'alasan', 'aktif'].concat(kunciAudit());
+    }
+    function jamAtauKosong(v) {
+      return v == '' || (v is string && v.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$'));
+    }
+    function koreksiAbsensiSah(d, kid) {
+      return idSah(d.baris) && tanggal(d.tanggal) && tahun(int(d.tanggal[0:4]))
+        && kid == d.baris + '_' + d.tanggal
+        && jamAtauKosong(d.masuk) && jamAtauKosong(d.pulang)
+        && (d.masuk == '' || d.pulang == '' || d.masuk < d.pulang)
+        && teksIsi(d.alasan, 200) && d.aktif is bool;
+    }
+    function rekapAbsensiAktif(id) {
+      return get(/databases/$(database)/documents/pegawai_absensi/$(id)).data.aktif == true;
+    }
+
+    match /pegawai_absensi/{id} {
+      allow get: if kepegawaian();
+      allow list: if kepegawaian() && batasDaftar(200);
+      allow create: if kepegawaian()
+        && hanya(kunciAbsensi()) && wajib(kunciAbsensi())
+        && absensiSah(baru()) && auditBuat()
+        && baru().aktif == true && baru().jumlahImpor == 0 && baru().dari == '';
+      // Rekapan batal tidak diubah lagi.
+      allow update: if kepegawaian()
+        && hanya(kunciAbsensi())
+        && absensiSah(baru()) && auditUbah() && lama().aktif == true;
+      allow delete: if false;
+
+      match /impor/{imporId} {
+        allow get: if kepegawaian();
+        allow list: if kepegawaian() && batasDaftar(100);
+        allow create: if kepegawaian()
+          && hanya(kunciImporAbsensi()) && wajib(kunciImporAbsensi())
+          && imporAbsensiSah(baru()) && auditBuat() && baru().aktif == true
+          && rekapAbsensiAktif(id);
+        // Isi impor tidak diubah; hanya dibatalkan (dengan alasan) selama rekapannya aktif.
+        allow update: if kepegawaian()
+          && hanya(kunciImporAbsensi())
+          && berubah().hasOnly(['aktif', 'alasanBatal', 'diubahPada', 'diubahOleh'])
+          && lama().aktif == true && baru().aktif == false
+          && imporAbsensiSah(baru()) && auditUbah() && rekapAbsensiAktif(id);
+        allow delete: if false;
+      }
+
+      match /koreksi/{kid} {
+        allow get: if kepegawaian();
+        allow list: if kepegawaian() && batasDaftar(2000);
+        allow create: if kepegawaian()
+          && hanya(kunciKoreksiAbsensi()) && wajib(kunciKoreksiAbsensi())
+          && koreksiAbsensiSah(baru(), kid) && baru().aktif == true
+          && auditBuat() && rekapAbsensiAktif(id);
+        allow update: if kepegawaian()
+          && hanya(kunciKoreksiAbsensi())
+          && koreksiAbsensiSah(baru(), kid)
+          && baru().baris == lama().baris && baru().tanggal == lama().tanggal
+          && auditUbah() && rekapAbsensiAktif(id);
+        allow delete: if false;
+      }
+    }
+
+    // Pemetaan No. mesin absensi → pegawai (ID dokumen = No.), berlaku untuk semua rekapan.
+    // pegawaiId '' = belum dipetakan. Tanpa get()/exists() supaya satu batch impor boleh memuat
+    // banyak No. sekaligus (batas 20 panggilan akses per batch). Tidak dihapus; dikosongkan bila salah.
+    function kunciNoAbsen() { return ['no', 'pegawaiId', 'namaMesin'].concat(kunciAudit()); }
+    function noAbsenSah(d, no) {
+      return no.matches('^[1-9][0-9]{0,8}$') && d.no is int && d.no == int(no)
+        && (d.pegawaiId == '' || idSah(d.pegawaiId)) && teks(d.namaMesin, 120);
+    }
+    match /pegawai_no_absen/{no} {
+      allow get: if kepegawaian();
+      allow list: if kepegawaian() && batasDaftar(500);
+      allow create: if kepegawaian()
+        && hanya(kunciNoAbsen()) && wajib(kunciNoAbsen())
+        && noAbsenSah(baru(), no) && auditBuat();
+      allow update: if kepegawaian()
+        && hanya(kunciNoAbsen())
+        && berubah().hasOnly(['pegawaiId', 'namaMesin', 'diubahPada', 'diubahOleh'])
+        && noAbsenSah(baru(), no) && auditUbah();
+      allow delete: if false;
+    }
+
     match /pengguna_preferensi/{u} {
       allow get: if masuk() && u == uid();
       allow list: if false;

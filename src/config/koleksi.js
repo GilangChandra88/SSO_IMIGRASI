@@ -18,6 +18,8 @@ export const KOLEKSI = Object.freeze({
   pegawaiPejabat: 'pegawai_pejabat',
   pegawaiKegiatan: 'pegawai_kegiatan',
   pegawaiRekapHadir: 'pegawai_rekap_hadir',
+  pegawaiAbsensi: 'pegawai_absensi', // subkoleksi: SUBKOLEKSI_ABSENSI
+  pegawaiNoAbsen: 'pegawai_no_absen',
   penggunaPreferensi: 'pengguna_preferensi',
   ultahStatus: 'ultah_status',
   ultahUcapan: 'ultah_ucapan',
@@ -57,6 +59,11 @@ export const SUBKOLEKSI_LPJ = Object.freeze({
   keuangan: 'keuangan', // satu dokumen: keuangan/status
   bukti: 'bukti',
   riwayat: 'riwayat',
+});
+
+export const SUBKOLEKSI_ABSENSI = Object.freeze({
+  impor: 'impor', // pegawai_absensi/{id}/impor: satu dokumen per berkas CSV mesin absensi
+  koreksi: 'koreksi', // pegawai_absensi/{id}/koreksi/{baris}_{tanggal}: penyesuaian jam manual
 });
 
 /** ID dokumen tunggal bagian Keuangan berkas LPJ. */

@@ -20,6 +20,10 @@ export const PANJANG = Object.freeze({
   namaKegiatan: 120, // pegawai_kegiatan: nama & tempat
   keteranganKegiatan: 300,
   keteranganHadir: 150, // per pegawai di peta kehadiran (dijaga klien; rules tidak bisa memeriksa isi peta)
+  namaAbsensi: 120, // pegawai_absensi: nama rekapan
+  keteranganAbsensi: 300,
+  namaMesinAbsen: 120, // nama pegawai di mesin absensi (kolom Nama CSV)
+  alasanKoreksiAbsen: 200, // alasan penyesuaian jam rekap absensi
   alasanBatal: 300,
   kodeMak: 40,
   namaMak: 300,
@@ -42,6 +46,8 @@ export const JUMLAH = Object.freeze({
   lampiranPerJenis: 10, // foto & nota Non-Perjadin
   fotoPegawai: 9,
   pesertaKegiatan: 500, // isi peta kehadiran satu kegiatan
+  noAbsenPerImpor: 300, // No. mesin dalam satu impor absensi (peta pindaian)
+  imporAbsensi: 100, // impor dalam satu rekapan absensi
   barangKeluar: 50,
   berkasDrpp: 100, // LPJ pada satu DRPP (Function buatDrpp/ubahDaftarDrpp)
 });
@@ -73,6 +79,10 @@ export const LIMIT_KUERI = Object.freeze({
   kontakPegawai: 500,
   kegiatanPegawai: 200, // pegawai_kegiatan per tahun/semester
   rekapHadir: 10, // pegawai_rekap_hadir per tahun (2 dokumen)
+  rekapAbsensi: 200, // pegawai_absensi (daftar rekapan)
+  imporAbsensi: 100, // pegawai_absensi/{id}/impor (= JUMLAH.imporAbsensi)
+  noAbsen: 500, // pegawai_no_absen (pemetaan No. mesin → pegawai)
+  koreksiAbsensi: 2000, // pegawai_absensi/{id}/koreksi per bulan (±60 pegawai × 31 hari)
   transaksiInventory: 200,
   kategoriInventory: 500,
   barangInventory: 2000,

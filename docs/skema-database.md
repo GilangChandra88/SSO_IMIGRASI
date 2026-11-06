@@ -147,6 +147,37 @@ Akses: baca & daftar KEP (limit ≤200) · buat KEP (kehadiran `null`, aktif) ·
 
 **`pegawai_rekap_hadir/{tahun}-{semester}`** — ditulis **Fn** `diKegiatanDitulis`. Field: `tahun`, `semester` (1/2), `kegiatan` (jumlah kegiatan aktif), `kegiatanTerisi` (yang kehadirannya sudah disimpan), `pegawai` (peta `pegawaiId → { hadir, cuti, sakit, alpa }`, hanya dari kegiatan terisi yang mencatat pegawai itu), `diperbaruiPada`. Baca KEP (limit ≤10). % hadir dihitung klien: (hadir × 1 + sakit × 0,9 + cuti × 0,8) ÷ jumlah keempatnya × 100; predikat ≥90 Sangat Rajin, ≥80 Rajin, ≥70 Cukup Rajin, selebihnya Kurang Rajin.
 
+**`pegawai_absensi/{id}`** (auto-id) — rekapan absensi mesin sidik jari, diatur KEP di menu Rekap Absensi. Satu rekapan menampung beberapa impor CSV mesin (`Nama;No.;Date/Time`, satu baris per pindaian); semua impor aktif digabung (pindaian kembar dibuang) dan direkap klien per bulan: jam masuk = pindaian pertama, jam pulang = pindaian terakhir bila berjarak ≥30 menit.
+
+| Field                  | Tipe                               | Keterangan                                                                                    |
+| ---------------------- | ---------------------------------- | --------------------------------------------------------------------------------------------- |
+| `nama`                 | string 1–120                       |                                                                                               |
+| `keterangan`           | string ≤300                        |                                                                                               |
+| `jumlahImpor`          | int 0–100                          | ringkasan tampilan (impor aktif), ditulis klien di batch yang sama dengan impor/pembatalannya |
+| `dari`, `sampai`       | `'YYYY-MM-DD'`, atau keduanya `''` | rentang tanggal impor aktif (ringkasan tampilan, ditulis klien)                               |
+| `aktif`, `alasanBatal` | bool, string                       | dibatalkan = `aktif: false` + alasan (1–300); tidak dihapus                                   |
+| `Audit`                |                                    |                                                                                               |
+
+Akses: baca & daftar KEP (limit ≤200) · buat KEP (aktif, `jumlahImpor` 0, rentang kosong) · ubah KEP selama aktif · hapus ditolak.
+
+**`pegawai_absensi/{id}/impor/{imporId}`** (auto-id) — satu berkas CSV yang diimpor.
+
+| Field                  | Tipe                                     | Keterangan                                                                                                                             |
+| ---------------------- | ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| `namaBerkas`           | string 1–200                             | nama berkas CSV                                                                                                                        |
+| `jumlahBaris`          | int 1–1.000.000                          | baris data sah di berkas                                                                                                               |
+| `jumlahPindaian`       | int 1–`jumlahBaris`                      | pindaian unik di berkas                                                                                                                |
+| `dari`, `sampai`       | `'YYYY-MM-DD'`                           | rentang tanggal pindaian                                                                                                               |
+| `pindaian`             | peta No. → `{ nama, waktu }` (1–300 No.) | `nama` = nama di mesin (≤120); `waktu` = token `YYYYMMDDHHmmss` (jam mesin, WITA) dipisah spasi, urut; dokumen ≤±900 KB (dijaga klien) |
+| `aktif`, `alasanBatal` | bool, string                             | dibatalkan = `aktif: false` + alasan; pindaiannya tidak digabung lagi                                                                  |
+| `Audit`                |                                          |                                                                                                                                        |
+
+Akses: baca & daftar KEP (limit ≤100) · buat KEP selama rekapan aktif (rules `get()` rekapan) · ubah hanya `aktif: true → false` + alasan selama rekapan aktif · hapus ditolak. Rules hanya memeriksa jumlah isi peta `pindaian`; isi tiap No. dijaga klien dan token yang tidak sah diabaikan saat digabung. Rekap bulanan dihitung klien dari impor satu rekapan (beberapa dokumen saja; sebulan 60 pegawai ±85 KB), tanpa Function.
+
+**`pegawai_absensi/{id}/koreksi/{baris}_{tanggal}`** — penyesuaian jam manual satu sel rekap bulanan (klik sel tanggal). Field: `baris` (ID pegawai, atau `no-<No.>` bila No. belum dipetakan), `tanggal` (`'YYYY-MM-DD'`), `masuk`, `pulang` (`'HH:mm'` atau `''`; bila keduanya terisi, pulang > masuk), `alasan` (1–200), `aktif` (bool), `Audit`. ID dokumen wajib `{baris}_{tanggal}`. Koreksi aktif menggantikan jam dari mesin di rekap, PDF, dan Excel (jam mesin tetap tersimpan di impor); kedua jam kosong = hari itu tidak dihitung hadir. Baris pegawai juga memakai koreksi yang dibuat saat No.-nya belum dipetakan (koreksi berkunci ID pegawai didahulukan). Baca & daftar KEP (`where tanggal` rentang satu bulan, limit ≤2.000) · buat/ubah KEP selama rekapan aktif (buat-atau-ubah dibaca di transaksi; `baris`/`tanggal` tidak berubah) · kembali ke jam mesin = `aktif: false` · hapus ditolak.
+
+**`pegawai_no_absen/{no}`** (ID = No. pegawai di mesin, angka tanpa nol di depan) — pemetaan No. mesin → pegawai, berlaku untuk semua rekapan. Field: `no` (int, sama dengan ID), `pegawaiId` (`''` = belum dipetakan), `namaMesin` (≤120, nama dari CSV), `Audit`. No. baru dari CSV tercatat otomatis di batch impor (pilihan pegawai di pratinjau ikut disimpan). Baca & daftar KEP (limit ≤500) · buat/ubah KEP (`no` tidak berubah) · hapus ditolak (pemetaan yang salah dikosongkan). Rules tidak memakai `get()`/`exists()` supaya satu batch impor bisa memuat banyak No. (batas 20 panggilan akses per batch); `pegawaiId` dijaga klien.
+
 **`pengguna_preferensi/{uid}`** — `modeGelap: bool`, `diubahPada`. Hanya pemilik.
 
 **`ultah_status/{pegawaiId}`** — `kejutanTahun: int|null`, `kejutanPada`, `resetPada`, `resetOleh` (uid). Pemilik menandai kejutan tahun berjalan; KEP me-reset (`kejutanTahun: null`). "Tahun berjalan" di rules dan klien memakai WITA (UTC+8).
@@ -375,6 +406,8 @@ Node 22, region sama dengan database, `maxInstances` kecil (mis. 5), _callable_ 
 | `pegawai_kontak`         | KEP: utuh (halaman Kepegawaian); pemilik: `getDoc` miliknya (Profil Saya)                                                                                                                                         | 500             |
 | `pegawai_kegiatan`       | KEP: rentang `where tanggal >= awal, <= akhir orderBy tanggal desc` per semester/tahun (limit 200; tanpa indeks komposit)                                                                                         |
 | `pegawai_rekap_hadir`    | KEP: `where tahun ==` (limit 10)                                                                                                                                                                                  |
+| `pegawai_absensi`        | KEP: utuh `orderBy dibuatPada desc` (rekapan batal disaring di tampilan); subkoleksi `impor` per rekapan `orderBy dibuatPada` (limit 100); `koreksi` per bulan `where tanggal` rentang (limit 2.000)              | 200             |
+| `pegawai_no_absen`       | KEP: utuh, satu listener bersama                                                                                                                                                                                  | 500             |
 | `inventory_masuk/keluar` | `orderBy nomor desc` (riwayat terbaru, `startAfter` untuk halaman berikutnya); rentang `where tanggal >= dari, <= sampai orderBy tanggal desc`; per barang `where barangId ==` / `where barangIds array-contains` | 200 per halaman |
 | `inventory_saldo`        | utuh (satu dokumen per tahun)                                                                                                                                                                                     | 20              |
 | `ultah_ucapan`           | `where untukPegawaiId == saya` atau `where dariUid == uid`, + `where tahun` (dua kesetaraan, tanpa indeks komposit); KEP per penerima                                                                             | 200             |
