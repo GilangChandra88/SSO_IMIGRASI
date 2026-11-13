@@ -8,12 +8,10 @@
  * membatalkannya (`status: 'batal'`) dan berkasnya lepas.
  */
 
-const { onCall } = require('firebase-functions/v2/https');
 const {
   HttpsError,
   FieldValue,
   db,
-  OPSI_CALLABLE,
   KOLEKSI,
   pemanggil,
   superadmin,
@@ -24,6 +22,7 @@ const {
   catatLog,
   jejakUbah,
 } = require('./umum');
+const { callable } = require('./jejak');
 const { masukDrppDari } = require('./hitungBerkas');
 
 const MAKS_BERKAS = 100;
@@ -90,7 +89,8 @@ const anggotaDari = (rows) => [...new Set(rows.flatMap((r) => r.d.anggotaUids ||
 const sudahDiarsip = (r) => r.k.arsip?.selesai === true;
 
 function wajibAktif(drpp) {
-  if (drpp.status === 'batal') throw new HttpsError('failed-precondition', 'DRPP sudah dibatalkan.');
+  if (drpp.status === 'batal')
+    throw new HttpsError('failed-precondition', 'DRPP sudah dibatalkan.');
 }
 
 /**
@@ -98,7 +98,7 @@ function wajibAktif(drpp) {
  * masuk; sisanya menunggu dan masuk otomatis saat arsipnya selesai.
  * Masukan: { tahunAnggaran, berkasIds }. Hasil: { id, masuk, menunggu }.
  */
-exports.buatDrpp = onCall(OPSI_CALLABLE, async (req) => {
+exports.buatDrpp = callable('buatDrpp', async (req) => {
   const p = pemanggil(req);
   wajibPeran(p, 'keuangan');
   const tahunAnggaran = Number(req.data?.tahunAnggaran);
@@ -114,7 +114,10 @@ exports.buatDrpp = onCall(OPSI_CALLABLE, async (req) => {
     const rows = await bacaBerkas(tx, ids, tahunAnggaran);
     const bentrok = await dipakaiDrppLain(tx, ids, null);
     if (bentrok) {
-      throw new HttpsError('failed-precondition', `Sebagian berkas sudah tercantum di ${bentrok.drppId}.`);
+      throw new HttpsError(
+        'failed-precondition',
+        `Sebagian berkas sudah tercantum di ${bentrok.drppId}.`,
+      );
     }
     const urut = (penghitung.exists ? Number(penghitung.get('nilai')) || 0 : 0) + 1;
     const id = `DRPP-${waktu.tahun}-${String(urut).padStart(4, '0')}`;
@@ -151,7 +154,7 @@ exports.buatDrpp = onCall(OPSI_CALLABLE, async (req) => {
  * Ganti daftar LPJ sebuah DRPP (aktif, belum lengkap). Berkas yang dikeluarkan lepas dari DRPP;
  * berkas baru yang sudah diarsipkan langsung masuk. Masukan: { drppId, berkasIds }.
  */
-exports.ubahDaftarDrpp = onCall(OPSI_CALLABLE, async (req) => {
+exports.ubahDaftarDrpp = callable('ubahDaftarDrpp', async (req) => {
   const p = pemanggil(req);
   wajibPeran(p, 'keuangan');
   const drppId = idSah(req.data?.drppId, 'ID DRPP');
@@ -168,7 +171,10 @@ exports.ubahDaftarDrpp = onCall(OPSI_CALLABLE, async (req) => {
     const rows = await bacaBerkas(tx, [...new Set([...lama, ...ids])], drpp.tahunAnggaran, baru);
     const bentrok = baru.length ? await dipakaiDrppLain(tx, baru, drppId) : null;
     if (bentrok) {
-      throw new HttpsError('failed-precondition', `Sebagian berkas sudah tercantum di ${bentrok.drppId}.`);
+      throw new HttpsError(
+        'failed-precondition',
+        `Sebagian berkas sudah tercantum di ${bentrok.drppId}.`,
+      );
     }
     const dokLengkap = DOKUMEN.every((k) => drpp.dokumen?.[k]);
     const semuaMasuk = rows
@@ -214,7 +220,7 @@ exports.ubahDaftarDrpp = onCall(OPSI_CALLABLE, async (req) => {
  * "Belum Masuk DRPP". Pindaian dokumen DRPP di Storage tetap. Nomor DRPP tidak dipakai ulang.
  * Masukan: { drppId, alasan }.
  */
-exports.batalkanDrpp = onCall(OPSI_CALLABLE, async (req) => {
+exports.batalkanDrpp = callable('batalkanDrpp', async (req) => {
   const p = pemanggil(req);
   if (!superadmin(p)) {
     throw new HttpsError('permission-denied', 'Hanya Super Admin yang bisa membatalkan DRPP.');

@@ -5,12 +5,10 @@
  * `sistem_penghitung/surat_{tahun}` menurut tahun tanggal surat.
  */
 
-const { onCall } = require('firebase-functions/v2/https');
 const {
   HttpsError,
   FieldValue,
   db,
-  OPSI_CALLABLE,
   KOLEKSI,
   pemanggil,
   wajibPeran,
@@ -21,6 +19,7 @@ const {
   catatLog,
   jejakUbah,
 } = require('./umum');
+const { callable } = require('./jejak');
 
 const MAKS_TINGKAT = 4; // KOP, Kode surat 1, 2, 3
 const SUMBER_PEGAWAI = ['register', 'form']; // memakai penghitung kantor
@@ -71,7 +70,7 @@ async function rantaiKode(tx, kodeIds) {
  * Terbitkan satu nomor surat (semua pegawai aktif). Masukan: { sumber: 'register'|'form',
  * tanggal, kodeIds[], perihal, tujuan, seksi, jenisSurat }. Hasil: { id, nomor, nomorUrut }.
  */
-exports.terbitkanNomorSurat = onCall(OPSI_CALLABLE, async (req) => {
+exports.terbitkanNomorSurat = callable('terbitkanNomorSurat', async (req) => {
   const p = pemanggil(req);
   const d = req.data || {};
   if (!SUMBER_PEGAWAI.includes(d.sumber)) {
@@ -119,7 +118,7 @@ exports.terbitkanNomorSurat = onCall(OPSI_CALLABLE, async (req) => {
  * sistem lama. Tidak boleh lebih kecil dari nomor yang sudah terbit di tahun itu (mencegah nomor
  * ganda). Masukan: { tahun, nilai, alasan }. Dicatat di sistem_log.
  */
-exports.aturPenghitung = onCall(OPSI_CALLABLE, async (req) => {
+exports.aturPenghitung = callable('aturPenghitung', async (req) => {
   const p = pemanggil(req);
   wajibPeran(p, 'keuangan');
   const tahun = tahunSah(Number(req.data?.tahun));

@@ -8,10 +8,17 @@ export const PERAN = Object.freeze({
   keuangan: 'keuangan',
   kepegawaian: 'kepegawaian',
   umum: 'umum',
+  koperasi: 'koperasi',
 });
 
 /** Peran khusus yang bisa diberikan (urutan tampilan). */
-export const PERAN_KHUSUS = Object.freeze(['superadmin', 'keuangan', 'kepegawaian', 'umum']);
+export const PERAN_KHUSUS = Object.freeze([
+  'superadmin',
+  'keuangan',
+  'kepegawaian',
+  'umum',
+  'koperasi',
+]);
 
 /** Pilihan mode "lihat sebagai" untuk Super Admin ('pegawai' = tanpa peran khusus). */
 export const PILIHAN_LIHAT_SEBAGAI = Object.freeze([...PERAN_KHUSUS, 'pegawai']);
@@ -21,6 +28,7 @@ export const LABEL_PERAN = Object.freeze({
   keuangan: 'Keuangan',
   kepegawaian: 'Kepegawaian',
   umum: 'Umum',
+  koperasi: 'Manager Koperasi',
   pegawai: 'Pegawai',
 });
 
@@ -29,6 +37,7 @@ export const KETERANGAN_PERAN = Object.freeze({
   keuangan: 'e-Persuratan: verifikasi, arsip, DRPP, MAK',
   kepegawaian: 'Data pegawai dan akun',
   umum: 'Inventory: barang dan transaksi',
+  koperasi: 'Akses penuh ke modul Koperasi',
 });
 
 /** Daftar peran dari claims → hanya kode yang dikenal, urutan tetap. */

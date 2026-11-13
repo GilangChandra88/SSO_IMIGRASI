@@ -1,5 +1,6 @@
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
+import { catatSesi } from './jejakKlien';
 
 /**
  * Keluar akun lalu memuat ulang ke halaman login. Memuat ulang membuang semua data di memori tab
@@ -8,6 +9,8 @@ import { auth } from '@/config/firebase';
  */
 export async function keluarAkun() {
   try {
+    // Catat keluar di Log Developer selagi masih login (paling lama 1,5 detik, tidak menghalangi)
+    await Promise.race([catatSesi('keluar'), new Promise((r) => setTimeout(r, 1500))]);
     await signOut(auth);
   } finally {
     try {

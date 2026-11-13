@@ -4,14 +4,12 @@
  * Klien tidak bisa menulis field turunan maupun mengunci bagian LPJ/SPBy (firestore.rules).
  */
 
-const { onCall } = require('firebase-functions/v2/https');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const { getStorage } = require('firebase-admin/storage');
 const {
   HttpsError,
   FieldValue,
   db,
-  OPSI_CALLABLE,
   KOLEKSI,
   pemanggil,
   superadmin,
@@ -23,12 +21,16 @@ const {
   catatLog,
   jejakUbah,
 } = require('./umum');
+const { callable } = require('./jejak');
 const { ubahRekap } = require('./rekap');
 const { perjadin, transaksiDari, totalVerifikasiDari, masukDrppDari } = require('./hitungBerkas');
 
-const SUB ={ keuangan: 'keuangan', riwayat: 'riwayat', bukti: 'bukti' };
+const SUB = { keuangan: 'keuangan', riwayat: 'riwayat', bukti: 'bukti' };
 const DOK_KEUANGAN = 'status';
-const BAGIAN = { perjadin: ['sp', 'tte', 'spd', 'lpj', 'laporan'], nonperjadin: ['spby', 'lampiran'] };
+const BAGIAN = {
+  perjadin: ['sp', 'tte', 'spd', 'lpj', 'laporan'],
+  nonperjadin: ['spby', 'lampiran'],
+};
 const LABEL_KUNCI = {
   sp: 'Surat Perintah ditetapkan final',
   tte: 'Scan & nomor Surat Perintah (TTE) tersimpan',
@@ -71,7 +73,13 @@ function progresDari(d) {
 
 /** Akun yang boleh membuka berkas: pembuat + pelaksana yang punya akun (dari pegawai_ringkas). */
 async function anggotaDari(d) {
-  const ids = [...new Set(pelaksanaDari(d).map((o) => o?.pegawaiId).filter((x) => typeof x === 'string' && x))];
+  const ids = [
+    ...new Set(
+      pelaksanaDari(d)
+        .map((o) => o?.pegawaiId)
+        .filter((x) => typeof x === 'string' && x),
+    ),
+  ];
   const refs = ids.slice(0, 100).map((id) => db.collection(KOLEKSI.pegawaiRingkas).doc(id));
   const snaps = refs.length ? await db.getAll(...refs) : [];
   const uids = snaps.map((s) => (s.exists ? s.get('authUid') : '')).filter(Boolean);
@@ -116,7 +124,10 @@ async function segarkanBerkas(id, d, k, riwayatBaru = [], oleh = '') {
     aktivitasTerakhir = { teks: akhir.teks, oleh, olehNama, pada: FieldValue.serverTimestamp() };
   }
 
-  const pelaksana = pelaksanaDari(d).map((o) => ({ pegawaiId: o?.pegawaiId || '', nama: o?.nama || '' }));
+  const pelaksana = pelaksanaDari(d).map((o) => ({
+    pegawaiId: o?.pegawaiId || '',
+    nama: o?.nama || '',
+  }));
   batch.set(
     db.collection(KOLEKSI.lpjRingkas).doc(id),
     {
@@ -158,7 +169,8 @@ function riwayatBerkas(sebelum, sesudah) {
   if (!sebelum) return [{ kode: 'dibuat', teks: `Berkas dibuat: "${sesudah.uraian || ''}"` }];
   const hasil = [];
   BAGIAN[perjadin(sesudah) ? 'perjadin' : 'nonperjadin'].forEach((b) => {
-    if (!terkunci(sebelum, b) && terkunci(sesudah, b)) hasil.push({ kode: `kunci_${b}`, teks: LABEL_KUNCI[b] });
+    if (!terkunci(sebelum, b) && terkunci(sesudah, b))
+      hasil.push({ kode: `kunci_${b}`, teks: LABEL_KUNCI[b] });
   });
   if (!sebelum.nomorLpj && sesudah.nomorLpj) {
     hasil.push({ kode: 'nomor', teks: `Nomor LPJ ${sesudah.nomorLpj} terbit` });
@@ -328,7 +340,7 @@ function wajib(kondisi, pesan) {
  * memvalidasi isian di server, mengunci bagian itu, menerbitkan nomor LPJ-TAHUN-BULAN-NNNN,
  * dan mencatat realisasi per baris transaksi ke mak_realisasi. Masukan: { berkasId }.
  */
-exports.selesaikanSpby = onCall(OPSI_CALLABLE, async (req) => {
+exports.selesaikanSpby = callable('selesaikanSpby', async (req) => {
   const p = pemanggil(req);
   const berkasId = idSah(req.data?.berkasId, 'ID berkas');
   const ref = berkasRef(berkasId);
@@ -346,33 +358,54 @@ exports.selesaikanSpby = onCall(OPSI_CALLABLE, async (req) => {
     if (perjadin(d)) wajib(terkunci(d, 'spd'), 'SPD belum ditetapkan final.');
     wajib(!terkunci(d, bagian), 'Bagian ini sudah selesai.');
     const tanggal = tanggalSpbyDari(d);
-    wajib(tanggalSah(tanggal), perjadin(d) ? 'Tanggal LPJ wajib diisi.' : 'Tanggal SPBy wajib diisi.');
+    wajib(
+      tanggalSah(tanggal),
+      perjadin(d) ? 'Tanggal LPJ wajib diisi.' : 'Tanggal SPBy wajib diisi.',
+    );
 
-    const idPelaksana = new Set(pelaksanaDari(d).map((o) => o?.pegawaiId).filter(Boolean));
+    const idPelaksana = new Set(
+      pelaksanaDari(d)
+        .map((o) => o?.pegawaiId)
+        .filter(Boolean),
+    );
     wajib(idPelaksana.size > 0, 'Pelaksana belum diisi.');
     const mak = makDari(d);
     wajib(typeof mak.akunNodeId === 'string' && mak.akunNodeId, 'Akun MAK belum dipilih.');
 
     const transaksi = transaksiDari(d);
-    wajib(transaksi.length > 0 && transaksi.length <= 100, 'Detail transaksi wajib diisi (1–100 baris).');
+    wajib(
+      transaksi.length > 0 && transaksi.length <= 100,
+      'Detail transaksi wajib diisi (1–100 baris).',
+    );
     const barisIds = new Set();
     transaksi.forEach((t, i) => {
       const no = `Baris transaksi ${i + 1}`;
-      wajib(typeof t?.barisId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(t.barisId), `${no}: ID baris tidak sah.`);
+      wajib(
+        typeof t?.barisId === 'string' && /^[A-Za-z0-9_-]{1,40}$/.test(t.barisId),
+        `${no}: ID baris tidak sah.`,
+      );
       wajib(!barisIds.has(t.barisId), `${no}: ID baris ganda.`);
       barisIds.add(t.barisId);
       wajib(idPelaksana.has(t.pelaksanaId), `${no}: pelaksana tidak terdaftar di berkas.`);
       wajib(typeof t.itemNodeId === 'string' && t.itemNodeId, `${no}: item MAK belum dipilih.`);
-      wajib(Number.isInteger(t.jumlah) && t.jumlah > 0 && t.jumlah <= 1e12, `${no}: jumlah tidak sah.`);
+      wajib(
+        Number.isInteger(t.jumlah) && t.jumlah > 0 && t.jumlah <= 1e12,
+        `${no}: jumlah tidak sah.`,
+      );
     });
 
     // Item MAK harus ada, berada di bawah Akun terpilih, dan tahun anggarannya sama dengan berkas
     const itemIds = [...new Set(transaksi.map((t) => t.itemNodeId))];
-    const nodeSnaps = await tx.getAll(...itemIds.map((id) => db.collection(KOLEKSI.makNode).doc(id)));
+    const nodeSnaps = await tx.getAll(
+      ...itemIds.map((id) => db.collection(KOLEKSI.makNode).doc(id)),
+    );
     const nodes = Object.fromEntries(nodeSnaps.map((s) => [s.id, s.exists ? s.data() : null]));
     itemIds.forEach((id) => {
       const n = nodes[id];
-      wajib(n && n.tingkat === 'item' && n.aktif !== false, 'Ada item MAK yang tidak ditemukan atau nonaktif.');
+      wajib(
+        n && n.tingkat === 'item' && n.aktif !== false,
+        'Ada item MAK yang tidak ditemukan atau nonaktif.',
+      );
       wajib(n.indukId === mak.akunNodeId, 'Ada item MAK yang tidak berada di bawah Akun terpilih.');
       wajib(n.tahunAnggaran === d.tahunAnggaran, 'Tahun anggaran item MAK berbeda dengan berkas.');
     });
@@ -383,7 +416,8 @@ exports.selesaikanSpby = onCall(OPSI_CALLABLE, async (req) => {
     const urut = (penghitung.exists ? Number(penghitung.get('nilai')) || 0 : 0) + 1;
     const nomorLpj = `LPJ-${waktu.tahun}-${waktu.bulan}-${String(urut).padStart(4, '0')}`;
     const nomorRef = db.collection(KOLEKSI.lpjNomor).doc(nomorLpj);
-    if ((await tx.get(nomorRef)).exists) throw new HttpsError('aborted', 'Nomor bentrok, coba lagi.');
+    if ((await tx.get(nomorRef)).exists)
+      throw new HttpsError('aborted', 'Nomor bentrok, coba lagi.');
 
     tx.set(penghitungRef, { nilai: urut, diubahPada: FieldValue.serverTimestamp() });
     tx.create(nomorRef, { berkasId, dibuatPada: FieldValue.serverTimestamp() });
@@ -412,7 +446,12 @@ exports.selesaikanSpby = onCall(OPSI_CALLABLE, async (req) => {
         pelaksanaId: t.pelaksanaId,
         status: 'aktif',
         alasanBatal: '',
-        salinan: { makKode: mak.kode || '', itemKode: n.kode || '', itemNama: n.nama || '', uraian: d.uraian || '' },
+        salinan: {
+          makKode: mak.kode || '',
+          itemKode: n.kode || '',
+          itemNama: n.nama || '',
+          uraian: d.uraian || '',
+        },
         dibuatPada: FieldValue.serverTimestamp(),
         dibuatOleh: p.uid,
         ...jejakUbah(p.uid),
@@ -420,9 +459,20 @@ exports.selesaikanSpby = onCall(OPSI_CALLABLE, async (req) => {
     });
     ubahRekap(
       tx,
-      transaksi.map((t) => ({ tahunAnggaran: d.tahunAnggaran, itemNodeId: t.itemNodeId, bulan, jumlah: t.jumlah })),
+      transaksi.map((t) => ({
+        tahunAnggaran: d.tahunAnggaran,
+        itemNodeId: t.itemNodeId,
+        bulan,
+        jumlah: t.jumlah,
+      })),
     );
-    catatLog(tx, { modul: 'lpj', aksi: 'selesaikanSpby', target: ref.path, nilaiBaru: { nomorLpj }, oleh: p.uid });
+    catatLog(tx, {
+      modul: 'lpj',
+      aksi: 'selesaikanSpby',
+      target: ref.path,
+      nilaiBaru: { nomorLpj },
+      oleh: p.uid,
+    });
     return nomorLpj;
   });
 
@@ -438,7 +488,7 @@ exports.selesaikanSpby = onCall(OPSI_CALLABLE, async (req) => {
  *   (bukan dihapus) dan nomor LPJ tidak dipakai ulang.
  * Masukan: { berkasId, alasan? }.
  */
-exports.hapusBerkas = onCall(OPSI_CALLABLE, async (req) => {
+exports.hapusBerkas = callable('hapusBerkas', async (req) => {
   const p = pemanggil(req);
   const berkasId = idSah(req.data?.berkasId, 'ID berkas');
   const ref = berkasRef(berkasId);
@@ -460,7 +510,9 @@ exports.hapusBerkas = onCall(OPSI_CALLABLE, async (req) => {
     wajib(!k.arsip?.selesai, 'Berkas yang sudah diarsip tidak bisa dihapus.');
     // Realisasi yang masih aktif dibatalkan dan dikurangkan dari rekap dalam satu transaksi
     await db.runTransaction(async (tx) => {
-      const realisasi = await tx.get(db.collection(KOLEKSI.makRealisasi).where('berkasId', '==', berkasId));
+      const realisasi = await tx.get(
+        db.collection(KOLEKSI.makRealisasi).where('berkasId', '==', berkasId),
+      );
       const aktif = realisasi.docs.filter((r) => r.get('status') === 'aktif');
       aktif.forEach((r) =>
         tx.update(r.ref, {
@@ -494,7 +546,9 @@ exports.hapusBerkas = onCall(OPSI_CALLABLE, async (req) => {
   await db.recursiveDelete(ref);
   await db.collection(KOLEKSI.lpjRingkas).doc(berkasId).delete();
   try {
-    await getStorage().bucket().deleteFiles({ prefix: `lpj/${berkasId}/` });
+    await getStorage()
+      .bucket()
+      .deleteFiles({ prefix: `lpj/${berkasId}/` });
   } catch {
     // Berkas Storage gagal dihapus (mis. izin bucket belum diberikan): data Firestore sudah terhapus.
     await catatLog(null, {
@@ -517,7 +571,7 @@ const TAHAP_RINGKAS = ['draft', 'verif', 'sakti', 'transfer', 'arsip', 'drpp', '
  * banyaknya berkas. Hanya membaca. Masukan: { tahunAnggaran }.
  * Hasil: { tahap: { draft, verif, sakti, transfer, arsip, drpp, selesai }, jenis: { perjadin, nonperjadin } }.
  */
-exports.hitungTahapLpj = onCall(OPSI_CALLABLE, async (req) => {
+exports.hitungTahapLpj = callable('hitungTahapLpj', async (req) => {
   const p = pemanggil(req);
   wajibPeran(p, 'keuangan');
   const tahunAnggaran = Number(req.data?.tahunAnggaran);
@@ -525,7 +579,11 @@ exports.hitungTahapLpj = onCall(OPSI_CALLABLE, async (req) => {
     throw new HttpsError('invalid-argument', 'Tahun anggaran tidak sah.');
   }
   const tahunIni = db.collection(KOLEKSI.lpjRingkas).where('tahunAnggaran', '==', tahunAnggaran);
-  const hitung = (q) => q.count().get().then((s) => s.data().count);
+  const hitung = (q) =>
+    q
+      .count()
+      .get()
+      .then((s) => s.data().count);
   const [perTahap, perjadinN, nonperjadinN] = await Promise.all([
     Promise.all(TAHAP_RINGKAS.map((t) => hitung(tahunIni.where('tahap', '==', t)))),
     hitung(tahunIni.where('jenis', '==', 'perjadin')),

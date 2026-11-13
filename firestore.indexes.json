@@ -149,6 +149,146 @@
           "order": "DESCENDING"
         }
       ]
+    },
+    {
+      "collectionGroup": "sistem_log",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "modul",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "pada",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "sistem_log",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "oleh",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "pada",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "sistem_log",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "target",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "pada",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "sistem_aktivitas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "uid",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "pada",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "sistem_aktivitas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "jenis",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "pada",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "sistem_aktivitas",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "fn",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "pada",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "sistem_galat",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "terakhirPada",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "sistem_anomali",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "terakhirPada",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "sistem_anomali",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "kode",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "terakhirPada",
+          "order": "DESCENDING"
+        }
+      ]
+    },
+    {
+      "collectionGroup": "sistem_galat",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "status",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "terakhirPada",
+          "order": "ASCENDING"
+        }
+      ]
     }
   ],
   "fieldOverrides": [
@@ -235,6 +375,93 @@
     {
       "collectionGroup": "inventory_saldo",
       "fieldPath": "bulan",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_log",
+      "fieldPath": "perubahan",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_log",
+      "fieldPath": "nilaiLama",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_log",
+      "fieldPath": "nilaiBaru",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_log",
+      "fieldPath": "pelaku",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_log",
+      "fieldPath": "saring",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_anomali",
+      "fieldPath": "rincian",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_anomali",
+      "fieldPath": "pelaku",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_galat",
+      "fieldPath": "contoh",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_galat",
+      "fieldPath": "penggunaTerdampak",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_galat",
+      "fieldPath": "kedaluwarsaPada",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_aktivitas",
+      "fieldPath": "perangkat",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_aktivitas",
+      "fieldPath": "kedaluwarsaPada",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_sesi",
+      "fieldPath": "perangkat",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_sesi",
+      "fieldPath": "ua",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_metrik",
+      "fieldPath": "fn",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_metrik",
+      "fieldPath": "jam",
+      "indexes": []
+    },
+    {
+      "collectionGroup": "sistem_metrik",
+      "fieldPath": "potret",
       "indexes": []
     }
   ]

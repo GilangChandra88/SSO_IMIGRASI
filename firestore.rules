@@ -907,6 +907,148 @@ service cloud.firestore {
     }
 
     // ════════════════════════════════════════════════════════════════════════
+    // KOPERASI
+    // ════════════════════════════════════════════════════════════════════════
+
+    function koperasi() { return punya('koperasi'); }
+    function bacaKoperasi(n) { return koperasi() && batasDaftar(n); }
+
+    // Mesin jurnal & semua catatan keuangan: dibaca pengurus, HANYA ditulis Cloud Function
+    // (functions/src/koperasi.js), di transaksi yang sama dengan jurnalnya.
+    match /koperasi_jurnal/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(50);
+      allow write: if false;
+    }
+    match /koperasi_rekap/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(20);
+      allow write: if false;
+    }
+    match /koperasi_rekap_anggota/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(20);
+      allow write: if false;
+    }
+    match /koperasi_kas_mutasi/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(50);
+      allow write: if false;
+    }
+    match /koperasi_saldo_awal/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(5);
+      allow write: if false;
+    }
+    match /koperasi_pengaturan/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(5);
+      allow write: if false;
+    }
+    match /koperasi_anggota/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(1000);
+      allow write: if false;
+    }
+    match /koperasi_simpanan/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(200);
+      allow write: if false;
+    }
+    match /koperasi_transaksi_umum/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(50);
+      allow write: if false;
+    }
+    match /koperasi_kantin_transaksi/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(50);
+      allow write: if false;
+    }
+    // Cara bayar Kasir & kas tujuannya (harus akun kas/bank). Diatur pengurus; tidak dihapus.
+    function kunciPembayaran() { return ['nama', 'kasId', 'aktif', 'urutan'].concat(kunciAudit()); }
+    function pembayaranSah(d) {
+      return teksIsi(d.nama, 40) && idSah(d.kasId) && d.aktif is bool && bulat(d.urutan, 0, 999)
+        && get(/databases/$(database)/documents/koperasi_akun/$(d.kasId)).data.kas == true;
+    }
+    match /koperasi_kantin_pembayaran/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(50);
+      allow create: if koperasi()
+        && hanya(kunciPembayaran()) && wajib(kunciPembayaran()) && pembayaranSah(baru()) && auditBuat();
+      allow update: if koperasi()
+        && hanya(kunciPembayaran()) && pembayaranSah(baru()) && auditUbah();
+      allow delete: if false;
+    }
+    match /koperasi_kantin_opname/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(50);
+      allow write: if false;
+    }
+    match /koperasi_kantin_pembelian/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(100);
+      allow write: if false;
+    }
+
+    // Bagan akun. Akun bawaan (ID berawalan "s-", daftar di koperasi/data/baganAkun.js) dibuat
+    // aplikasi sekali dan hanya bisa diganti namanya; akun tambahan boleh diubah kode/nama dan
+    // dinonaktifkan. Kelompok & jenis kas/bank tetap. Tidak ada hapus.
+    function kunciAkun() {
+      return ['kode', 'nama', 'kelompok', 'kas', 'sistem', 'urutan', 'aktif'].concat(kunciAudit());
+    }
+    function akunSah(d) {
+      return d.kode is string && d.kode.matches('^[0-9]{4}$')
+        && teksIsi(d.nama, 100)
+        && d.kelompok in ['asetLancar', 'asetTetap', 'kewajibanLancar', 'kewajibanPanjang',
+                          'ekuitas', 'pendapatan', 'hpp', 'beban']
+        && d.kas is bool && (d.kas == false || d.kelompok == 'asetLancar')
+        && d.sistem is bool && bulat(d.urutan, 0, 9999) && d.aktif is bool;
+    }
+
+    match /koperasi_akun/{id} {
+      allow get: if koperasi();
+      allow list: if koperasi() && batasDaftar(300);
+      allow create: if koperasi()
+        && hanya(kunciAkun()) && wajib(kunciAkun()) && akunSah(baru())
+        && baru().sistem == id.matches('^s-[a-z0-9-]{1,60}$')
+        && baru().aktif == true && auditBuat();
+      allow update: if koperasi()
+        && hanya(kunciAkun()) && akunSah(baru())
+        && !berubah().hasAny(['kelompok', 'kas', 'sistem', 'urutan'])
+        && (lama().sistem == false || !berubah().hasAny(['kode', 'aktif']))
+        && auditUbah();
+      allow delete: if false;
+    }
+
+    // Kategori barang Kantin: dibuat lewat Function buatKategoriKantin (sekaligus akun Penjualan
+    // 31xx & HPP 35xx-nya). Pengurus boleh ganti nama & menonaktifkan. Tidak ada hapus.
+    function kunciKategoriKantin() {
+      return ['nama', 'urutan', 'akunJualId', 'akunHppId', 'aktif'].concat(kunciAudit());
+    }
+    match /koperasi_kantin_kategori/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(200);
+      allow create, delete: if false;
+      allow update: if koperasi()
+        && hanya(kunciKategoriKantin()) && teksIsi(baru().nama, 80) && baru().aktif is bool
+        && !berubah().hasAny(['urutan', 'akunJualId', 'akunHppId']) && auditUbah();
+    }
+
+    // Master barang Kantin: dibaca pengurus, ditulis HANYA lewat Function simpanBarangKantin /
+    // aturAktifBarangKantin (barkode standar & unik), pembelian, penjualan, stok awal, opname.
+    match /koperasi_kantin_barang/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(1000);
+      allow write: if false;
+    }
+    // Penjaga keunikan barkode (ID = barkode): hanya Function.
+    match /koperasi_kantin_barkode/{kode} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(1000);
+      allow write: if false;
+    }
+    // ════════════════════════════════════════════════════════════════════════
     // SISTEM
     // ════════════════════════════════════════════════════════════════════════
 
@@ -918,7 +1060,8 @@ service cloud.firestore {
     }
 
     match /sistem_pengaturan/{kunci} {
-      allow get: if masuk();
+      // `logdev` (ambang anomali & hasil pemeriksaan) hanya lewat Function Log Developer
+      allow get: if masuk() && kunci != 'logdev';
       allow list: if false;
       // Tutup buku Inventory: tanggal hanya boleh maju, kecuali Super Admin.
       allow create: if kunci == 'inventory' && umum()
@@ -933,11 +1076,29 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Jejak sistem (Log Developer, §5.8): ditulis HANYA Function dan dibaca HANYA lewat Function
+    // `bacaLogDev` (Super Admin + kata sandi diketik ulang ≤30 menit + setiap bacaan tercatat).
+    // Tidak ada jalur baca langsung dari browser, termasuk untuk Super Admin.
     match /sistem_log/{id} {
-      allow get: if superadmin() || (keuangan() && lama().modul in ['lpj', 'mak', 'surat']);
-      allow list: if (superadmin() || (keuangan() && resource.data.modul in ['lpj', 'mak', 'surat']))
-        && batasDaftar(100);
-      allow write: if false; // hanya Function
+      allow read, write: if false;
+    }
+    match /sistem_galat/{id} {
+      allow read, write: if false;
+    }
+    match /sistem_anomali/{id} {
+      allow read, write: if false;
+    }
+    match /sistem_aktivitas/{id} {
+      allow read, write: if false;
+    }
+    match /sistem_sesi/{uid} {
+      allow read, write: if false;
+    }
+    match /sistem_metrik/{tanggal} {
+      allow read, write: if false;
+    }
+    match /sistem_segel/{tanggal} {
+      allow read, write: if false;
     }
 
     // Semua path lain ditolak.

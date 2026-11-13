@@ -8,9 +8,12 @@ import {
   FaChevronRight,
   FaKey,
   FaIdCard,
+  FaHandHoldingUsd,
+  FaTerminal,
 } from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
 import ToastViewport from '@/components/ToastViewport';
+import { PERAN } from '@/utils/peran';
 import { showToast } from '@/utils/toastStore';
 import {
   adalahUltahHariIni,
@@ -24,7 +27,8 @@ import { keluarAkun } from '@/utils/keluarAkun';
 
 export default function Portal() {
   const navigate = useNavigate();
-  const { currentUser, userData, isKepegawaian } = useAuth();
+  const { currentUser, userData, isKepegawaian, punyaPeran, isRealSuperAdmin } = useAuth();
+  const bolehKoperasi = punyaPeran(PERAN.koperasi);
   const [params, setParams] = useSearchParams();
   const ujiId = params.get('uji-ultah');
   // { pegawai, uji }: captcha ulang tahun yang sedang tampil
@@ -96,7 +100,35 @@ export default function Portal() {
         'bg-amber-50 dark:bg-amber-500/10 border-amber-100 dark:border-amber-500/20',
       badge: isKepegawaian ? 'Pengembangan' : 'Khusus Kepegawaian',
       terkunci: !isKepegawaian,
+      pesanTerkunci: 'Modul ini khusus peran Kepegawaian.',
     },
+    {
+      id: 'koperasi',
+      title: 'Koperasi',
+      description: 'Sistem informasi koperasi pegawai.',
+      icon: <FaHandHoldingUsd size={28} className="text-teal-500" />,
+      path: '/koperasi',
+      iconContainerClass: 'bg-teal-50 dark:bg-teal-500/10 border-teal-100 dark:border-teal-500/20',
+      badge: bolehKoperasi ? 'Pengembangan' : 'Khusus Manager Koperasi',
+      terkunci: !bolehKoperasi,
+      pesanTerkunci: 'Modul ini khusus peran Manager Koperasi.',
+    },
+    // Hanya tampil untuk Super Admin (pegawai lain tidak perlu tahu modul ini ada)
+    ...(isRealSuperAdmin
+      ? [
+          {
+            id: 'log-developer',
+            title: 'Log Developer',
+            description: 'Galat, anomali, aktivitas pengguna, dan kesehatan sistem.',
+            icon: <FaTerminal size={26} className="text-rose-500" />,
+            path: '/log-developer',
+            iconContainerClass:
+              'bg-rose-50 dark:bg-rose-500/10 border-rose-100 dark:border-rose-500/20',
+            badge: 'Super Admin',
+            terkunci: false,
+          },
+        ]
+      : []),
   ];
 
   return (
@@ -169,9 +201,7 @@ export default function Portal() {
             <div
               key={app.id}
               onClick={() =>
-                app.terkunci
-                  ? showToast('Modul ini khusus peran Kepegawaian.', 'error')
-                  : navigate(app.path)
+                app.terkunci ? showToast(app.pesanTerkunci, 'error') : navigate(app.path)
               }
               className={`group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 hover:shadow-lg hover:border-cyan-400/50 dark:hover:border-cyan-500/50 transition-all cursor-pointer relative overflow-hidden flex flex-col h-full ${app.terkunci ? 'opacity-60' : ''}`}
             >

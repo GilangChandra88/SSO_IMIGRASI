@@ -30,4 +30,8 @@ Object.assign(
   require('./src/mak'),
   require('./src/surat'),
   require('./src/inventory'),
+  require('./src/koperasiPembukuan'),
+  require('./src/koperasiAnggota'),
+  require('./src/koperasiKantin'),
+  require('./src/logdev'),
 );

@@ -37,6 +37,14 @@ export const PANJANG = Object.freeze({
   satuanBarang: 30,
   namaPemasok: 200,
   namaBerkas: 200,
+  namaAnggota: 100,
+  keteranganKoperasi: 200,
+  pemasok: 100,
+  namaPembayaran: 40,
+  namaAkun: 100,
+  namaKategoriKantin: 80,
+  barkode: 64,
+  keteranganKas: 200, // transfer kas koperasi
 });
 
 /** Jumlah maksimum isi daftar. */
@@ -91,4 +99,19 @@ export const LIMIT_KUERI = Object.freeze({
   ucapan: 200,
   buktiBerkas: 200, // lpj_berkas/{id}/bukti
   riwayatBerkas: 100, // lpj_berkas/{id}/riwayat
+  jurnalKoperasi: 50, // koperasi_jurnal per halaman
+  rekapKoperasi: 20,
+  anggotaKoperasi: 1000,
+  simpananKoperasi: 50, // koperasi_simpanan per halaman
+  bukuAnggota: 200, // koperasi_simpanan satu anggota
+  transaksiUmum: 50,
+  pembelianKantin: 50,
+  utangKantin: 100,
+  opnameKantin: 50,
+  pembayaranKantin: 50,
+  akunKoperasi: 300,
+  kategoriKantin: 200,
+  barangKantin: 1000,
+  historyKasir: 50, // koperasi_kantin_transaksi per halaman
+  flowKas: 50, // koperasi_kas_mutasi per halaman
 });

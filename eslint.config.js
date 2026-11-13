@@ -49,7 +49,7 @@ export default [
 
 /**
  * Batas antar modul (lihat CLAUDE.md, bagian "Struktur folder").
- *  - Aplikasi (sso, e-persuratan, inventory, kepegawaian) tidak boleh saling mengimpor.
+ *  - Aplikasi (sso, e-persuratan, inventory, kepegawaian, koperasi) tidak boleh saling mengimpor.
  *  - Sub-modul e-persuratan hanya boleh saling mengimpor lewat index.js-nya,
  *    dan hanya untuk arah: dashboard -> lpj dan surat-keluar -> lpj.
  *  - Kode bersama (components, layouts, data, utils, config, context) tidak boleh mengimpor dari modules/.
@@ -57,7 +57,7 @@ export default [
  * tetap gunakan alias "@/".
  */
 function moduleBoundaryRules() {
-  const APPS = ['sso', 'e-persuratan', 'inventory', 'kepegawaian'];
+  const APPS = ['sso', 'e-persuratan', 'inventory', 'kepegawaian', 'koperasi', 'log-developer'];
   const SUBS = ['dashboard', 'lpj', 'surat-keluar', 'data-master', 'scanner'];
   // Pola berbasis NAMA FOLDER agar berlaku untuk impor beralias (@/modules/x) maupun relatif (../../x).
   const whole = (name) => [`**/${name}`, `**/${name}/**`];
@@ -84,6 +84,8 @@ function moduleBoundaryRules() {
     rule(['src/modules/sso/**'], otherApps('sso'), appMsg),
     rule(['src/modules/inventory/**'], otherApps('inventory'), appMsg),
     rule(['src/modules/kepegawaian/**'], otherApps('kepegawaian'), appMsg),
+    rule(['src/modules/koperasi/**'], otherApps('koperasi'), appMsg),
+    rule(['src/modules/log-developer/**'], otherApps('log-developer'), appMsg),
     // AppModule.jsx dan index.js e-Persuratan menyusun sub-modulnya, jadi boleh mengimpor sub-modul.
     rule(['src/modules/e-persuratan/*.{js,jsx}'], otherApps('e-persuratan'), appMsg),
     ...SUBS.map((sub) =>

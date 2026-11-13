@@ -37,6 +37,7 @@ const U = {
   keu: akun('uKEU', ['keuangan'], 'pKEU'),
   kep: akun('uKEP', ['kepegawaian'], 'pKEP'),
   um: akun('uUM', ['umum'], 'pUM'),
+  kop: akun('uKOP', ['koperasi'], 'pKOP'),
   pg: akun('uPG', [], 'pPG'),
   pg2: akun('uPG2', [], 'pPG2'),
   tanpaKlaim: token('uX'),
@@ -2192,6 +2193,341 @@ await cek(
   'pegawai biasa membaca koreksi jam',
   false,
   ambil(U.pg, `pegawai_absensi/AB3/koreksi/${idKoreksi}`),
+);
+
+// ── Koperasi: koleksi yang hanya ditulis Function ─────────────────────────
+for (const [koleksi, batas] of [
+  ['koperasi_jurnal', 50],
+  ['koperasi_rekap', 20],
+  ['koperasi_rekap_anggota', 20],
+  ['koperasi_kas_mutasi', 50],
+  ['koperasi_saldo_awal', 5],
+  ['koperasi_pengaturan', 5],
+  ['koperasi_anggota', 1000],
+  ['koperasi_simpanan', 200],
+  ['koperasi_transaksi_umum', 50],
+  ['koperasi_kantin_transaksi', 50],
+  ['koperasi_kantin_pembelian', 100],
+  ['koperasi_kantin_opname', 50],
+]) {
+  await cek(`pengurus membaca ${koleksi}`, true, daftar(U.kop, koleksi, { limit: batas }));
+  await cek(`${koleksi} melebihi limit`, false, daftar(U.kop, koleksi, { limit: batas + 1 }));
+  await cek(`pegawai biasa membaca ${koleksi}`, false, daftar(U.pg, koleksi, { limit: batas }));
+  await cek(
+    `pengurus menulis ${koleksi} langsung`,
+    false,
+    buat(U.kop, `${koleksi}/X1`, { jumlah: 1 }),
+  );
+}
+await cek(
+  'Super Admin membaca jurnal koperasi',
+  true,
+  daftar(U.sa, 'koperasi_jurnal', { limit: 50 }),
+);
+await cek(
+  'Keuangan kantor membaca jurnal koperasi',
+  false,
+  daftar(U.keu, 'koperasi_jurnal', { limit: 50 }),
+);
+
+// ── Koperasi: kategori & barang Kantin ────────────────────────────────────
+const katKantin = {
+  nama: 'Minuman Contoh',
+  urutan: 1,
+  akunJualId: 'k-jual-KK1',
+  akunHppId: 'k-hpp-KK1',
+  aktif: true,
+  ...audit('uKOP'),
+};
+await cek(
+  'pengurus membuat kategori langsung (bukan Function)',
+  false,
+  buat(U.kop, 'koperasi_kantin_kategori/KK9', katKantin, AUDIT),
+);
+await buat(U.owner, 'koperasi_kantin_kategori/KK1', katKantin, AUDIT);
+await cek(
+  'pengurus mengganti nama kategori',
+  true,
+  ubah(U.kop, 'koperasi_kantin_kategori/KK1', { nama: 'Minuman Dingin', diubahOleh: 'uKOP' }, [
+    'diubahPada',
+  ]),
+);
+await cek(
+  'pengurus menonaktifkan kategori',
+  true,
+  ubah(U.kop, 'koperasi_kantin_kategori/KK1', { aktif: false, diubahOleh: 'uKOP' }, ['diubahPada']),
+);
+await cek(
+  'pengurus mengganti akun kategori',
+  false,
+  ubah(
+    U.kop,
+    'koperasi_kantin_kategori/KK1',
+    { akunJualId: 's-pendapatan-lain', diubahOleh: 'uKOP' },
+    ['diubahPada'],
+  ),
+);
+await cek('pengurus menghapus kategori', false, hapusDok(U.kop, 'koperasi_kantin_kategori/KK1'));
+await cek(
+  'pengurus membaca kategori',
+  true,
+  daftar(U.kop, 'koperasi_kantin_kategori', { limit: 200 }),
+);
+
+const brgKantin = {
+  kategoriId: 'KK1',
+  barkode: '4006381333931',
+  nama: 'Teh Contoh',
+  satuan: 'botol',
+  hargaJual: 5000,
+  stok: 0,
+  hargaPokok: 0,
+  adaTransaksi: false,
+  aktif: true,
+  jenis: 'barang',
+  kemasan: [],
+  komponen: [],
+  ...audit('uKOP'),
+};
+await buat(U.owner, 'koperasi_kantin_barang/B1', brgKantin, AUDIT);
+await buat(U.owner, 'koperasi_kantin_barkode/4006381333931', {
+  barangId: 'B1',
+  nama: 'Teh Contoh',
+});
+await cek(
+  'pengurus menambah barang langsung (bukan Function)',
+  false,
+  buat(U.kop, 'koperasi_kantin_barang/B2', { ...brgKantin, barkode: '' }, AUDIT),
+);
+await cek(
+  'pengurus mengubah harga jual langsung',
+  false,
+  ubah(U.kop, 'koperasi_kantin_barang/B1', { hargaJual: 6000, diubahOleh: 'uKOP' }, ['diubahPada']),
+);
+await cek(
+  'pengurus mengubah stok langsung',
+  false,
+  ubah(U.kop, 'koperasi_kantin_barang/B1', { stok: 50, diubahOleh: 'uKOP' }, ['diubahPada']),
+);
+await cek('pengurus menghapus barang', false, hapusDok(U.kop, 'koperasi_kantin_barang/B1'));
+await cek('pengurus membaca barang', true, ambil(U.kop, 'koperasi_kantin_barang/B1'));
+await cek('pegawai biasa membaca barang', false, ambil(U.pg, 'koperasi_kantin_barang/B1'));
+await cek(
+  'pengurus membaca daftar barang',
+  true,
+  daftar(U.kop, 'koperasi_kantin_barang', { limit: 1000 }),
+);
+await cek(
+  'pengurus membaca penjaga barkode',
+  true,
+  ambil(U.kop, 'koperasi_kantin_barkode/4006381333931'),
+);
+await cek(
+  'pengurus menulis penjaga barkode langsung',
+  false,
+  buat(U.kop, 'koperasi_kantin_barkode/96385074', { barangId: 'B1', nama: 'x' }),
+);
+await cek(
+  'pengurus menghapus penjaga barkode',
+  false,
+  hapusDok(U.kop, 'koperasi_kantin_barkode/4006381333931'),
+);
+await cek('daftar barang tanpa limit', false, daftar(U.kop, 'koperasi_kantin_barang'));
+
+// ── Koperasi: bagan akun ──────────────────────────────────────────────────
+const akunBawaan = {
+  kode: '1251',
+  nama: 'Persediaan',
+  kelompok: 'asetLancar',
+  kas: false,
+  sistem: true,
+  urutan: 70,
+  aktif: true,
+  ...audit('uKOP'),
+};
+const akunTambahan = {
+  ...akunBawaan,
+  kode: '1502',
+  nama: 'Akun Contoh',
+  kelompok: 'asetTetap',
+  sistem: false,
+  urutan: 9000,
+};
+await cek(
+  'pengurus membuat akun bawaan',
+  true,
+  buat(U.kop, 'koperasi_akun/s-persediaan', akunBawaan, AUDIT),
+);
+await cek(
+  'akun bawaan dengan ID biasa',
+  false,
+  buat(U.kop, 'koperasi_akun/AK9', akunBawaan, AUDIT),
+);
+await cek(
+  'akun tambahan dengan ID bawaan',
+  false,
+  buat(U.kop, 'koperasi_akun/s-coba', akunTambahan, AUDIT),
+);
+await cek(
+  'pengurus membuat akun tambahan',
+  true,
+  buat(U.kop, 'koperasi_akun/AK1', akunTambahan, AUDIT),
+);
+await cek(
+  'akun beban ditandai kas/bank',
+  false,
+  buat(U.kop, 'koperasi_akun/AK2', { ...akunTambahan, kelompok: 'beban', kas: true }, AUDIT),
+);
+await cek(
+  'kode akun bukan 4 angka',
+  false,
+  buat(U.kop, 'koperasi_akun/AK3', { ...akunTambahan, kode: '12A4' }, AUDIT),
+);
+await cek(
+  'kelompok akun tidak dikenal',
+  false,
+  buat(U.kop, 'koperasi_akun/AK4', { ...akunTambahan, kelompok: 'lainnya' }, AUDIT),
+);
+await cek(
+  'pegawai biasa membuat akun',
+  false,
+  buat(U.pg, 'koperasi_akun/AK5', { ...akunTambahan, ...audit('uPG') }, AUDIT),
+);
+await cek(
+  'pengurus mengganti nama akun bawaan',
+  true,
+  ubah(U.kop, 'koperasi_akun/s-persediaan', { nama: 'Persediaan Barang', diubahOleh: 'uKOP' }, [
+    'diubahPada',
+  ]),
+);
+await cek(
+  'pengurus menonaktifkan akun bawaan',
+  false,
+  ubah(U.kop, 'koperasi_akun/s-persediaan', { aktif: false, diubahOleh: 'uKOP' }, ['diubahPada']),
+);
+await cek(
+  'pengurus mengganti kode akun bawaan',
+  false,
+  ubah(U.kop, 'koperasi_akun/s-persediaan', { kode: '1252', diubahOleh: 'uKOP' }, ['diubahPada']),
+);
+await cek(
+  'pengurus mengganti kelompok akun',
+  false,
+  ubah(U.kop, 'koperasi_akun/AK1', { kelompok: 'beban', diubahOleh: 'uKOP' }, ['diubahPada']),
+);
+await cek(
+  'pengurus mengganti kode akun tambahan',
+  true,
+  ubah(U.kop, 'koperasi_akun/AK1', { kode: '1505', diubahOleh: 'uKOP' }, ['diubahPada']),
+);
+await cek(
+  'pengurus menonaktifkan akun tambahan',
+  true,
+  ubah(U.kop, 'koperasi_akun/AK1', { aktif: false, diubahOleh: 'uKOP' }, ['diubahPada']),
+);
+await cek('pengurus menghapus akun', false, hapusDok(U.kop, 'koperasi_akun/AK1'));
+// Halaman Bagan Akun membuat akun bawaan per batch: pastikan satu batch penuh muat dalam batas rules
+const { AKUN_STANDAR } = await import('../src/modules/koperasi/data/baganAkun.js');
+await cek(
+  `pengurus menyiapkan ${AKUN_STANDAR.length - 1} akun bawaan sekaligus`,
+  true,
+  commit(
+    U.kop,
+    AKUN_STANDAR.filter((a) => a.id !== 's-persediaan').map(({ id, ...a }) =>
+      tulisanBuat(
+        `koperasi_akun/${id}`,
+        { ...a, sistem: true, aktif: true, ...audit('uKOP') },
+        AUDIT,
+      ),
+    ),
+  ),
+);
+// Cara bayar Kantin (akun s-persediaan & s-kas dibuat di atas; s-kas bertanda kas)
+const bayarContoh = { nama: 'QRIS', kasId: 's-kas', aktif: true, urutan: 1, ...audit('uKOP') };
+await cek(
+  'pengurus menambah cara bayar',
+  true,
+  buat(U.kop, 'koperasi_kantin_pembayaran/P1', bayarContoh, AUDIT),
+);
+await cek(
+  'cara bayar ke akun bukan kas/bank',
+  false,
+  buat(U.kop, 'koperasi_kantin_pembayaran/P2', { ...bayarContoh, kasId: 's-persediaan' }, AUDIT),
+);
+await cek(
+  'cara bayar ke akun yang tidak ada',
+  false,
+  buat(U.kop, 'koperasi_kantin_pembayaran/P3', { ...bayarContoh, kasId: 'TIDAKADA' }, AUDIT),
+);
+await cek(
+  'cara bayar tanpa nama',
+  false,
+  buat(U.kop, 'koperasi_kantin_pembayaran/P4', { ...bayarContoh, nama: '' }, AUDIT),
+);
+await cek(
+  'pegawai biasa menambah cara bayar',
+  false,
+  buat(U.pg, 'koperasi_kantin_pembayaran/P5', { ...bayarContoh, ...audit('uPG') }, AUDIT),
+);
+await cek(
+  'pengurus menonaktifkan cara bayar',
+  true,
+  ubah(U.kop, 'koperasi_kantin_pembayaran/P1', { aktif: false, diubahOleh: 'uKOP' }, [
+    'diubahPada',
+  ]),
+);
+await cek(
+  'pengurus mengganti kas tujuan ke akun bukan kas',
+  false,
+  ubah(U.kop, 'koperasi_kantin_pembayaran/P1', { kasId: 's-persediaan', diubahOleh: 'uKOP' }, [
+    'diubahPada',
+  ]),
+);
+await cek('pengurus menghapus cara bayar', false, hapusDok(U.kop, 'koperasi_kantin_pembayaran/P1'));
+await cek(
+  'pengurus membaca cara bayar',
+  true,
+  daftar(U.kop, 'koperasi_kantin_pembayaran', { limit: 50 }),
+);
+await cek(
+  'cara bayar melebihi limit',
+  false,
+  daftar(U.kop, 'koperasi_kantin_pembayaran', { limit: 51 }),
+);
+await cek('pegawai biasa membaca cara bayar', false, ambil(U.pg, 'koperasi_kantin_pembayaran/P1'));
+await cek('pengurus membaca bagan akun', true, daftar(U.kop, 'koperasi_akun', { limit: 300 }));
+await cek('bagan akun tanpa limit', false, daftar(U.kop, 'koperasi_akun'));
+await cek(
+  'Keuangan kantor membaca bagan akun koperasi',
+  false,
+  ambil(U.keu, 'koperasi_akun/s-persediaan'),
+);
+
+// ── Log Developer: jejak sistem tertutup total untuk browser ──────────────
+for (const k of [
+  'sistem_log',
+  'sistem_galat',
+  'sistem_anomali',
+  'sistem_aktivitas',
+  'sistem_sesi',
+  'sistem_metrik',
+  'sistem_segel',
+]) {
+  await buat(U.owner, `${k}/X1`, { isi: 'uji' });
+  await cek(`Super Admin membaca ${k} langsung`, false, ambil(U.sa, `${k}/X1`));
+  await cek(`Super Admin mendaftar ${k} langsung`, false, daftar(U.sa, k, { limit: 10 }));
+  await cek(`Keuangan membaca ${k}`, false, ambil(U.keu, `${k}/X1`));
+  await cek(`Super Admin menulis ${k}`, false, buat(U.sa, `${k}/X2`, { isi: 'palsu' }));
+  await cek(`Super Admin mengubah ${k}`, false, ubah(U.sa, `${k}/X1`, { isi: 'diubah' }));
+  await cek(`Super Admin menghapus ${k}`, false, hapusDok(U.sa, `${k}/X1`));
+}
+await buat(U.owner, 'sistem_pengaturan/logdev', { ambang: { hariMundur: 7 } });
+await cek('pegawai membaca ambang Log Developer', false, ambil(U.pg, 'sistem_pengaturan/logdev'));
+await cek('Super Admin membaca ambang langsung', false, ambil(U.sa, 'sistem_pengaturan/logdev'));
+await cek(
+  'Super Admin mengubah ambang langsung',
+  false,
+  tulisUlang(U.sa, 'sistem_pengaturan/logdev', { ambang: { hariMundur: 99 } }),
 );
 
 console.log(`\n${lulus} lulus, ${gagal} gagal`);

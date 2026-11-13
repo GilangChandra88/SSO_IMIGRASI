@@ -6,6 +6,9 @@ import { Login, Portal, PopupUcapan, GantiSandi, Profil, AkunBelumTerdaftar } fr
 import { EPersuratanApp } from '@/modules/e-persuratan';
 import { InventoryApp } from '@/modules/inventory';
 import { KepegawaianApp } from '@/modules/kepegawaian';
+import { KoperasiApp } from '@/modules/koperasi';
+import { LogDeveloperApp } from '@/modules/log-developer';
+import PantauSesi from '@/components/PantauSesi';
 
 /**
  * Penjaga rute (tampilan saja; data dijaga rules & Functions):
@@ -23,6 +26,8 @@ function ProtectedRoute({ children, halamanGantiSandi = false }) {
 function AppContent() {
   return (
     <Router>
+      {/* Detak sesi untuk Log Developer (siapa online & halaman yang dibuka) */}
+      <PantauSesi />
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route
@@ -79,6 +84,26 @@ function AppContent() {
           element={
             <ProtectedRoute>
               <KepegawaianApp />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Koperasi Module */}
+        <Route
+          path="/koperasi/*"
+          element={
+            <ProtectedRoute>
+              <KoperasiApp />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Log Developer (khusus Super Admin; data dijaga Function) */}
+        <Route
+          path="/log-developer/*"
+          element={
+            <ProtectedRoute>
+              <LogDeveloperApp />
             </ProtectedRoute>
           }
         />

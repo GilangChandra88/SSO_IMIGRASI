@@ -4,13 +4,11 @@
  * terhadap realisasi), membatalkan/memulihkan realisasi (Super Admin), dan jejak revisi pagu.
  */
 
-const { onCall } = require('firebase-functions/v2/https');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const {
   HttpsError,
   FieldValue,
   db,
-  OPSI_CALLABLE,
   KOLEKSI,
   pemanggil,
   superadmin,
@@ -21,6 +19,7 @@ const {
   catatLog,
   jejakUbah,
 } = require('./umum');
+const { callable } = require('./jejak');
 const { ubahRekap } = require('./rekap');
 
 const BATAS_BATCH = 450;
@@ -44,7 +43,7 @@ function wajibTahunTerbuka(p, tahunAnggaran) {
  * realisasi, node tidak dihapus tetapi dinonaktifkan (tidak bisa dipilih lagi, riwayat tetap utuh).
  * Masukan: { nodeId }. Hasil: { dihapus } atau { dinonaktifkan } (jumlah node).
  */
-exports.hapusNodeMak = onCall(OPSI_CALLABLE, async (req) => {
+exports.hapusNodeMak = callable('hapusNodeMak', async (req) => {
   const p = pemanggil(req);
   wajibPeran(p, 'keuangan');
   const nodeId = idSah(req.data?.nodeId, 'ID node');
@@ -70,7 +69,11 @@ exports.hapusNodeMak = onCall(OPSI_CALLABLE, async (req) => {
   const itemIds = semua.filter((d) => d.get('tingkat') === 'item').map((d) => d.id);
   let dipakai = false;
   for (const ids of potong(itemIds, 30)) {
-    const q = await db.collection(KOLEKSI.makRealisasi).where('itemNodeId', 'in', ids).limit(1).get();
+    const q = await db
+      .collection(KOLEKSI.makRealisasi)
+      .where('itemNodeId', 'in', ids)
+      .limit(1)
+      .get();
     if (!q.empty) {
       dipakai = true;
       break;
@@ -148,7 +151,7 @@ async function ubahStatusRealisasi(p, realisasiId, keStatus, alasan) {
 }
 
 /** Batalkan realisasi (Super Admin, wajib alasan). Masukan: { realisasiId, alasan }. */
-exports.batalkanRealisasi = onCall(OPSI_CALLABLE, async (req) => {
+exports.batalkanRealisasi = callable('batalkanRealisasi', async (req) => {
   const p = pemanggil(req);
   if (!superadmin(p)) {
     throw new HttpsError('permission-denied', 'Hanya Super Admin yang bisa membatalkan realisasi.');
@@ -159,13 +162,18 @@ exports.batalkanRealisasi = onCall(OPSI_CALLABLE, async (req) => {
 });
 
 /** Pulihkan realisasi yang dibatalkan (Super Admin). Masukan: { realisasiId, alasan? }. */
-exports.pulihkanRealisasi = onCall(OPSI_CALLABLE, async (req) => {
+exports.pulihkanRealisasi = callable('pulihkanRealisasi', async (req) => {
   const p = pemanggil(req);
   if (!superadmin(p)) {
     throw new HttpsError('permission-denied', 'Hanya Super Admin yang bisa memulihkan realisasi.');
   }
   const id = idSah(req.data?.realisasiId, 'ID realisasi');
-  await ubahStatusRealisasi(p, id, 'aktif', teksSah(req.data?.alasan, 300, 'Alasan', { wajib: false }));
+  await ubahStatusRealisasi(
+    p,
+    id,
+    'aktif',
+    teksSah(req.data?.alasan, 300, 'Alasan', { wajib: false }),
+  );
   return { status: 'aktif' };
 });
 
