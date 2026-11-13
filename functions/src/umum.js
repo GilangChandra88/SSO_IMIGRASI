@@ -38,13 +38,37 @@ const KOLEKSI = {
   inventoryMasuk: 'inventory_masuk',
   inventoryKeluar: 'inventory_keluar',
   inventorySaldo: 'inventory_saldo',
+  koperasiKasMutasi: 'koperasi_kas_mutasi',
+  koperasiAkun: 'koperasi_akun',
+  koperasiSaldoAwal: 'koperasi_saldo_awal',
+  koperasiJurnal: 'koperasi_jurnal',
+  koperasiRekap: 'koperasi_rekap',
+  koperasiRekapAnggota: 'koperasi_rekap_anggota',
+  koperasiPengaturan: 'koperasi_pengaturan',
+  koperasiAnggota: 'koperasi_anggota',
+  koperasiSimpanan: 'koperasi_simpanan',
+  koperasiTransaksiUmum: 'koperasi_transaksi_umum',
+  koperasiKantinKategori: 'koperasi_kantin_kategori',
+  koperasiKantinBarang: 'koperasi_kantin_barang',
+  koperasiKantinTransaksi: 'koperasi_kantin_transaksi',
+  koperasiKantinPembelian: 'koperasi_kantin_pembelian',
+  koperasiKantinOpname: 'koperasi_kantin_opname',
+  koperasiKantinPembayaran: 'koperasi_kantin_pembayaran',
+  koperasiKantinBarkode: 'koperasi_kantin_barkode',
   sistemPengaturan: 'sistem_pengaturan',
   sistemPenghitung: 'sistem_penghitung',
   sistemLog: 'sistem_log',
+  // Jejak sistem (Log Developer, Super Admin; hanya dibaca lewat Function)
+  sistemGalat: 'sistem_galat',
+  sistemAnomali: 'sistem_anomali',
+  sistemAktivitas: 'sistem_aktivitas',
+  sistemSesi: 'sistem_sesi',
+  sistemMetrik: 'sistem_metrik',
+  sistemSegel: 'sistem_segel',
 };
 
 /** Kode peran (sama dengan src/utils/peran.js dan firestore.rules). */
-const KODE_PERAN = ['superadmin', 'keuangan', 'kepegawaian', 'umum'];
+const KODE_PERAN = ['superadmin', 'keuangan', 'kepegawaian', 'umum', 'koperasi'];
 
 /** Identitas pemanggil yang sah (login e-mail/kata sandi, akun aktif); selain itu ditolak. */
 function pemanggil(req) {

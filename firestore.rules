@@ -294,6 +294,126 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // ─── Rekap absensi mesin ────────────────────────────────────────────────
+    // Rekapan berisi impor CSV mesin absensi di subkoleksi impor: satu dokumen per berkas,
+    // pindaian = peta No. → { nama, waktu } (waktu = token YYYYMMDDHHmmss dipisah spasi; isi peta
+    // tidak bisa diperiksa satu per satu, hanya jumlahnya). Rekap per bulan dihitung klien dari
+    // gabungan impor aktif. jumlahImpor/dari/sampai rekapan = ringkasan tampilan yang ditulis klien.
+    // Rekapan & impor tidak dihapus, melainkan dibatalkan (aktif: false + alasan).
+    function batalSah(d) {
+      return (d.aktif == true && d.alasanBatal == '')
+        || (d.aktif == false && teksIsi(d.alasanBatal, 300));
+    }
+    function rentangSah(dari, sampai) {
+      return tanggal(dari) && tanggal(sampai) && dari <= sampai
+        && tahun(int(dari[0:4])) && tahun(int(sampai[0:4]));
+    }
+    function kunciAbsensi() {
+      return ['nama', 'keterangan', 'jumlahImpor', 'dari', 'sampai', 'aktif', 'alasanBatal']
+        .concat(kunciAudit());
+    }
+    function absensiSah(d) {
+      return teksIsi(d.nama, 120) && teks(d.keterangan, 300) && bulat(d.jumlahImpor, 0, 100)
+        && ((d.dari == '' && d.sampai == '') || rentangSah(d.dari, d.sampai))
+        && batalSah(d);
+    }
+    function kunciImporAbsensi() {
+      return ['namaBerkas', 'jumlahBaris', 'jumlahPindaian', 'dari', 'sampai', 'pindaian',
+        'aktif', 'alasanBatal'].concat(kunciAudit());
+    }
+    function imporAbsensiSah(d) {
+      return teksIsi(d.namaBerkas, 200)
+        && bulat(d.jumlahBaris, 1, 1000000) && bulat(d.jumlahPindaian, 1, d.jumlahBaris)
+        && rentangSah(d.dari, d.sampai)
+        && d.pindaian is map && d.pindaian.size() >= 1 && d.pindaian.size() <= 300
+        && batalSah(d);
+    }
+    // Penyesuaian jam manual satu baris rekap (ID pegawai, atau no-<No.> bila belum dipetakan) pada
+    // satu tanggal; ID dokumen = {baris}_{tanggal}. Jam kosong = dikosongkan; kembali ke jam mesin
+    // = aktif: false (tidak dihapus).
+    function kunciKoreksiAbsensi() {
+      return ['baris', 'tanggal', 'masuk', 'pulang', 'alasan', 'aktif'].concat(kunciAudit());
+    }
+    function jamAtauKosong(v) {
+      return v == '' || (v is string && v.matches('^([01][0-9]|2[0-3]):[0-5][0-9]$'));
+    }
+    function koreksiAbsensiSah(d, kid) {
+      return idSah(d.baris) && tanggal(d.tanggal) && tahun(int(d.tanggal[0:4]))
+        && kid == d.baris + '_' + d.tanggal
+        && jamAtauKosong(d.masuk) && jamAtauKosong(d.pulang)
+        && (d.masuk == '' || d.pulang == '' || d.masuk < d.pulang)
+        && teksIsi(d.alasan, 200) && d.aktif is bool;
+    }
+    function rekapAbsensiAktif(id) {
+      return get(/databases/$(database)/documents/pegawai_absensi/$(id)).data.aktif == true;
+    }
+
+    match /pegawai_absensi/{id} {
+      allow get: if kepegawaian();
+      allow list: if kepegawaian() && batasDaftar(200);
+      allow create: if kepegawaian()
+        && hanya(kunciAbsensi()) && wajib(kunciAbsensi())
+        && absensiSah(baru()) && auditBuat()
+        && baru().aktif == true && baru().jumlahImpor == 0 && baru().dari == '';
+      // Rekapan batal tidak diubah lagi.
+      allow update: if kepegawaian()
+        && hanya(kunciAbsensi())
+        && absensiSah(baru()) && auditUbah() && lama().aktif == true;
+      allow delete: if false;
+
+      match /impor/{imporId} {
+        allow get: if kepegawaian();
+        allow list: if kepegawaian() && batasDaftar(100);
+        allow create: if kepegawaian()
+          && hanya(kunciImporAbsensi()) && wajib(kunciImporAbsensi())
+          && imporAbsensiSah(baru()) && auditBuat() && baru().aktif == true
+          && rekapAbsensiAktif(id);
+        // Isi impor tidak diubah; hanya dibatalkan (dengan alasan) selama rekapannya aktif.
+        allow update: if kepegawaian()
+          && hanya(kunciImporAbsensi())
+          && berubah().hasOnly(['aktif', 'alasanBatal', 'diubahPada', 'diubahOleh'])
+          && lama().aktif == true && baru().aktif == false
+          && imporAbsensiSah(baru()) && auditUbah() && rekapAbsensiAktif(id);
+        allow delete: if false;
+      }
+
+      match /koreksi/{kid} {
+        allow get: if kepegawaian();
+        allow list: if kepegawaian() && batasDaftar(2000);
+        allow create: if kepegawaian()
+          && hanya(kunciKoreksiAbsensi()) && wajib(kunciKoreksiAbsensi())
+          && koreksiAbsensiSah(baru(), kid) && baru().aktif == true
+          && auditBuat() && rekapAbsensiAktif(id);
+        allow update: if kepegawaian()
+          && hanya(kunciKoreksiAbsensi())
+          && koreksiAbsensiSah(baru(), kid)
+          && baru().baris == lama().baris && baru().tanggal == lama().tanggal
+          && auditUbah() && rekapAbsensiAktif(id);
+        allow delete: if false;
+      }
+    }
+
+    // Pemetaan No. mesin absensi → pegawai (ID dokumen = No.), berlaku untuk semua rekapan.
+    // pegawaiId '' = belum dipetakan. Tanpa get()/exists() supaya satu batch impor boleh memuat
+    // banyak No. sekaligus (batas 20 panggilan akses per batch). Tidak dihapus; dikosongkan bila salah.
+    function kunciNoAbsen() { return ['no', 'pegawaiId', 'namaMesin'].concat(kunciAudit()); }
+    function noAbsenSah(d, no) {
+      return no.matches('^[1-9][0-9]{0,8}$') && d.no is int && d.no == int(no)
+        && (d.pegawaiId == '' || idSah(d.pegawaiId)) && teks(d.namaMesin, 120);
+    }
+    match /pegawai_no_absen/{no} {
+      allow get: if kepegawaian();
+      allow list: if kepegawaian() && batasDaftar(500);
+      allow create: if kepegawaian()
+        && hanya(kunciNoAbsen()) && wajib(kunciNoAbsen())
+        && noAbsenSah(baru(), no) && auditBuat();
+      allow update: if kepegawaian()
+        && hanya(kunciNoAbsen())
+        && berubah().hasOnly(['pegawaiId', 'namaMesin', 'diubahPada', 'diubahOleh'])
+        && noAbsenSah(baru(), no) && auditUbah();
+      allow delete: if false;
+    }
+
     match /pengguna_preferensi/{u} {
       allow get: if masuk() && u == uid();
       allow list: if false;
@@ -787,6 +907,148 @@ service cloud.firestore {
     }
 
     // ════════════════════════════════════════════════════════════════════════
+    // KOPERASI
+    // ════════════════════════════════════════════════════════════════════════
+
+    function koperasi() { return punya('koperasi'); }
+    function bacaKoperasi(n) { return koperasi() && batasDaftar(n); }
+
+    // Mesin jurnal & semua catatan keuangan: dibaca pengurus, HANYA ditulis Cloud Function
+    // (functions/src/koperasi.js), di transaksi yang sama dengan jurnalnya.
+    match /koperasi_jurnal/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(50);
+      allow write: if false;
+    }
+    match /koperasi_rekap/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(20);
+      allow write: if false;
+    }
+    match /koperasi_rekap_anggota/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(20);
+      allow write: if false;
+    }
+    match /koperasi_kas_mutasi/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(50);
+      allow write: if false;
+    }
+    match /koperasi_saldo_awal/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(5);
+      allow write: if false;
+    }
+    match /koperasi_pengaturan/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(5);
+      allow write: if false;
+    }
+    match /koperasi_anggota/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(1000);
+      allow write: if false;
+    }
+    match /koperasi_simpanan/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(200);
+      allow write: if false;
+    }
+    match /koperasi_transaksi_umum/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(50);
+      allow write: if false;
+    }
+    match /koperasi_kantin_transaksi/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(50);
+      allow write: if false;
+    }
+    // Cara bayar Kasir & kas tujuannya (harus akun kas/bank). Diatur pengurus; tidak dihapus.
+    function kunciPembayaran() { return ['nama', 'kasId', 'aktif', 'urutan'].concat(kunciAudit()); }
+    function pembayaranSah(d) {
+      return teksIsi(d.nama, 40) && idSah(d.kasId) && d.aktif is bool && bulat(d.urutan, 0, 999)
+        && get(/databases/$(database)/documents/koperasi_akun/$(d.kasId)).data.kas == true;
+    }
+    match /koperasi_kantin_pembayaran/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(50);
+      allow create: if koperasi()
+        && hanya(kunciPembayaran()) && wajib(kunciPembayaran()) && pembayaranSah(baru()) && auditBuat();
+      allow update: if koperasi()
+        && hanya(kunciPembayaran()) && pembayaranSah(baru()) && auditUbah();
+      allow delete: if false;
+    }
+    match /koperasi_kantin_opname/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(50);
+      allow write: if false;
+    }
+    match /koperasi_kantin_pembelian/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(100);
+      allow write: if false;
+    }
+
+    // Bagan akun. Akun bawaan (ID berawalan "s-", daftar di koperasi/data/baganAkun.js) dibuat
+    // aplikasi sekali dan hanya bisa diganti namanya; akun tambahan boleh diubah kode/nama dan
+    // dinonaktifkan. Kelompok & jenis kas/bank tetap. Tidak ada hapus.
+    function kunciAkun() {
+      return ['kode', 'nama', 'kelompok', 'kas', 'sistem', 'urutan', 'aktif'].concat(kunciAudit());
+    }
+    function akunSah(d) {
+      return d.kode is string && d.kode.matches('^[0-9]{4}$')
+        && teksIsi(d.nama, 100)
+        && d.kelompok in ['asetLancar', 'asetTetap', 'kewajibanLancar', 'kewajibanPanjang',
+                          'ekuitas', 'pendapatan', 'hpp', 'beban']
+        && d.kas is bool && (d.kas == false || d.kelompok == 'asetLancar')
+        && d.sistem is bool && bulat(d.urutan, 0, 9999) && d.aktif is bool;
+    }
+
+    match /koperasi_akun/{id} {
+      allow get: if koperasi();
+      allow list: if koperasi() && batasDaftar(300);
+      allow create: if koperasi()
+        && hanya(kunciAkun()) && wajib(kunciAkun()) && akunSah(baru())
+        && baru().sistem == id.matches('^s-[a-z0-9-]{1,60}$')
+        && baru().aktif == true && auditBuat();
+      allow update: if koperasi()
+        && hanya(kunciAkun()) && akunSah(baru())
+        && !berubah().hasAny(['kelompok', 'kas', 'sistem', 'urutan'])
+        && (lama().sistem == false || !berubah().hasAny(['kode', 'aktif']))
+        && auditUbah();
+      allow delete: if false;
+    }
+
+    // Kategori barang Kantin: dibuat lewat Function buatKategoriKantin (sekaligus akun Penjualan
+    // 31xx & HPP 35xx-nya). Pengurus boleh ganti nama & menonaktifkan. Tidak ada hapus.
+    function kunciKategoriKantin() {
+      return ['nama', 'urutan', 'akunJualId', 'akunHppId', 'aktif'].concat(kunciAudit());
+    }
+    match /koperasi_kantin_kategori/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(200);
+      allow create, delete: if false;
+      allow update: if koperasi()
+        && hanya(kunciKategoriKantin()) && teksIsi(baru().nama, 80) && baru().aktif is bool
+        && !berubah().hasAny(['urutan', 'akunJualId', 'akunHppId']) && auditUbah();
+    }
+
+    // Master barang Kantin: dibaca pengurus, ditulis HANYA lewat Function simpanBarangKantin /
+    // aturAktifBarangKantin (barkode standar & unik), pembelian, penjualan, stok awal, opname.
+    match /koperasi_kantin_barang/{id} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(1000);
+      allow write: if false;
+    }
+    // Penjaga keunikan barkode (ID = barkode): hanya Function.
+    match /koperasi_kantin_barkode/{kode} {
+      allow get: if koperasi();
+      allow list: if bacaKoperasi(1000);
+      allow write: if false;
+    }
+    // ════════════════════════════════════════════════════════════════════════
     // SISTEM
     // ════════════════════════════════════════════════════════════════════════
 
@@ -798,7 +1060,8 @@ service cloud.firestore {
     }
 
     match /sistem_pengaturan/{kunci} {
-      allow get: if masuk();
+      // `logdev` (ambang anomali & hasil pemeriksaan) hanya lewat Function Log Developer
+      allow get: if masuk() && kunci != 'logdev';
       allow list: if false;
       // Tutup buku Inventory: tanggal hanya boleh maju, kecuali Super Admin.
       allow create: if kunci == 'inventory' && umum()
@@ -813,11 +1076,29 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    // Jejak sistem (Log Developer, §5.8): ditulis HANYA Function dan dibaca HANYA lewat Function
+    // `bacaLogDev` (Super Admin + kata sandi diketik ulang ≤30 menit + setiap bacaan tercatat).
+    // Tidak ada jalur baca langsung dari browser, termasuk untuk Super Admin.
     match /sistem_log/{id} {
-      allow get: if superadmin() || (keuangan() && lama().modul in ['lpj', 'mak', 'surat']);
-      allow list: if (superadmin() || (keuangan() && resource.data.modul in ['lpj', 'mak', 'surat']))
-        && batasDaftar(100);
-      allow write: if false; // hanya Function
+      allow read, write: if false;
+    }
+    match /sistem_galat/{id} {
+      allow read, write: if false;
+    }
+    match /sistem_anomali/{id} {
+      allow read, write: if false;
+    }
+    match /sistem_aktivitas/{id} {
+      allow read, write: if false;
+    }
+    match /sistem_sesi/{uid} {
+      allow read, write: if false;
+    }
+    match /sistem_metrik/{tanggal} {
+      allow read, write: if false;
+    }
+    match /sistem_segel/{tanggal} {
+      allow read, write: if false;
     }
 
     // Semua path lain ditolak.

@@ -3,6 +3,7 @@ import { auth } from '@/config/firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { useNavigate } from 'react-router-dom';
 import { FaEnvelope, FaLock, FaSignInAlt } from 'react-icons/fa';
+import { laporGagalMasuk } from '@/utils/jejakKlien';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -21,6 +22,8 @@ export default function Login() {
       window.dispatchEvent(new Event('triggerSplash'));
     } catch (err) {
       console.error(err);
+      // Percobaan masuk gagal dicatat ke Log Developer (digabung per IP per jam)
+      if (err?.code !== 'auth/network-request-failed') laporGagalMasuk(email);
       setError('Email atau password salah.');
     } finally {
       setLoading(false);

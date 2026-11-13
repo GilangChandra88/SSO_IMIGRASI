@@ -20,6 +20,10 @@ export const PANJANG = Object.freeze({
   namaKegiatan: 120, // pegawai_kegiatan: nama & tempat
   keteranganKegiatan: 300,
   keteranganHadir: 150, // per pegawai di peta kehadiran (dijaga klien; rules tidak bisa memeriksa isi peta)
+  namaAbsensi: 120, // pegawai_absensi: nama rekapan
+  keteranganAbsensi: 300,
+  namaMesinAbsen: 120, // nama pegawai di mesin absensi (kolom Nama CSV)
+  alasanKoreksiAbsen: 200, // alasan penyesuaian jam rekap absensi
   alasanBatal: 300,
   kodeMak: 40,
   namaMak: 300,
@@ -33,6 +37,14 @@ export const PANJANG = Object.freeze({
   satuanBarang: 30,
   namaPemasok: 200,
   namaBerkas: 200,
+  namaAnggota: 100,
+  keteranganKoperasi: 200,
+  pemasok: 100,
+  namaPembayaran: 40,
+  namaAkun: 100,
+  namaKategoriKantin: 80,
+  barkode: 64,
+  keteranganKas: 200, // transfer kas koperasi
 });
 
 /** Jumlah maksimum isi daftar. */
@@ -42,6 +54,8 @@ export const JUMLAH = Object.freeze({
   lampiranPerJenis: 10, // foto & nota Non-Perjadin
   fotoPegawai: 9,
   pesertaKegiatan: 500, // isi peta kehadiran satu kegiatan
+  noAbsenPerImpor: 300, // No. mesin dalam satu impor absensi (peta pindaian)
+  imporAbsensi: 100, // impor dalam satu rekapan absensi
   barangKeluar: 50,
   berkasDrpp: 100, // LPJ pada satu DRPP (Function buatDrpp/ubahDaftarDrpp)
 });
@@ -73,6 +87,10 @@ export const LIMIT_KUERI = Object.freeze({
   kontakPegawai: 500,
   kegiatanPegawai: 200, // pegawai_kegiatan per tahun/semester
   rekapHadir: 10, // pegawai_rekap_hadir per tahun (2 dokumen)
+  rekapAbsensi: 200, // pegawai_absensi (daftar rekapan)
+  imporAbsensi: 100, // pegawai_absensi/{id}/impor (= JUMLAH.imporAbsensi)
+  noAbsen: 500, // pegawai_no_absen (pemetaan No. mesin → pegawai)
+  koreksiAbsensi: 2000, // pegawai_absensi/{id}/koreksi per bulan (±60 pegawai × 31 hari)
   transaksiInventory: 200,
   kategoriInventory: 500,
   barangInventory: 2000,
@@ -81,4 +99,19 @@ export const LIMIT_KUERI = Object.freeze({
   ucapan: 200,
   buktiBerkas: 200, // lpj_berkas/{id}/bukti
   riwayatBerkas: 100, // lpj_berkas/{id}/riwayat
+  jurnalKoperasi: 50, // koperasi_jurnal per halaman
+  rekapKoperasi: 20,
+  anggotaKoperasi: 1000,
+  simpananKoperasi: 50, // koperasi_simpanan per halaman
+  bukuAnggota: 200, // koperasi_simpanan satu anggota
+  transaksiUmum: 50,
+  pembelianKantin: 50,
+  utangKantin: 100,
+  opnameKantin: 50,
+  pembayaranKantin: 50,
+  akunKoperasi: 300,
+  kategoriKantin: 200,
+  barangKantin: 1000,
+  historyKasir: 50, // koperasi_kantin_transaksi per halaman
+  flowKas: 50, // koperasi_kas_mutasi per halaman
 });

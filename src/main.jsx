@@ -2,6 +2,10 @@ import React, { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import './index.css';
 import App from './App.jsx';
+import { laporGalat, pasangPenangkapGalat } from '@/utils/jejakKlien';
+
+// Galat skrip & janji yang tidak tertangkap dicatat ke Log Developer
+pasangPenangkapGalat();
 
 class GlobalErrorBoundary extends React.Component {
   constructor(props) {
@@ -10,6 +14,9 @@ class GlobalErrorBoundary extends React.Component {
   }
   static getDerivedStateFromError(error) {
     return { hasError: true, error };
+  }
+  componentDidCatch(error) {
+    laporGalat(error, { jenis: 'render' });
   }
   render() {
     if (this.state.hasError) {

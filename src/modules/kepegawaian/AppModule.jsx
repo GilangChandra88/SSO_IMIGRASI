@@ -1,11 +1,18 @@
 import React from 'react';
 import { Routes, Route, Link, Navigate } from 'react-router-dom';
-import { FaArrowLeft, FaBirthdayCake, FaCalendarCheck, FaUsers } from 'react-icons/fa';
+import {
+  FaArrowLeft,
+  FaBirthdayCake,
+  FaCalendarCheck,
+  FaFingerprint,
+  FaUsers,
+} from 'react-icons/fa';
 import AppLayout from '@/layouts/AppLayout';
 import { useAuth } from '@/context/AuthContext';
 import Pegawai from './pages/Pegawai';
 import UlangTahun from './pages/UlangTahun';
 import Kehadiran from './pages/Kehadiran';
+import RekapAbsensi from './pages/RekapAbsensi';
 
 const BRAND = {
   code: 'SDM',
@@ -30,7 +37,8 @@ const renderNav = ({ isCollapsed, navItemClass, isActive }) => (
       className={navItemClass(
         isActive('/kepegawaian') &&
           !isActive('/kepegawaian/ulang-tahun') &&
-          !isActive('/kepegawaian/kehadiran'),
+          !isActive('/kepegawaian/kehadiran') &&
+          !isActive('/kepegawaian/absensi'),
       )}
     >
       <FaUsers size={16} className="shrink-0" />
@@ -43,6 +51,14 @@ const renderNav = ({ isCollapsed, navItemClass, isActive }) => (
     >
       <FaCalendarCheck size={16} className="shrink-0" />
       <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Kegiatan &amp; Kehadiran</span>
+    </Link>
+    <Link
+      to="/kepegawaian/absensi"
+      title="Rekap Absensi"
+      className={navItemClass(isActive('/kepegawaian/absensi'))}
+    >
+      <FaFingerprint size={16} className="shrink-0" />
+      <span className={`truncate ${isCollapsed ? 'md:hidden' : ''}`}>Rekap Absensi</span>
     </Link>
     <Link
       to="/kepegawaian/ulang-tahun"
@@ -71,6 +87,7 @@ export default function AppModule() {
     >
       <Routes>
         <Route path="/kehadiran" element={<Kehadiran />} />
+        <Route path="/absensi" element={<RekapAbsensi />} />
         <Route path="/ulang-tahun" element={<UlangTahun />} />
         <Route path="/*" element={<Pegawai />} />
       </Routes>

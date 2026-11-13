@@ -11,4 +11,9 @@ export const APP_ACCENTS = {
     badge: 'bg-amber-500/20 text-amber-500',
     slider: 'bg-amber-500',
   },
+  rose: {
+    navActive: 'bg-rose-600/20 text-rose-400 shadow-sm',
+    badge: 'bg-rose-500/20 text-rose-400',
+    slider: 'bg-rose-500',
+  },
 };

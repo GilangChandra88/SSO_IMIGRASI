@@ -11,7 +11,7 @@ import { ANIM } from '@/utils/animasi';
  *
  * Props:
  *  - brand   : { code, title, subtitle, mobileTitle }
- *  - accent  : 'blue' | 'amber' (lihat utils/appAccents.js)
+ *  - accent  : 'blue' | 'amber' | 'rose' (lihat utils/appAccents.js)
  *  - sidebar : { navClassName, toggleClassName, renderNav } (diteruskan ke <Sidebar />)
  *  - children: isi halaman (biasanya <Routes>)
  */

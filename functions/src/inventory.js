@@ -11,12 +11,10 @@
  * Tanggal sampai `sistem_pengaturan/inventory.tutupSampai` (tutup buku) tidak bisa diubah.
  */
 
-const { onCall } = require('firebase-functions/v2/https');
 const {
   HttpsError,
   FieldValue,
   db,
-  OPSI_CALLABLE,
   KOLEKSI,
   pemanggil,
   wajibPeran,
@@ -27,6 +25,7 @@ const {
   catatLog,
   jejakUbah,
 } = require('./umum');
+const { callable } = require('./jejak');
 
 const MAKS_ITEM = 50;
 const MAKS_JUMLAH = 1000000;
@@ -229,7 +228,7 @@ async function ambilNomor(tx, jenis, n) {
  * Catat barang masuk (Umum): satu dokumen per barang dengan nomor TBR berurutan.
  * Masukan: { tanggal, pemasokNama, items[{ barangId, jumlah }] }. Hasil: { ids, nomorAwal, nomorAkhir }.
  */
-exports.catatMasuk = onCall(OPSI_CALLABLE, async (req) => {
+exports.catatMasuk = callable('catatMasuk', async (req) => {
   const p = pemanggil(req);
   wajibPeran(p, 'umum');
   const d = req.data || {};
@@ -279,7 +278,7 @@ exports.catatMasuk = onCall(OPSI_CALLABLE, async (req) => {
  * Catat barang keluar (Umum): satu transaksi TBK berisi beberapa barang; ditolak bila stok kurang.
  * Masukan: { tanggal, seksi, pengambilId, items[{ barangId, jumlah }] }. Hasil: rekaman transaksi.
  */
-exports.catatKeluar = onCall(OPSI_CALLABLE, async (req) => {
+exports.catatKeluar = callable('catatKeluar', async (req) => {
   const p = pemanggil(req);
   wajibPeran(p, 'umum');
   const d = req.data || {};
@@ -330,7 +329,7 @@ exports.catatKeluar = onCall(OPSI_CALLABLE, async (req) => {
  * { jenis: 'masuk', id, tanggal, pemasokNama, barangId, jumlah }. Keluar: { jenis: 'keluar', id,
  * tanggal, seksi, pengambilId, items }. Ditolak bila membuat stok minus atau melewati tutup buku.
  */
-exports.ubahTransaksi = onCall(OPSI_CALLABLE, async (req) => {
+exports.ubahTransaksi = callable('ubahTransaksi', async (req) => {
   const p = pemanggil(req);
   wajibPeran(p, 'umum');
   const d = req.data || {};
@@ -408,19 +407,21 @@ exports.ubahTransaksi = onCall(OPSI_CALLABLE, async (req) => {
  * Batalkan transaksi (Umum, wajib alasan): status `batal`, stok dikembalikan. Barang masuk yang
  * sudah terpakai (stok jadi minus) tidak bisa dibatalkan. Masukan: { jenis, id, alasan }.
  */
-exports.batalkanTransaksi = onCall(OPSI_CALLABLE, async (req) => {
+exports.batalkanTransaksi = callable('batalkanTransaksi', async (req) => {
   const p = pemanggil(req);
   wajibPeran(p, 'umum');
   const jenis = jenisSah(req.data?.jenis);
   const id = idSah(req.data?.id, 'ID transaksi');
   const alasan = teksSah(req.data?.alasan, 300, 'Alasan');
+  let dataBatal = null;
 
-  return db.runTransaction(async (tx) => {
+  const hasil = await db.runTransaction(async (tx) => {
     const ref = kolTransaksi(jenis).doc(id);
     const snap = await tx.get(ref);
     if (!snap.exists) throw new HttpsError('not-found', 'Transaksi tidak ditemukan.');
     const t = snap.data();
     if (t.status !== 'aktif') throw tolak('Transaksi ini sudah dibatalkan.');
+    dataBatal = { nomor: t.nomor || '', tanggal: t.tanggal, dibuatOleh: t.dibuatOleh || '' };
     const items = itemsDari(jenis, t);
     const k = await bacaKeadaan(
       tx,
@@ -453,6 +454,17 @@ exports.batalkanTransaksi = onCall(OPSI_CALLABLE, async (req) => {
     });
     return { dibatalkan: true };
   });
+  // A2: pembatalan transaksi persediaan; oleh pencatatnya sendiri = peringatan
+  const sendiri = dataBatal.dibuatOleh === p.uid;
+  req.jejak.anomali({
+    kode: 'A2',
+    tingkat: sendiri ? 'peringatan' : 'info',
+    modul: 'inventory',
+    judul: `Transaksi ${jenis} ${dataBatal.nomor} dibatalkan${sendiri ? ' oleh pencatatnya sendiri' : ''}`,
+    target: kolTransaksi(jenis).doc(id).path,
+    rincian: { ...dataBatal, alasan, olehSendiri: sendiri },
+  });
+  return hasil;
 });
 
 // ─── Ganti kode SAKTI ─────────────────────────────────────────────────────────
@@ -566,7 +578,7 @@ async function ubahKodeBarang(p, id, kategoriId, kode) {
  * { jenis: 'barang', id, kategoriId|null, kode (6 digit atau '') } — juga untuk melengkapi barang
  * yang belum berkategori. Dicatat di sistem_log.
  */
-exports.ubahKodeSakti = onCall(OPSI_CALLABLE, async (req) => {
+exports.ubahKodeSakti = callable('ubahKodeSakti', async (req) => {
   const p = pemanggil(req);
   wajibPeran(p, 'umum');
   const d = req.data || {};

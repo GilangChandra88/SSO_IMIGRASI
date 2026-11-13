@@ -121,6 +121,35 @@ export const PROGRES_NADA = Object.freeze({
   bahaya: `${PROGRES} [&::-webkit-progress-value]:bg-[#A62D2D] [&::-moz-progress-bar]:bg-[#A62D2D] dark:[&::-webkit-progress-value]:bg-[#F19191] dark:[&::-moz-progress-bar]:bg-[#F19191]`,
 });
 
+/**
+ * Kisi rekap absensi bulanan: kolom tanggal sempit (kolom Sabtu/Minggu abu-abu, sel satu pindaian
+ * kuning), kolom pegawai menempel di kiri saat tabel digulir mendatar. `border-separate` supaya
+ * garis sel yang menempel ikut terbawa.
+ */
+const SEL_HARI = 'border-b border-l p-0.5 text-center align-middle min-w-[50px]';
+const TH_HARI = 'border-b border-l px-1 py-2 text-[10.5px] font-bold text-center whitespace-nowrap';
+const TD_ANGKA = 'border-b border-l px-2 py-1.5 text-center align-middle font-bold tabular-nums';
+const JAM = `${FONT.mono} block text-[11px] leading-[1.35]`;
+export const KISI_ABSEN = Object.freeze({
+  tabel: 'w-full border-separate border-spacing-0 text-[13px]',
+  thPegawai: `sticky left-0 z-10 ${T.surface2} ${T.ink2} ${T.border} border-b px-3 py-2 text-left text-[11px] font-bold uppercase tracking-[.04em] whitespace-nowrap min-w-[230px]`,
+  th: `${T.surface2} ${T.ink2} ${T.border} ${TH_HARI}`,
+  thLibur: `bg-[#E9ECF1] dark:bg-[#1C2C45] ${T.inkMuted} ${T.border} ${TH_HARI}`,
+  tdPegawai: `sticky left-0 z-10 ${T.surface} ${T.border} border-b px-3 py-2 align-top min-w-[230px] max-w-[280px]`,
+  td: `${T.border} ${SEL_HARI}`,
+  tdLibur: `${T.surface2} ${T.border} ${SEL_HARI}`,
+  tdKurang: `${STATUS.warnBg} ${T.border} ${SEL_HARI}`,
+  tdKoreksi: `${STATUS.infoBg} ${T.border} ${SEL_HARI}`,
+  tdAngka: `${T.border} ${T.ink} ${TD_ANGKA}`,
+  tdAngkaKurang: `${T.border} ${STATUS.warnInk} ${TD_ANGKA}`,
+  // Isi sel tanggal = tombol untuk menyesuaikan jam (bingkai biru saat disorot/difokus)
+  tombolSel: `block w-full min-h-[36px] rounded-md px-0.5 py-1 cursor-pointer outline-none motion-safe:transition-shadow motion-safe:duration-150 hover:ring-1 hover:ring-inset hover:ring-[#2A78D6] dark:hover:ring-[#7DB6F3] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#2A78D6] dark:focus-visible:ring-[#7DB6F3]`,
+  jam: `${JAM} ${T.ink}`,
+  jamPulang: `${JAM} ${T.ink2}`,
+  jamKurang: `${JAM} font-semibold ${STATUS.warnInk}`,
+  jamKoreksi: `${JAM} font-semibold ${STATUS.infoInk}`,
+});
+
 /** Pilihan status kehadiran per pegawai (Hadir/Cuti/Sakit/Alpa): satu kelompok tombol. */
 export const SEG_STATUS = Object.freeze({
   wadah: `flex w-full sm:w-auto sm:inline-flex border ${T.border} rounded-[10px] overflow-hidden`,

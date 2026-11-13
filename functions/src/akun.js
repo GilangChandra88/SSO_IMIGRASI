@@ -4,7 +4,6 @@
  */
 
 const crypto = require('node:crypto');
-const { onCall } = require('firebase-functions/v2/https');
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
 const {
   HttpsError,
@@ -12,7 +11,6 @@ const {
   getApp,
   db,
   authAdmin,
-  OPSI_CALLABLE,
   KOLEKSI,
   KODE_PERAN,
   pemanggil,
@@ -23,6 +21,7 @@ const {
   teksSah,
   catatLog,
 } = require('./umum');
+const { callable } = require('./jejak');
 
 const idSah = (v) => idSahUmum(v, 'ID pegawai');
 
@@ -41,7 +40,6 @@ function sandiSementara() {
   }
   return isi.join('');
 }
-
 
 async function ambilPegawai(pegawaiId) {
   const ref = db.collection(KOLEKSI.pegawai).doc(pegawaiId);
@@ -72,7 +70,9 @@ async function waktuSandiDiubah(uid) {
   const dasar = emulator
     ? `http://${emulator}/identitytoolkit.googleapis.com`
     : 'https://identitytoolkit.googleapis.com';
-  const token = emulator ? 'owner' : (await getApp().options.credential.getAccessToken()).access_token;
+  const token = emulator
+    ? 'owner'
+    : (await getApp().options.credential.getAccessToken()).access_token;
   const res = await fetch(`${dasar}/v1/projects/${projek}/accounts:lookup`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -90,7 +90,7 @@ async function waktuSandiDiubah(uid) {
  * Masukan: { pegawaiId, email }. Keluaran: { email, sandiSementara } — tampilkan sekali ke admin;
  * pegawai wajib mengganti kata sandi saat login pertama (claim wajibGantiSandi).
  */
-exports.buatAkunPegawai = onCall(OPSI_CALLABLE, async (req) => {
+exports.buatAkunPegawai = callable('buatAkunPegawai', async (req) => {
   const p = pemanggil(req);
   wajibPeran(p, 'kepegawaian');
   const pegawaiId = idSah(req.data?.pegawaiId);
@@ -127,7 +127,8 @@ exports.buatAkunPegawai = onCall(OPSI_CALLABLE, async (req) => {
     });
     await db.runTransaction(async (tx) => {
       const snap = await tx.get(ref);
-      if (snap.get('authUid')) throw new HttpsError('already-exists', 'Pegawai ini sudah punya akun.');
+      if (snap.get('authUid'))
+        throw new HttpsError('already-exists', 'Pegawai ini sudah punya akun.');
       tx.update(ref, {
         email,
         authUid: user.uid,
@@ -158,7 +159,7 @@ exports.buatAkunPegawai = onCall(OPSI_CALLABLE, async (req) => {
  * Mengatur peran khusus pegawai. Hanya Super Admin, tidak untuk akunnya sendiri.
  * Masukan: { pegawaiId, peran: string[] } (subset KODE_PERAN; [] = Pegawai biasa).
  */
-exports.aturPeran = onCall(OPSI_CALLABLE, async (req) => {
+exports.aturPeran = callable('aturPeran', async (req) => {
   const p = pemanggil(req);
   if (!superadmin(p)) {
     throw new HttpsError('permission-denied', 'Hanya Super Admin yang bisa mengatur peran.');
@@ -232,10 +233,10 @@ async function aturStatus(req, aktif) {
 }
 
 /** Menonaktifkan pegawai (pengganti hapus): akun dimatikan, sesi dicabut. Masukan: { pegawaiId, alasan }. */
-exports.nonaktifkanPegawai = onCall(OPSI_CALLABLE, (req) => aturStatus(req, false));
+exports.nonaktifkanPegawai = callable('nonaktifkanPegawai', (req) => aturStatus(req, false));
 
 /** Mengaktifkan kembali pegawai nonaktif. Masukan: { pegawaiId, alasan? }. */
-exports.aktifkanPegawai = onCall(OPSI_CALLABLE, (req) => aturStatus(req, true));
+exports.aktifkanPegawai = callable('aktifkanPegawai', (req) => aturStatus(req, true));
 
 /**
  * Mengatur ulang kata sandi pegawai yang lupa: kata sandi sementara baru (tampilkan sekali ke
@@ -245,7 +246,7 @@ exports.aktifkanPegawai = onCall(OPSI_CALLABLE, (req) => aturStatus(req, true));
  * dimiliki pemanggil (mis. Keuangan, Super Admin) hanya bisa diatur ulang Super Admin.
  * Masukan: { pegawaiId }. Keluaran: { email, sandiSementara }.
  */
-exports.aturUlangSandi = onCall(OPSI_CALLABLE, async (req) => {
+exports.aturUlangSandi = callable('aturUlangSandi', async (req) => {
   const p = pemanggil(req);
   wajibPeran(p, 'kepegawaian');
   const pegawaiId = idSah(req.data?.pegawaiId);
@@ -295,7 +296,7 @@ exports.aturUlangSandi = onCall(OPSI_CALLABLE, async (req) => {
  * waktu ubah kata sandi (Identity Toolkit) harus lebih baru dari saat kata sandi sementara dibuat
  * (claim sandiSementaraPada; akun lama memakai waktu pembuatan akun). Aman dipanggil ulang.
  */
-exports.tandaiSandiDiganti = onCall(OPSI_CALLABLE, async (req) => {
+exports.tandaiSandiDiganti = callable('tandaiSandiDiganti', async (req) => {
   const p = pemanggil(req);
   const klaim = await klaimDari(p.uid);
   if (!klaim.wajibGantiSandi) return { selesai: true };

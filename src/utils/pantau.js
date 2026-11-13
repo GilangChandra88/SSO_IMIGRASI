@@ -5,6 +5,7 @@
  */
 import { onSnapshot } from 'firebase/firestore';
 import { showToast } from './toastStore';
+import { laporGalat } from './jejakKlien';
 
 const PESAN_BAWAAN = 'Tidak punya akses atau gagal memuat data.';
 
@@ -17,6 +18,7 @@ const PESAN_BAWAAN = 'Tidak punya akses atau gagal memuat data.';
  */
 export function pantau(sumber, onData, { onGalat, pesan = PESAN_BAWAAN, diam = false } = {}) {
   return onSnapshot(sumber, onData, (err) => {
+    laporGalat(err, { jenis: 'baca' });
     if (!diam) {
       showToast(
         err?.code === 'permission-denied'
