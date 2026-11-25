@@ -26,7 +26,7 @@ export default function Aktivitas() {
   const [params, setParams] = useSearchParams();
   const uid = params.get('uid') || '';
   const jenis = params.get('jenis') || '';
-  const { daftar, nama, memuat, habis, segarkan, muatLagi } = useTampilan(
+  const { daftar, nama, memuat, habis, segarkan, muatLagi, galat } = useTampilan(
     'aktivitas',
     uid ? { uid } : { jenis },
   );
@@ -39,6 +39,7 @@ export default function Aktivitas() {
 
   return (
     <Halaman
+      galat={galat}
       judul="Aktivitas"
       sub="Siapa melakukan apa, dari IP & perangkat mana. Disimpan 90 hari."
       onSegarkan={segarkan}

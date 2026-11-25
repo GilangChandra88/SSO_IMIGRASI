@@ -239,7 +239,7 @@ export function terbangkanHalaman({ url, asal, tujuan }) {
  * berhenti, supaya animasi masuk berjalan setelah kanvas selesai bergeser ke halaman itu.
  * Resolve `true` bila terlihat, `false` bila batas waktu habis (mis. halaman di luar layar).
  */
-export function tungguTerlihat(el, { batas = 2600, signal } = {}) {
+export function tungguTerlihat(el, { batas = 2600, diam = 140, signal } = {}) {
   if (!el || kurangiGerakan()) return Promise.resolve(true);
   const akar = el.closest('[data-kanvas]');
   return new Promise((resolve) => {
@@ -257,10 +257,10 @@ export function tungguTerlihat(el, { batas = 2600, signal } = {}) {
       clearTimeout(timerBatas);
       resolve(hasil);
     };
-    // Dianggap "diam" bila 140 ms tanpa peristiwa gulir
+    // Dianggap "diam" bila `diam` ms tanpa peristiwa gulir
     function cek() {
       clearTimeout(timerDiam);
-      timerDiam = setTimeout(() => terlihat && akhiri(true), 140);
+      timerDiam = setTimeout(() => terlihat && akhiri(true), diam);
     }
     obs = new IntersectionObserver(
       ([e]) => {
@@ -370,7 +370,7 @@ export function ungkapHalaman({ kartu, tirai, garis, jeda = 0, durasi = 760 }) {
       { transform: 'scale(1.015)', offset: 0.55 },
       { transform: 'none' },
     ],
-    { duration: 420, delay: jeda, easing: 'cubic-bezier(.2,.8,.2,1)' },
+    { duration: Math.min(420, durasi), delay: jeda, easing: 'cubic-bezier(.2,.8,.2,1)' },
   );
   const animasi = [];
   if (tirai)

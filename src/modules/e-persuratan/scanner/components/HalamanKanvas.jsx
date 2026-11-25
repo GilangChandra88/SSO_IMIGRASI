@@ -12,11 +12,13 @@ import {
 } from '../animasiScanner';
 import { blobTerputar, unduhBlob } from '../utils/gambar';
 
-// Tempo animasi masuk menurut panjang antrean tampil (lihat KanvasHalaman)
+// Tempo animasi masuk menurut panjang antrean tampil (lihat KanvasHalaman). `impor` = halaman dari
+// berkas yang diimpor: tanpa salinan terbang, tirai sangat singkat, tidak menunggu gulir halus.
 const TEMPO = {
-  normal: { terbang: true, jeda: 520, durasi: 760, batas: 2600 },
-  cepat: { terbang: true, jeda: 360, durasi: 520, batas: 1800 },
-  kilat: { terbang: false, jeda: 0, durasi: 320, batas: 1200 },
+  normal: { terbang: true, jeda: 520, durasi: 760, batas: 2600, diam: 140 },
+  cepat: { terbang: true, jeda: 360, durasi: 520, batas: 1800, diam: 140 },
+  kilat: { terbang: false, jeda: 0, durasi: 320, batas: 1200, diam: 140 },
+  impor: { terbang: false, jeda: 0, durasi: 160, batas: 500, diam: 30 },
 };
 
 const SKALA = 1000; // koordinat SVG lapisan pilihan (0–1000 di kedua sumbu)
@@ -134,6 +136,7 @@ export default function HalamanKanvas({
       const terlihat = await tungguTerlihat(badanRef.current, {
         signal: ctrl.signal,
         batas: t.batas,
+        diam: t.diam,
       });
       if (ctrl.signal.aborted) return;
       // Asal utama = maskot/kotak progres yang sedang tampil; cadangan = tombol sumbernya

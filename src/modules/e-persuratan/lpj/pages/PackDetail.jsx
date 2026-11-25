@@ -15,6 +15,7 @@ import {
   FaChevronDown,
   FaClock,
   FaLock,
+  FaPen,
   FaPrint,
   FaArrowRight,
   FaPlus,
@@ -41,6 +42,7 @@ import {
   lpjTahapDisplay,
   overallProgress,
   stagesWithStatus,
+  terkunci,
 } from '../utils/lpjLogic';
 import LinkBack from '../ui/LinkBack';
 import TombolBuat from '../components/TombolBuat';
@@ -318,6 +320,12 @@ export default function PackDetail({ packId }) {
                       status={lpjSingleStatus(pack, stage, doc)}
                       onLihat={dok.lihat}
                       onSiapkan={doc.berkas ? siapkanScan : undefined}
+                      // SP selesai masih bisa diubah sampai SP ber-TTE & nomor surat disimpan
+                      onUbah={
+                        doc.key === 'sp' && canEdit && !terkunci(pack, 'tte')
+                          ? () => goForm('sp')
+                          : undefined
+                      }
                     />
                   ))}
                   {(stage.groups || []).map((group) => (
@@ -484,16 +492,23 @@ function BelumDibuat({ teks = 'Belum dibuat' }) {
   return <span className={`text-[11.5px] shrink-0 ${T.inkMuted}`}>{teks}</span>;
 }
 
-function SingleCard({ doc, status, onLihat, onSiapkan }) {
+function SingleCard({ doc, status, onLihat, onSiapkan, onUbah }) {
   let actions = null;
   if (status === 'selesai' || status === 'proses') {
     // Satu tombol: popup pratinjau, yang juga bisa langsung mencetak (berkas unggahan seperti
     // scan SP lewat tombol Cetak di popup). Draf yang belum selesai cukup berlabel "Lihat".
     const bisaPrint = status === 'selesai';
     actions = (
-      <TombolLihat onClick={() => onLihat(doc)} onSiapkan={onSiapkan}>
-        {bisaPrint ? 'Lihat / Print' : 'Lihat'}
-      </TombolLihat>
+      <div className="flex flex-wrap gap-2">
+        {status === 'selesai' && onUbah && (
+          <button type="button" className={BTN.sm} onClick={onUbah} data-mekar>
+            <FaPen size={11} /> Ubah
+          </button>
+        )}
+        <TombolLihat onClick={() => onLihat(doc)} onSiapkan={onSiapkan}>
+          {bisaPrint ? 'Lihat / Print' : 'Lihat'}
+        </TombolLihat>
+      </div>
     );
   } else {
     actions = <BelumDibuat />; // tombol untuk melanjutkan ada di blok fase
@@ -511,7 +526,9 @@ function SingleCard({ doc, status, onLihat, onSiapkan }) {
           <div className={`text-[13px] font-semibold ${T.ink}`}>{doc.label}</div>
           {status === 'selesai' && doc.noEdit && (
             <div className={`text-[11px] mt-px ${T.inkMuted}`}>
-              Sudah final — tidak dapat diubah
+              {onUbah
+                ? 'Masih bisa diubah sampai SP ber-TTE & nomor surat diunggah'
+                : 'Sudah final — tidak dapat diubah'}
             </div>
           )}
         </div>

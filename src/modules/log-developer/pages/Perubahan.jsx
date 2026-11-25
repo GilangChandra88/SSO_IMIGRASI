@@ -31,13 +31,14 @@ export default function Perubahan() {
   const [cari, setCari] = useState('');
   const [target, setTarget] = useState('');
   const [buka, setBuka] = useState(null);
-  const { daftar, nama, memuat, habis, segarkan, muatLagi } = useTampilan(
+  const { daftar, nama, memuat, habis, segarkan, muatLagi, galat } = useTampilan(
     'perubahan',
     target ? { target } : { modul },
   );
 
   return (
     <Halaman
+      galat={galat}
       judul="Jejak Perubahan"
       sub="Setiap perubahan data: siapa, kapan, nilai sebelum → sesudah. Permanen, tersegel harian."
       onSegarkan={segarkan}

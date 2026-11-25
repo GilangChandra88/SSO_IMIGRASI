@@ -35,7 +35,8 @@ function bolehMasuk(pack, step) {
   const k = (b) => terkunci(pack, b);
   switch (step) {
     case 'sp':
-      return !k('sp');
+      // SP masih boleh diubah sampai SP ber-TTE & nomor surat disimpan final
+      return !k('tte');
     case 'tte':
       return k('sp') && !k('tte');
     case 'spd':
@@ -220,6 +221,7 @@ export default function PerjadinFormPage({ pack, isi, user }) {
       {confirm && (
         <ConfirmPopup
           docLabel={confirm.label}
+          pesan={confirm.pesan}
           busy={confirmBusy}
           onYes={async () => {
             setConfirmBusy(true);

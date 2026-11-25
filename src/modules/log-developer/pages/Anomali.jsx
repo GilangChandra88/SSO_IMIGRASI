@@ -24,7 +24,7 @@ export default function Anomali() {
   const [status, setStatus] = useState('baru');
   const [kode, setKode] = useState('');
   const [buka, setBuka] = useState(null);
-  const { daftar, nama, memuat, habis, segarkan, muatLagi, data } = useTampilan(
+  const { daftar, nama, memuat, habis, segarkan, muatLagi, data, galat } = useTampilan(
     'anomali',
     kode ? { kode } : { status },
   );
@@ -32,6 +32,7 @@ export default function Anomali() {
 
   return (
     <Halaman
+      galat={galat}
       judul="Anomali"
       sub="Kejadian yang lolos aturan tetapi patut dicek: pembatalan, selisih stok, akses ditolak, perubahan dari luar aplikasi."
       onSegarkan={segarkan}

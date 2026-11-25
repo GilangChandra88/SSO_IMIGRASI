@@ -15,6 +15,7 @@ import {
   formatWa,
   labelPangkat,
   nipBersih,
+  pisahGelar,
   statusAsn,
   tanggalDariNip,
   waBersih,
@@ -128,7 +129,11 @@ export default function ModalFormPegawai({
 
   async function simpan(e) {
     e.preventDefault();
-    const nama = form.nama.replace(/\s+/g, ' ').trim();
+    // Nama disimpan tanpa gelar: gelar yang terketik di nama dipindah ke isian gelar (bila kosong)
+    const dipisah = pisahGelar(form.nama);
+    const nama = dipisah.nama;
+    const gelarDepan = (form.gelarDepan || '').trim() || dipisah.gelarDepan;
+    const gelarBelakang = (form.gelarBelakang || '').trim() || dipisah.gelarBelakang;
     const nip = nipBersih(form.nip);
     const kontakBaru = {
       alamat: alamatBersih(kontakForm.alamat),
@@ -164,7 +169,15 @@ export default function ModalFormPegawai({
       }
       try {
         await simpanPegawai(
-          { ...form, nama, nip, seksi, fotoPaths: [...form.fotoPaths, ...unggahan] },
+          {
+            ...form,
+            nama,
+            gelarDepan,
+            gelarBelakang,
+            nip,
+            seksi,
+            fotoPaths: [...form.fotoPaths, ...unggahan],
+          },
           id,
           uid,
           { baru: !form.id, kontak: kontakBerubah ? kontakBaru : null, kontakAda: !!kontak },
@@ -230,7 +243,7 @@ export default function ModalFormPegawai({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="md:col-span-2">
                 <label htmlFor="f-nama" className={K.label}>
-                  Nama lengkap (dengan gelar sesuai SK)
+                  Nama (tanpa gelar)
                 </label>
                 <input
                   id="f-nama"
@@ -241,6 +254,36 @@ export default function ModalFormPegawai({
                   className={kelasMasukan('nama')}
                 />
                 {pesanGalatIsian('nama')}
+                <p className={`${K.redup} mt-1`}>
+                  Nama ini yang dipakai di tanda tangan & dokumen. Gelar yang terketik di sini
+                  otomatis dipindah ke isian gelar saat disimpan.
+                </p>
+              </div>
+              <div>
+                <label htmlFor="f-gelar-depan" className={K.label}>
+                  Gelar depan
+                </label>
+                <input
+                  id="f-gelar-depan"
+                  maxLength={PANJANG.gelar}
+                  value={form.gelarDepan || ''}
+                  placeholder="mis. Dr."
+                  onChange={(e) => ubah({ gelarDepan: e.target.value })}
+                  className={kelasMasukan('gelarDepan')}
+                />
+              </div>
+              <div>
+                <label htmlFor="f-gelar-belakang" className={K.label}>
+                  Gelar belakang
+                </label>
+                <input
+                  id="f-gelar-belakang"
+                  maxLength={PANJANG.gelar}
+                  value={form.gelarBelakang || ''}
+                  placeholder="mis. S.H., M.H."
+                  onChange={(e) => ubah({ gelarBelakang: e.target.value })}
+                  className={kelasMasukan('gelarBelakang')}
+                />
               </div>
               <div>
                 <label htmlFor="f-status" className={K.label}>

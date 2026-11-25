@@ -3,6 +3,7 @@
  * dokumen dibaca sebagai model kosongnya lewat `bagianDari`. Pegawai disimpan sebagai salinan beku
  * `Orang` { pegawaiId, nama, nip, pangkat, jabatan } (keOrang di @/context/usePegawaiRingkas).
  */
+import { tanggalIso } from '@/utils/nilai';
 
 /** ID baris transaksi, unik di dalam satu berkas (dipakai Function sebagai ID realisasi MAK). */
 export const idBaris = () => crypto.randomUUID().replace(/-/g, '').slice(0, 20);
@@ -18,6 +19,7 @@ export const transaksiKosong = (pelaksanaId = '') => ({
 });
 
 export const spKosong = (orang = null) => ({
+  tanggal: tanggalIso(), // tanggal surat dibuat (blok tanda tangan); nomor & tanggal resmi dari TTE
   menimbang: '',
   dasar: [],
   kepada: orang ? [orang] : [],
