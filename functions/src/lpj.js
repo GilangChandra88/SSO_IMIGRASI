@@ -583,6 +583,17 @@ exports.hapusBerkas = callable('hapusBerkas', async (req) => {
         jumlah: -r.get('jumlah'),
       })),
     );
+    // Ringkasan ikut diperbarui di transaksi ini supaya Daftar LPJ langsung berubah (pemicu
+    // diBerkasDitulis menyusul menulis nilai yang sama).
+    tx.set(
+      db.collection(KOLEKSI.lpjRingkas).doc(berkasId),
+      {
+        tahap: 'terhapus',
+        dihapus: { pada: FieldValue.serverTimestamp(), oleh: p.uid, alasan },
+        diubahPada: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
     tx.update(ref, {
       dihapus: {
         pada: FieldValue.serverTimestamp(),
@@ -621,6 +632,7 @@ exports.pulihkanBerkas = callable('pulihkanBerkas', async (req) => {
     const d = snap.data();
     wajibBolehHapus(p, d);
     wajib(!!d.dihapus, 'Berkas ini tidak dalam keadaan terhapus.');
+    const k = (await tx.get(keuanganRef(berkasId))).data() || {};
     const realisasi = d.nomorLpj
       ? await tx.get(db.collection(KOLEKSI.makRealisasi).where('berkasId', '==', berkasId))
       : { docs: [] };
@@ -647,6 +659,16 @@ exports.pulihkanBerkas = callable('pulihkanBerkas', async (req) => {
       })),
     );
     tx.update(ref, { dihapus: FieldValue.delete(), ...jejakUbah(p.uid) });
+    // Ringkasan langsung kembali ke tahapnya (Daftar LPJ berubah seketika)
+    tx.set(
+      db.collection(KOLEKSI.lpjRingkas).doc(berkasId),
+      {
+        tahap: tahapDari({ ...d, dihapus: null }, k),
+        dihapus: null,
+        diubahPada: FieldValue.serverTimestamp(),
+      },
+      { merge: true },
+    );
     catatLog(tx, {
       modul: 'lpj',
       aksi: 'pulihkanBerkas',

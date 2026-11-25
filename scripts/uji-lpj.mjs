@@ -413,6 +413,10 @@ cek(
   (await panggil('hapusBerkas', { berkasId: B, alasan: 'Salah kegiatan' }, T0.pg)).hasil
     ?.dihapus === true,
 );
+cek(
+  'ringkasan langsung berubah ke terhapus (tanpa menunggu pemicu)',
+  (await baca('owner', `lpj_ringkas/${B}`))?.tahap === 'terhapus',
+);
 const bHapus = await baca('owner', `lpj_berkas/${B}`);
 cek(
   'berkas tidak dihapus fisik, hanya ditandai terhapus (isi & keuangan tetap ada)',
@@ -463,6 +467,10 @@ cek(
   'Keuangan memulihkan berkas: realisasi aktif lagi',
   r.hasil?.dipulihkan === true && r.hasil.realisasiDipulihkan === 2,
   JSON.stringify(r),
+);
+cek(
+  'ringkasan langsung kembali ke tahapnya (tanpa menunggu pemicu)',
+  (await baca('owner', `lpj_ringkas/${B}`))?.tahap === 'sakti',
 );
 const realPulih = await daftar('mak_realisasi', ['berkasId', B]);
 cek(

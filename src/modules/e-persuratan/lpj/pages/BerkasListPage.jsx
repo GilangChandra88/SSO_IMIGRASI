@@ -232,6 +232,12 @@ export default function BerkasListPage() {
   async function jalankanPulihkan(pack) {
     try {
       const hasil = await pulihkanBerkas(pack.id);
+      // Baris yang dulu dianimasikan keluar saat dihapus boleh tampil lagi di daftar biasa
+      setKeluarIds((s) => {
+        const n = new Set(s);
+        n.delete(pack.id);
+        return n;
+      });
       showToast(
         `Berkas ${lpjIdOf(pack) || `"${uraianOf(pack)}"`} dipulihkan${
           hasil?.realisasiDipulihkan
@@ -408,7 +414,9 @@ export default function BerkasListPage() {
               {tampil.map((pack, i) => (
                 <Lipat
                   key={pack.id}
-                  buka={!keluarIds.has(pack.id)}
+                  // Tanda "keluar" (animasi hapus) hanya berlaku di daftar biasa: di tab Terhapus
+                  // baris yang baru dihapus langsung tampil
+                  buka={lihatTerhapus || !keluarIds.has(pack.id)}
                   wadahRef={(el) => {
                     if (el) wadahRefs.current[pack.id] = el;
                     else delete wadahRefs.current[pack.id];
