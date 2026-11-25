@@ -321,11 +321,7 @@ r = await simpan(T0.pg, AKUN.pg.uid, {
 cek('memperbaiki transaksi LPJ', r === true, r);
 const hasil = await panggil('selesaikanSpby', { berkasId: B }, T0.pl);
 const nomor = hasil.hasil?.nomorLpj || '';
-cek(
-  'pelaksana menyelesaikan SPBy → nomor LPJ terbit',
-  /^LPJ-\d{4}-\d{2}-0001$/.test(nomor),
-  JSON.stringify(hasil),
-);
+cek('pelaksana menyelesaikan SPBy → nomor LPJ terbit', nomor === '0001', JSON.stringify(hasil));
 cek(
   'memanggil ulang ditolak (nomor sudah terbit)',
   (await panggil('selesaikanSpby', { berkasId: B }, T0.pl)).galat === 'ALREADY_EXISTS',
@@ -337,7 +333,10 @@ cek(
   d1?.lpj?.terkunci === true && d1?.nomorLpj === nomor && d1?.realisasiTercatat === true,
   JSON.stringify({ lpj: d1?.lpj?.terkunci, n: d1?.nomorLpj }),
 );
-cek('penjaga nomor lpj_nomor dibuat', (await baca('owner', `lpj_nomor/${nomor}`))?.berkasId === B);
+cek(
+  'penjaga nomor lpj_nomor/{tahun}-{nomor} dibuat',
+  (await baca('owner', `lpj_nomor/${T}-${nomor}`))?.berkasId === B,
+);
 const real = await daftar('mak_realisasi', ['berkasId', B]);
 cek(
   'realisasi 2 baris, jumlah bilangan bulat, status aktif, tanpa NIP',
@@ -578,7 +577,7 @@ await tulis(
 const n3 = await panggil('selesaikanSpby', { berkasId: B3 }, T0.pg);
 cek(
   'SPBy Non-Perjadin selesai → nomor LPJ berikutnya',
-  /-0002$/.test(n3.hasil?.nomorLpj || ''),
+  n3.hasil?.nomorLpj === '0002',
   JSON.stringify(n3),
 );
 const idReal = `${B3}_c1`;
@@ -767,7 +766,7 @@ const dMasuk = await sampai(async () => {
 });
 cek(
   'DRPP mencatat berkas yang masuk (nomor LPJ + total setelah koreksi)',
-  dMasuk?.masuk?.[B3]?.total === 250000 && /^LPJ-/.test(dMasuk?.masuk?.[B3]?.nomorLpj || ''),
+  dMasuk?.masuk?.[B3]?.total === 250000 && /^\d{4,}$/.test(dMasuk?.masuk?.[B3]?.nomorLpj || ''),
   JSON.stringify(dMasuk?.masuk),
 );
 cek(
@@ -879,7 +878,7 @@ await tulis('owner', `lpj_berkas/${B9}`, {
   tahunAnggaran: T,
   versi: 1,
   dicetak: {},
-  nomorLpj: `LPJ-${T}-01-9999`,
+  nomorLpj: '9999',
   spby: { terkunci: true, pelaksana: [orang('pPG', 'Budi Contoh')] },
   anggotaUids: [AKUN.pg.uid],
   ...audit(AKUN.pg.uid),

@@ -120,11 +120,15 @@ export default function StepLPJ({ ctx }) {
             className={`${FORM.input} ${errors.tanggalLpj ? FORM.borderErr : FORM.borderOk} max-w-[240px]`}
           />
         </Field>
-        <Field label="Keterangan" htmlFor="lpj-ket">
+        <Field
+          label="Keterangan (Untuk Pembayaran)"
+          htmlFor="lpj-ket"
+          hint="Tercetak di Kwitansi, SPBy, dan Nota Dinas. Bila dikosongkan, dokumen memakai uraian kegiatan berkas."
+        >
           <textarea
             id="lpj-ket"
             value={lpj.keterangan}
-            placeholder="Uraian kegiatan"
+            placeholder={ctx.pack.uraian || 'Uraian pembayaran'}
             onChange={(e) => setLpj({ keterangan: e.target.value })}
             className={`${FORM.textarea} ${FORM.borderOk}`}
           />

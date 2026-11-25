@@ -553,7 +553,7 @@ function wajib(kondisi, pesan) {
 
 /**
  * Menyelesaikan fase "LPJ & SPBy" (Perjadin) atau "SPBy & Rincian Bayar" (Non-Perjadin):
- * memvalidasi isian di server, mengunci bagian itu, menerbitkan nomor LPJ-TAHUN-BULAN-NNNN,
+ * memvalidasi isian di server, mengunci bagian itu, menerbitkan nomor LPJ NNNN (urut per tahun),
  * dan mencatat realisasi per baris transaksi ke mak_realisasi. Masukan: { berkasId }.
  */
 exports.selesaikanSpby = callable('selesaikanSpby', async (req) => {
@@ -634,8 +634,10 @@ exports.selesaikanSpby = callable('selesaikanSpby', async (req) => {
     const penghitungRef = db.collection(KOLEKSI.sistemPenghitung).doc(`lpj_${waktu.tahun}`);
     const penghitung = await tx.get(penghitungRef);
     const urut = (penghitung.exists ? Number(penghitung.get('nilai')) || 0 : 0) + 1;
-    const nomorLpj = `LPJ-${waktu.tahun}-${waktu.bulan}-${String(urut).padStart(4, '0')}`;
-    const nomorRef = db.collection(KOLEKSI.lpjNomor).doc(nomorLpj);
+    // Nomor pendek '0001' (keputusan pemilik 2026-11-25); urutnya mulai ulang tiap tahun, jadi
+    // penjaga keunikannya memakai tahun + nomor
+    const nomorLpj = String(urut).padStart(4, '0');
+    const nomorRef = db.collection(KOLEKSI.lpjNomor).doc(`${waktu.tahun}-${nomorLpj}`);
     if ((await tx.get(nomorRef)).exists)
       throw new HttpsError('aborted', 'Nomor bentrok, coba lagi.');
 
