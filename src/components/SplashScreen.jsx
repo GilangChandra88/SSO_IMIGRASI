@@ -1,7 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { FaStamp, FaFileSignature, FaLock } from 'react-icons/fa';
 import { useAuth } from '@/context/AuthContext';
+import { kurangiGerakan } from '@/utils/animasi';
 
+/**
+ * Layar pembuka singkat sesudah login (±0,9 detik; klik untuk melewati). Tidak tampil saat
+ * halaman dibuka/dimuat ulang (App.jsx). Dilewati bila "kurangi gerakan" aktif.
+ */
 export default function SplashScreen({ onFinish }) {
   const [isFadingOut, setIsFadingOut] = useState(false);
   const [stamped, setStamped] = useState(false);
@@ -12,21 +17,25 @@ export default function SplashScreen({ onFinish }) {
   useEffect(() => {
     // Jangan mulai animasi stempel jika masih loading auth
     if (loading) return;
+    if (kurangiGerakan()) {
+      onFinish();
+      return;
+    }
 
     // Timing untuk stempel menghantam dokumen
     const stampTimer = setTimeout(() => {
       setStamped(true);
-    }, 1000);
+    }, 450);
 
     // Memicu fade out layar
     const fadeOutTimer = setTimeout(() => {
       setIsFadingOut(true);
-    }, 2800);
+    }, 700);
 
     // Menghapus komponen
     const finishTimer = setTimeout(() => {
       onFinish();
-    }, 3300);
+    }, 900);
 
     return () => {
       clearTimeout(stampTimer);
@@ -39,7 +48,9 @@ export default function SplashScreen({ onFinish }) {
 
   return (
     <div
-      className={`fixed inset-0 z-[9999] bg-[#020617] flex flex-col items-center justify-center overflow-hidden transition-opacity duration-500 ease-in-out ${isFadingOut ? 'opacity-0' : 'opacity-100'}`}
+      role="presentation"
+      onClick={onFinish}
+      className={`fixed inset-0 z-[9999] bg-[#020617] flex flex-col items-center justify-center overflow-hidden cursor-pointer transition-opacity duration-200 ease-out ${isFadingOut ? 'opacity-0' : 'opacity-100'}`}
     >
       {/* Definisi Keyframes */}
       <style>{`
@@ -54,7 +65,7 @@ export default function SplashScreen({ onFinish }) {
         }
         
         .stamp-strike {
-          animation: strike 1.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+          animation: strike 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
         }
         @keyframes strike {
           0% { transform: translateY(-150px) scale(2.5) rotate(20deg); opacity: 0; }
@@ -64,7 +75,7 @@ export default function SplashScreen({ onFinish }) {
         }
         
         .shockwave {
-          animation: ripple 0.8s cubic-bezier(0.0, 0.0, 0.2, 1) forwards;
+          animation: ripple 0.4s cubic-bezier(0.0, 0.0, 0.2, 1) forwards;
         }
         @keyframes ripple {
           0% { transform: scale(0.5); opacity: 1; border-width: 8px; }

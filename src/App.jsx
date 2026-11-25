@@ -113,7 +113,9 @@ function AppContent() {
 }
 
 function App() {
-  const [showSplash, setShowSplash] = useState(true);
+  // Layar pembuka hanya sesudah login berhasil (peristiwa triggerSplash dari Login), tidak setiap
+  // kali halaman dibuka/dimuat ulang (docs/rencana-percepatan.md Tahap 1)
+  const [showSplash, setShowSplash] = useState(false);
 
   useEffect(() => {
     const handleTrigger = () => setShowSplash(true);
