@@ -12,11 +12,54 @@ import {
   Path,
 } from '@react-pdf/renderer';
 import { isiPlaceholder } from './isiPlaceholder';
+import { lebarKolomTtd, lebarKotakTtd, ukuranMuat } from './lebarTeks';
 
 // Jangan memenggal kata dengan tanda (-) di akhir baris; kata utuh pindah ke baris berikutnya
 Font.registerHyphenationCallback((word) => [word]);
 
 // ─── UTILS ──────────────────────────────────────────────────────────────────
+// ─── TANDA TANGAN FLEKSIBEL ──────────────────────────────────────────────────
+// Nama penanda tangan selalu satu baris: kotak/kolom TTD melebar mengikuti nama terpanjang
+// (posisinya bergeser), dan bila ruangnya tetap tidak cukup, hurufnya diperkecil (lebarTeks.js).
+
+/** Nama penanda tangan satu baris; huruf diperkecil bila tidak muat selebar `lebar` (pt). */
+const NamaTtd = ({ teks, font, ukuran, lebar, style }) => (
+  <Text style={[{ fontFamily: font }, style, { fontSize: ukuranMuat(teks, font, ukuran, lebar) }]}>
+    {teks}
+  </Text>
+);
+
+/**
+ * Kotak TTD rata kanan: lebarnya minimal `min` (lebar bawaan template) dan melebar ke kiri
+ * sampai `maks` (lebar area isi halaman) bila baris terpanjang (`baris`: [teks, font, ukuran])
+ * lebih panjang. `children(lebar)` mengisi kotak.
+ */
+const KotakTtd = ({ baris, min, maks, style, gayaIsi, children }) => {
+  const lebar = lebarKotakTtd(baris, { min, maks });
+  return (
+    <View style={[{ alignItems: 'flex-end' }, style]} wrap={false}>
+      <View style={[{ width: lebar }, gayaIsi]}>{children(lebar)}</View>
+    </View>
+  );
+};
+
+/**
+ * Kolom TTD berdampingan: kolom yang namanya panjang melebar memakai sisa ruang baris (`total`
+ * = lebar area isi). `kolom[i]` = { min, baris, gaya, isi: (lebar) => isi kolom }.
+ */
+const KolomTtd = ({ kolom, total, jarak = 12, style }) => {
+  const lebar = lebarKolomTtd(kolom, total, jarak);
+  return (
+    <View style={style} wrap={false}>
+      {kolom.map((k, i) => (
+        <View key={i} style={[{ width: lebar[i] }, k.gaya]}>
+          {k.isi(lebar[i])}
+        </View>
+      ))}
+    </View>
+  );
+};
+
 /** NIP 18 digit → "00000000 000000 0 000"; selain itu dikembalikan apa adanya. */
 const fmtNip = (nip) => {
   const s = String(nip || '').replace(/\s/g, '');
@@ -155,141 +198,165 @@ const KopSurat = () => (
   </View>
 );
 
-// Nomor dan tanda tangan diisi Srikandi saat TTE, jadi template memakai kode isian Srikandi
-const SuratPerintah = ({ data }) => (
-  <View>
-    <View style={styles.header}>
-      <Text style={styles.headerTitle}>SURAT PERINTAH</Text>
-      <Text>NOMOR : {'${nomor_naskah}'}</Text>
-      <Text style={{ fontFamily: 'Times-Bold', marginTop: 8 }}>
-        {jabatanSP(data['kategori_pejabat']).judul} KANTOR IMIGRASI KELAS II TPI BULELENG
-      </Text>
-    </View>
+/** Kotak TTD Surat Perintah: ≥200 pt, melebar mengikuti nama pejabat (area isi 455 pt). */
+const ttdSuratPerintah = (data) => {
+  const nama = data['pejabat_ttd']?.split('\n')[0] || '[Nama Pejabat]';
+  const tempatTanggal = `${data['tempat_terbit'] || 'Singaraja'} ${tanggalTtd(
+    data['tanggal_dibuat_sp'] || data['tanggal_sp'],
+  )}`;
+  const lebar = lebarKotakTtd(
+    [
+      [tempatTanggal, 'Times-Roman', 11],
+      [jabatanSP(data['kategori_pejabat']).ttd, 'Times-Bold', 11],
+      [nama, 'Times-Bold', 11],
+    ],
+    { min: 200, maks: 455 },
+  );
+  return { nama, lebar, ukuran: ukuranMuat(nama, 'Times-Bold', 11, lebar) };
+};
 
-    <View style={{ marginBottom: 10 }}>
-      <View style={styles.row}>
-        <Text style={styles.labelCol}>Menimbang</Text>
-        <Text style={styles.colonCol}>:</Text>
-        <Text style={styles.valueCol}>{data['menimbang']}</Text>
+// Nomor dan tanda tangan diisi Srikandi saat TTE, jadi template memakai kode isian Srikandi
+const SuratPerintah = ({ data }) => {
+  const ttd = ttdSuratPerintah(data);
+  return (
+    <View>
+      <View style={styles.header}>
+        <Text style={styles.headerTitle}>SURAT PERINTAH</Text>
+        <Text>NOMOR : {'${nomor_naskah}'}</Text>
+        <Text style={{ fontFamily: 'Times-Bold', marginTop: 8 }}>
+          {jabatanSP(data['kategori_pejabat']).judul} KANTOR IMIGRASI KELAS II TPI BULELENG
+        </Text>
       </View>
-      <View style={[styles.row, { marginBottom: 10 }]} wrap={false}>
-        <Text style={styles.labelCol}>Dasar</Text>
+
+      <View style={{ marginBottom: 10 }}>
+        <View style={styles.row}>
+          <Text style={styles.labelCol}>Menimbang</Text>
+          <Text style={styles.colonCol}>:</Text>
+          <Text style={styles.valueCol}>{data['menimbang']}</Text>
+        </View>
+        <View style={[styles.row, { marginBottom: 10 }]} wrap={false}>
+          <Text style={styles.labelCol}>Dasar</Text>
+          <Text style={styles.colonCol}>:</Text>
+          <View style={styles.valueCol}>
+            {Array.isArray(data['dasar']) ? (
+              data['dasar'].map((poin, idx) => (
+                <View key={idx} style={{ flexDirection: 'row', marginBottom: 2 }}>
+                  <Text style={{ width: 15 }}>{idx + 1}.</Text>
+                  <Text style={{ flex: 1, textAlign: 'justify' }}>{poin || '...'}</Text>
+                </View>
+              ))
+            ) : (
+              <Text style={{ textAlign: 'justify' }}>{data['dasar']}</Text>
+            )}
+          </View>
+        </View>
+      </View>
+
+      <Text
+        style={{ fontFamily: 'Times-Bold', textAlign: 'center', marginTop: 5, marginBottom: 10 }}
+      >
+        MENUGASKAN :
+      </Text>
+
+      <View style={styles.row}>
+        <Text style={styles.labelCol}>Kepada</Text>
         <Text style={styles.colonCol}>:</Text>
         <View style={styles.valueCol}>
-          {Array.isArray(data['dasar']) ? (
-            data['dasar'].map((poin, idx) => (
-              <View key={idx} style={{ flexDirection: 'row', marginBottom: 2 }}>
-                <Text style={{ width: 15 }}>{idx + 1}.</Text>
-                <Text style={{ flex: 1, textAlign: 'justify' }}>{poin || '...'}</Text>
-              </View>
-            ))
+          {data['pegawai_list']?.length > 0 ? (
+            data['pegawai_list'].map((p, i) => {
+              const l = p.split('\n');
+              return (
+                <View key={i} style={{ flexDirection: 'row', marginBottom: 10 }} wrap={false}>
+                  <Text style={{ width: 15 }}>{i + 1}</Text>
+                  <View style={{ flex: 1 }}>
+                    <View style={styles.row}>
+                      <Text style={{ width: 50 }}>Nama</Text>
+                      <Text style={styles.colonCol}>:</Text>
+                      <Text style={{ fontFamily: 'Times-Bold' }}>{l[0]}</Text>
+                    </View>
+                    <View style={styles.row}>
+                      <Text style={{ width: 50 }}>NIP</Text>
+                      <Text style={styles.colonCol}>:</Text>
+                      <Text>{l[1]?.replace('NIP. ', '') || '-'}</Text>
+                    </View>
+                    <View style={styles.row}>
+                      <Text style={{ width: 50 }}>Pangkat</Text>
+                      <Text style={styles.colonCol}>:</Text>
+                      <Text>{l[2]?.replace('Pangkat: ', '') || '-'}</Text>
+                    </View>
+                    <View style={styles.row}>
+                      <Text style={{ width: 50 }}>Jabatan</Text>
+                      <Text style={styles.colonCol}>:</Text>
+                      <Text>{l[3]?.replace('Jabatan: ', '') || '-'}</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            })
           ) : (
-            <Text style={{ textAlign: 'justify' }}>{data['dasar']}</Text>
+            <Text style={{ fontStyle: 'italic', color: 'gray' }}>Belum ada pegawai dipilih...</Text>
           )}
         </View>
       </View>
-    </View>
 
-    <Text style={{ fontFamily: 'Times-Bold', textAlign: 'center', marginTop: 5, marginBottom: 10 }}>
-      MENUGASKAN :
-    </Text>
-
-    <View style={styles.row}>
-      <Text style={styles.labelCol}>Kepada</Text>
-      <Text style={styles.colonCol}>:</Text>
-      <View style={styles.valueCol}>
-        {data['pegawai_list']?.length > 0 ? (
-          data['pegawai_list'].map((p, i) => {
-            const l = p.split('\n');
-            return (
-              <View key={i} style={{ flexDirection: 'row', marginBottom: 10 }} wrap={false}>
-                <Text style={{ width: 15 }}>{i + 1}</Text>
-                <View style={{ flex: 1 }}>
-                  <View style={styles.row}>
-                    <Text style={{ width: 50 }}>Nama</Text>
-                    <Text style={styles.colonCol}>:</Text>
-                    <Text style={{ fontFamily: 'Times-Bold' }}>{l[0]}</Text>
-                  </View>
-                  <View style={styles.row}>
-                    <Text style={{ width: 50 }}>NIP</Text>
-                    <Text style={styles.colonCol}>:</Text>
-                    <Text>{l[1]?.replace('NIP. ', '') || '-'}</Text>
-                  </View>
-                  <View style={styles.row}>
-                    <Text style={{ width: 50 }}>Pangkat</Text>
-                    <Text style={styles.colonCol}>:</Text>
-                    <Text>{l[2]?.replace('Pangkat: ', '') || '-'}</Text>
-                  </View>
-                  <View style={styles.row}>
-                    <Text style={{ width: 50 }}>Jabatan</Text>
-                    <Text style={styles.colonCol}>:</Text>
-                    <Text>{l[3]?.replace('Jabatan: ', '') || '-'}</Text>
-                  </View>
-                </View>
-              </View>
-            );
-          })
-        ) : (
-          <Text style={{ fontStyle: 'italic', color: 'gray' }}>Belum ada pegawai dipilih...</Text>
-        )}
+      <View style={[styles.row, { marginTop: 5 }]} wrap={false}>
+        <Text style={styles.labelCol}>Untuk</Text>
+        <Text style={styles.colonCol}>:</Text>
+        <View style={styles.valueCol}>
+          <View style={{ flexDirection: 'row', marginBottom: 3 }}>
+            <Text style={{ width: 15 }}>1.</Text>
+            <Text style={styles.valueCol}>
+              {data['kegiatan_poin_1'] || 'Melaksanakan tugas...'}
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', marginBottom: 3 }}>
+            <Text style={{ width: 15 }}>2.</Text>
+            <Text style={styles.valueCol}>Melaksanakan tugas ini dengan penuh tanggung jawab;</Text>
+          </View>
+          <View style={{ flexDirection: 'row', marginBottom: 3 }}>
+            <Text style={{ width: 15 }}>3.</Text>
+            <Text style={styles.valueCol}>
+              Segera melaporkan hasil pelaksanaan tugas kepada Kepala Kantor Imigrasi Kelas II TPI
+              Buleleng;
+            </Text>
+          </View>
+          <View style={{ flexDirection: 'row', marginBottom: 3 }}>
+            <Text style={{ width: 15 }}>4.</Text>
+            <Text style={styles.valueCol}>
+              Surat perintah ini berlaku sejak tanggal dikeluarkan.
+            </Text>
+          </View>
+        </View>
       </View>
-    </View>
 
-    <View style={[styles.row, { marginTop: 5 }]} wrap={false}>
-      <Text style={styles.labelCol}>Untuk</Text>
-      <Text style={styles.colonCol}>:</Text>
-      <View style={styles.valueCol}>
-        <View style={{ flexDirection: 'row', marginBottom: 3 }}>
-          <Text style={{ width: 15 }}>1.</Text>
-          <Text style={styles.valueCol}>{data['kegiatan_poin_1'] || 'Melaksanakan tugas...'}</Text>
-        </View>
-        <View style={{ flexDirection: 'row', marginBottom: 3 }}>
-          <Text style={{ width: 15 }}>2.</Text>
-          <Text style={styles.valueCol}>Melaksanakan tugas ini dengan penuh tanggung jawab;</Text>
-        </View>
-        <View style={{ flexDirection: 'row', marginBottom: 3 }}>
-          <Text style={{ width: 15 }}>3.</Text>
-          <Text style={styles.valueCol}>
-            Segera melaporkan hasil pelaksanaan tugas kepada Kepala Kantor Imigrasi Kelas II TPI
-            Buleleng;
+      <View style={styles.ttdContainer} wrap={false}>
+        <View style={[styles.ttdBox, { width: ttd.lebar }]}>
+          {/* "Singaraja 18 November 2026" lalu "Kepala" (Plt./Plh. Kepala menurut kategori) */}
+          <Text>
+            {data['tempat_terbit'] || 'Singaraja'}{' '}
+            {tanggalTtd(data['tanggal_dibuat_sp'] || data['tanggal_sp'])}
+          </Text>
+          <Text style={{ fontFamily: 'Times-Bold', marginTop: 4 }}>
+            {jabatanSP(data['kategori_pejabat']).ttd}
           </Text>
         </View>
-        <View style={{ flexDirection: 'row', marginBottom: 3 }}>
-          <Text style={{ width: 15 }}>4.</Text>
-          <Text style={styles.valueCol}>Surat perintah ini berlaku sejak tanggal dikeluarkan.</Text>
+        {/* Kode ${ttd_pengirim} (rata kiri, sebaris dengan logo) diganti Srikandi dengan tanda tangan elektronik */}
+        <View style={styles.ttdTteRow}>
+          <Text>{'${ttd_pengirim}'}</Text>
+          <View style={[styles.ttdBox, { width: ttd.lebar }]}>
+            <Image
+              src={window.location.origin + '/logo-tte-kemenimipas.jpg'}
+              style={styles.ttdTteLogo}
+            />
+          </View>
+        </View>
+        <View style={[styles.ttdBox, { width: ttd.lebar }]}>
+          <Text style={[styles.ttdName, { fontSize: ttd.ukuran }]}>{ttd.nama}</Text>
         </View>
       </View>
     </View>
-
-    <View style={styles.ttdContainer} wrap={false}>
-      <View style={styles.ttdBox}>
-        {/* "Singaraja 18 November 2026" lalu "Kepala" (Plt./Plh. Kepala menurut kategori) */}
-        <Text>
-          {data['tempat_terbit'] || 'Singaraja'}{' '}
-          {tanggalTtd(data['tanggal_dibuat_sp'] || data['tanggal_sp'])}
-        </Text>
-        <Text style={{ fontFamily: 'Times-Bold', marginTop: 4 }}>
-          {jabatanSP(data['kategori_pejabat']).ttd}
-        </Text>
-      </View>
-      {/* Kode ${ttd_pengirim} (rata kiri, sebaris dengan logo) diganti Srikandi dengan tanda tangan elektronik */}
-      <View style={styles.ttdTteRow}>
-        <Text>{'${ttd_pengirim}'}</Text>
-        <View style={styles.ttdBox}>
-          <Image
-            src={window.location.origin + '/logo-tte-kemenimipas.jpg'}
-            style={styles.ttdTteLogo}
-          />
-        </View>
-      </View>
-      <View style={styles.ttdBox}>
-        <Text style={styles.ttdName}>
-          {data['pejabat_ttd']?.split('\n')[0] || '[Nama Pejabat]'}
-        </Text>
-      </View>
-    </View>
-  </View>
-);
+  );
+};
 
 // ─── SPD: lembar depan (Lampiran 1) + lembar belakang (Lampiran 2), masing-masing 1 halaman ──
 const spdStyles = StyleSheet.create({
@@ -326,7 +393,7 @@ const spdStyles = StyleSheet.create({
   tdLabel: { width: '42%' },
   tdVal: { flex: 1 },
   bold: { fontFamily: 'Helvetica-Bold' },
-  ttd: { marginLeft: '62%', marginTop: 8 },
+  ttdWadah: { marginTop: 8 },
 
   // Lampiran 2
   page2: {
@@ -506,17 +573,36 @@ const SuratPerjalananDinas = ({ data }) => {
           ))}
         </View>
 
-        <View style={spdStyles.ttd} wrap={false}>
-          <Text>Dikeluarkan di : {data['tempat_dikeluarkan'] || 'Singaraja'}</Text>
-          <Text>
-            Tanggal :{' '}
-            {data['tanggal_dikeluarkan'] ? fmtDateDash(data['tanggal_dikeluarkan']) : '...'}
-          </Text>
-          <Text>Pejabat Pembuat Komitmen</Text>
-          <View style={{ height: 36 }} />
-          <Text>{ppk.nama ? ppk.nama.toUpperCase() : '[NAMA PPK]'}</Text>
-          <Text>NIP. {ppk.nip || '[NIP PPK]'}</Text>
-        </View>
+        {/* Rata kanan (bawaan 38% lebar isi), melebar ke kiri bila nama PPK panjang */}
+        <KotakTtd
+          style={spdStyles.ttdWadah}
+          min={192}
+          maks={505}
+          baris={[
+            [`Dikeluarkan di : ${data['tempat_dikeluarkan'] || 'Singaraja'}`, 'Helvetica', 9.5],
+            [ppk.nama ? ppk.nama.toUpperCase() : '[NAMA PPK]', 'Helvetica', 9.5],
+            [`NIP. ${ppk.nip || '[NIP PPK]'}`, 'Helvetica', 9.5],
+          ]}
+        >
+          {(lebar) => (
+            <>
+              <Text>Dikeluarkan di : {data['tempat_dikeluarkan'] || 'Singaraja'}</Text>
+              <Text>
+                Tanggal :{' '}
+                {data['tanggal_dikeluarkan'] ? fmtDateDash(data['tanggal_dikeluarkan']) : '...'}
+              </Text>
+              <Text>Pejabat Pembuat Komitmen</Text>
+              <View style={{ height: 36 }} />
+              <NamaTtd
+                teks={ppk.nama ? ppk.nama.toUpperCase() : '[NAMA PPK]'}
+                font="Helvetica"
+                ukuran={9.5}
+                lebar={lebar}
+              />
+              <Text>NIP. {ppk.nip || '[NIP PPK]'}</Text>
+            </>
+          )}
+        </KotakTtd>
       </Page>
       <LembarBelakangSPD data={data} />
     </>
@@ -549,7 +635,7 @@ const TtdPpk = ({ ppk }) => (
   <View>
     <Text>Pejabat Pembuat Komitmen</Text>
     <View style={{ height: 32 }} />
-    <Text style={spdStyles.tebal}>{ppk.nama || '[Nama PPK]'}</Text>
+    <NamaTtd teks={ppk.nama || '[Nama PPK]'} font="Times-Bold" ukuran={10} lebar={215} />
     <Text>NIP. {ppk.nip || '[NIP PPK]'}</Text>
   </View>
 );
@@ -583,7 +669,12 @@ const LembarBelakangSPD = ({ data }) => {
               <Kv label="Pada Tanggal" value={tgl(data['tanggal_berangkat'])} />
               <Text>{jabatanSP(data['kategori_pejabat']).spd}</Text>
               <View style={{ height: 32 }} />
-              <Text style={spdStyles.tebal}>{kepala.nama || '[Nama Pejabat]'}</Text>
+              <NamaTtd
+                teks={kepala.nama || '[Nama Pejabat]'}
+                font="Times-Bold"
+                ukuran={10}
+                lebar={215}
+              />
               <Text>NIP. {kepala.nip || '[NIP]'}</Text>
             </Romawi>
           </View>
@@ -912,24 +1003,51 @@ const RincianSPBy = ({ data }) => {
               </View>
             </View>
 
-            {/* TTD */}
-            <View
+            {/* TTD: kolom melebar mengikuti nama (area isi 495 pt) */}
+            <KolomTtd
               style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 28 }}
-              wrap={false}
-            >
-              <View style={{ width: 250, textAlign: 'center' }}>
-                <Text style={{ marginBottom: 3 }}>Mengetahui / Menyetujui</Text>
-                <Text style={{ marginBottom: 50 }}>Pejabat Pembuat Komitmen</Text>
-                <Text style={{ fontFamily: 'Times-Bold' }}>{namaPpk.toUpperCase()}</Text>
-                <Text>NIP. {nipPpk}</Text>
-              </View>
-              <View style={{ width: 250, textAlign: 'center' }}>
-                <Text style={{ marginBottom: 3 }}>Singaraja, {tglPembuatan}</Text>
-                <Text style={{ marginBottom: 50 }}>Yang Membuat Pernyataan</Text>
-                <Text style={{ fontFamily: 'Times-Bold' }}>{pName.toUpperCase()}</Text>
-                <Text>NIP. {pNip}</Text>
-              </View>
-            </View>
+              total={495}
+              kolom={[
+                {
+                  min: 240,
+                  kecil: 150,
+                  gaya: { textAlign: 'center' },
+                  baris: [[namaPpk.toUpperCase(), 'Times-Bold', 11]],
+                  isi: (lebar) => (
+                    <>
+                      <Text style={{ marginBottom: 3 }}>Mengetahui / Menyetujui</Text>
+                      <Text style={{ marginBottom: 50 }}>Pejabat Pembuat Komitmen</Text>
+                      <NamaTtd
+                        teks={namaPpk.toUpperCase()}
+                        font="Times-Bold"
+                        ukuran={11}
+                        lebar={lebar}
+                      />
+                      <Text>NIP. {nipPpk}</Text>
+                    </>
+                  ),
+                },
+                {
+                  min: 240,
+                  kecil: 150,
+                  gaya: { textAlign: 'center' },
+                  baris: [[pName.toUpperCase(), 'Times-Bold', 11]],
+                  isi: (lebar) => (
+                    <>
+                      <Text style={{ marginBottom: 3 }}>Singaraja, {tglPembuatan}</Text>
+                      <Text style={{ marginBottom: 50 }}>Yang Membuat Pernyataan</Text>
+                      <NamaTtd
+                        teks={pName.toUpperCase()}
+                        font="Times-Bold"
+                        ukuran={11}
+                        lebar={lebar}
+                      />
+                      <Text>NIP. {pNip}</Text>
+                    </>
+                  ),
+                },
+              ]}
+            />
           </Page>
         );
       })}
@@ -1060,30 +1178,70 @@ const Kwitansi = ({ data }) => {
         <View style={{ height: 40 }}></View>
 
         {/* Penerima */}
-        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginBottom: 40 }}>
-          <View style={{ width: 250 }}>
-            <Text style={{ marginBottom: 5 }}>Singaraja, {tanggal}</Text>
-            <Text style={{ marginBottom: 50 }}>Yang Menerima</Text>
-            <Text style={{ fontFamily: 'Helvetica-Bold' }}>{namaPenerima.toUpperCase()}</Text>
-            <Text>NIP. {nipPenerima}</Text>
-          </View>
-        </View>
+        <KotakTtd
+          style={{ marginBottom: 40 }}
+          min={250}
+          maks={525}
+          baris={[[namaPenerima.toUpperCase(), 'Helvetica-Bold', 11]]}
+        >
+          {(lebar) => (
+            <>
+              <Text style={{ marginBottom: 5 }}>Singaraja, {tanggal}</Text>
+              <Text style={{ marginBottom: 50 }}>Yang Menerima</Text>
+              <NamaTtd
+                teks={namaPenerima.toUpperCase()}
+                font="Helvetica-Bold"
+                ukuran={11}
+                lebar={lebar}
+              />
+              <Text>NIP. {nipPenerima}</Text>
+            </>
+          )}
+        </KotakTtd>
 
-        {/* TTD PPK dan Bendahara */}
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}>
-          <View style={{ width: 250 }}>
-            <Text style={{ marginBottom: 5 }}>Setuju dibayar,</Text>
-            <Text style={{ marginBottom: 50 }}>Pejabat Pembuat Komitmen</Text>
-            <Text style={{ fontFamily: 'Helvetica-Bold' }}>{namaPpk.toUpperCase()}</Text>
-            <Text>NIP. {nipPpk}</Text>
-          </View>
-          <View style={{ width: 250 }}>
-            <Text style={{ marginBottom: 5 }}>Lunas dibayar,</Text>
-            <Text style={{ marginBottom: 50 }}>Bendahara</Text>
-            <Text style={{ fontFamily: 'Helvetica-Bold' }}>{namaBendahara.toUpperCase()}</Text>
-            <Text>NIP. {nipBendahara}</Text>
-          </View>
-        </View>
+        {/* TTD PPK dan Bendahara: kolom melebar mengikuti nama (area isi 525 pt) */}
+        <KolomTtd
+          style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 20 }}
+          total={525}
+          kolom={[
+            {
+              min: 250,
+              kecil: 170,
+              baris: [[namaPpk.toUpperCase(), 'Helvetica-Bold', 11]],
+              isi: (lebar) => (
+                <>
+                  <Text style={{ marginBottom: 5 }}>Setuju dibayar,</Text>
+                  <Text style={{ marginBottom: 50 }}>Pejabat Pembuat Komitmen</Text>
+                  <NamaTtd
+                    teks={namaPpk.toUpperCase()}
+                    font="Helvetica-Bold"
+                    ukuran={11}
+                    lebar={lebar}
+                  />
+                  <Text>NIP. {nipPpk}</Text>
+                </>
+              ),
+            },
+            {
+              min: 250,
+              kecil: 170,
+              baris: [[namaBendahara.toUpperCase(), 'Helvetica-Bold', 11]],
+              isi: (lebar) => (
+                <>
+                  <Text style={{ marginBottom: 5 }}>Lunas dibayar,</Text>
+                  <Text style={{ marginBottom: 50 }}>Bendahara</Text>
+                  <NamaTtd
+                    teks={namaBendahara.toUpperCase()}
+                    font="Helvetica-Bold"
+                    ukuran={11}
+                    lebar={lebar}
+                  />
+                  <Text>NIP. {nipBendahara}</Text>
+                </>
+              ),
+            },
+          ]}
+        />
       </View>
     </Page>
   );
@@ -1258,34 +1416,71 @@ const SuratPerintahBayar = ({ data }) => {
       </View>
 
       {/* SIGNATURES */}
-      <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 30 }}>
-        {/* Left */}
-        <View style={{ width: '30%' }}>
-          <Text>Setuju dibayar,</Text>
-          <Text>Bendahara Pengeluaran</Text>
-          <View style={{ height: 50 }} />
-          <Text style={{ fontFamily: 'Helvetica-Bold' }}>{namaBendahara.toUpperCase()}</Text>
-          <Text>NIP. {nipBendahara}</Text>
-        </View>
-
-        {/* Middle */}
-        <View style={{ width: '30%' }}>
-          <Text>Diterima,</Text>
-          <Text>Penerima Uang</Text>
-          <View style={{ height: 50 }} />
-          <Text style={{ fontFamily: 'Helvetica-Bold' }}>{namaPenerima.toUpperCase()}</Text>
-          <Text>NIP. {nipPenerima}</Text>
-        </View>
-
-        {/* Right */}
-        <View style={{ width: '30%' }}>
-          <Text>Singaraja,</Text>
-          <Text>Pejabat Pembuat Komitmen</Text>
-          <View style={{ height: 50 }} />
-          <Text style={{ fontFamily: 'Helvetica-Bold' }}>{namaPpk.toUpperCase()}</Text>
-          <Text>NIP. {nipPpk}</Text>
-        </View>
-      </View>
+      {/* Bendahara | Penerima | PPK: kolom melebar mengikuti nama (area isi 525 pt) */}
+      <KolomTtd
+        style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 30 }}
+        total={525}
+        jarak={8}
+        kolom={[
+          {
+            min: 157,
+            kecil: 130,
+            baris: [[namaBendahara.toUpperCase(), 'Helvetica-Bold', 10]],
+            isi: (lebar) => (
+              <>
+                <Text>Setuju dibayar,</Text>
+                <Text>Bendahara Pengeluaran</Text>
+                <View style={{ height: 50 }} />
+                <NamaTtd
+                  teks={namaBendahara.toUpperCase()}
+                  font="Helvetica-Bold"
+                  ukuran={10}
+                  lebar={lebar}
+                />
+                <Text>NIP. {nipBendahara}</Text>
+              </>
+            ),
+          },
+          {
+            min: 157,
+            kecil: 130,
+            baris: [[namaPenerima.toUpperCase(), 'Helvetica-Bold', 10]],
+            isi: (lebar) => (
+              <>
+                <Text>Diterima,</Text>
+                <Text>Penerima Uang</Text>
+                <View style={{ height: 50 }} />
+                <NamaTtd
+                  teks={namaPenerima.toUpperCase()}
+                  font="Helvetica-Bold"
+                  ukuran={10}
+                  lebar={lebar}
+                />
+                <Text>NIP. {nipPenerima}</Text>
+              </>
+            ),
+          },
+          {
+            min: 157,
+            kecil: 130,
+            baris: [[namaPpk.toUpperCase(), 'Helvetica-Bold', 10]],
+            isi: (lebar) => (
+              <>
+                <Text>Singaraja,</Text>
+                <Text>Pejabat Pembuat Komitmen</Text>
+                <View style={{ height: 50 }} />
+                <NamaTtd
+                  teks={namaPpk.toUpperCase()}
+                  font="Helvetica-Bold"
+                  ukuran={10}
+                  lebar={lebar}
+                />
+                <Text>NIP. {nipPpk}</Text>
+              </>
+            ),
+          },
+        ]}
+      />
 
       {/* Nomor kwitansi SAKTI diisi tangan */}
       <Text style={{ marginTop: 24 }}>
@@ -1506,7 +1701,7 @@ const RincianPerjalananTugas = ({ data }) => {
             </View>
 
             {/* SIGNATURES 1 */}
-            <View
+            <KolomTtd
               style={{
                 flexDirection: 'row',
                 justifyContent: 'space-between',
@@ -1515,26 +1710,51 @@ const RincianPerjalananTugas = ({ data }) => {
                 textAlign: 'center',
                 marginBottom: 40,
               }}
-            >
-              <View style={{ width: '45%' }}>
-                <Text>Telah dibayarkan sejumlah :</Text>
-                <Text>Rp. {formatRupiah(totalJumlah)}</Text>
-                <Text>Bendahara Pengeluaran</Text>
-                <View style={{ height: 50 }} />
-                <Text style={{ fontFamily: 'Times-Bold' }}>{namaBendahara.toUpperCase()}</Text>
-                <Text>NIP. {nipBendahara}</Text>
-              </View>
-
-              <View style={{ width: '45%' }}>
-                <Text>Singaraja, {tanggalSpby}</Text>
-                <Text>Telah menerima jumlah uang sebesar :</Text>
-                <Text>Rp. {formatRupiah(totalJumlah)}</Text>
-                <Text>Yang Membuat Pernyataan</Text>
-                <View style={{ height: 50 }} />
-                <Text style={{ fontFamily: 'Times-Bold' }}>{namaPenerima.toUpperCase()}</Text>
-                {nipPenerima && <Text>NIP. {nipPenerima}</Text>}
-              </View>
-            </View>
+              total={515}
+              kolom={[
+                {
+                  min: 231,
+                  kecil: 170,
+                  baris: [[namaBendahara.toUpperCase(), 'Times-Bold', 10]],
+                  isi: (lebar) => (
+                    <>
+                      <Text>Telah dibayarkan sejumlah :</Text>
+                      <Text>Rp. {formatRupiah(totalJumlah)}</Text>
+                      <Text>Bendahara Pengeluaran</Text>
+                      <View style={{ height: 50 }} />
+                      <NamaTtd
+                        teks={namaBendahara.toUpperCase()}
+                        font="Times-Bold"
+                        ukuran={10}
+                        lebar={lebar}
+                      />
+                      <Text>NIP. {nipBendahara}</Text>
+                    </>
+                  ),
+                },
+                {
+                  min: 231,
+                  kecil: 170,
+                  baris: [[namaPenerima.toUpperCase(), 'Times-Bold', 10]],
+                  isi: (lebar) => (
+                    <>
+                      <Text>Singaraja, {tanggalSpby}</Text>
+                      <Text>Telah menerima jumlah uang sebesar :</Text>
+                      <Text>Rp. {formatRupiah(totalJumlah)}</Text>
+                      <Text>Yang Membuat Pernyataan</Text>
+                      <View style={{ height: 50 }} />
+                      <NamaTtd
+                        teks={namaPenerima.toUpperCase()}
+                        font="Times-Bold"
+                        ukuran={10}
+                        lebar={lebar}
+                      />
+                      {nipPenerima && <Text>NIP. {nipPenerima}</Text>}
+                    </>
+                  ),
+                },
+              ]}
+            />
 
             {/* SIGNATURES 2 */}
             <View style={{ fontSize: 10, fontFamily: 'Times-Roman', marginTop: 10 }}>
@@ -1926,8 +2146,7 @@ const Nominatif = ({ data }) => {
       <Text style={{ fontSize: 9, marginTop: 4 }}>id : {data.nomor_bundle || '...'}</Text>
 
       {/* SIGNATURES — tidak boleh terpotong; bila tidak muat, pindah utuh ke halaman berikutnya */}
-      <View
-        wrap={false}
+      <KolomTtd
         style={{
           flexDirection: 'row',
           justifyContent: 'space-between',
@@ -1935,22 +2154,48 @@ const Nominatif = ({ data }) => {
           fontSize: 10,
           textAlign: 'center',
         }}
-      >
-        <View style={{ width: '40%' }}>
-          <Text>Mengetahui,</Text>
-          <Text>Pejabat Pembuat Komitmen</Text>
-          <View style={{ height: 50 }} />
-          <Text style={{ fontFamily: 'Helvetica-Bold' }}>{namaPpk.toUpperCase()}</Text>
-          <Text>NIP. {nipPpk}</Text>
-        </View>
-        <View style={{ width: '40%' }}>
-          <Text>Singaraja, {tanggal}</Text>
-          <Text>Bendahara Pengeluaran</Text>
-          <View style={{ height: 50 }} />
-          <Text style={{ fontFamily: 'Helvetica-Bold' }}>{namaBendahara.toUpperCase()}</Text>
-          <Text>NIP. {nipBendahara}</Text>
-        </View>
-      </View>
+        total={782}
+        kolom={[
+          {
+            min: 313,
+            kecil: 140,
+            baris: [[namaPpk.toUpperCase(), 'Helvetica-Bold', 10]],
+            isi: (lebar) => (
+              <>
+                <Text>Mengetahui,</Text>
+                <Text>Pejabat Pembuat Komitmen</Text>
+                <View style={{ height: 50 }} />
+                <NamaTtd
+                  teks={namaPpk.toUpperCase()}
+                  font="Helvetica-Bold"
+                  ukuran={10}
+                  lebar={lebar}
+                />
+                <Text>NIP. {nipPpk}</Text>
+              </>
+            ),
+          },
+          {
+            min: 313,
+            kecil: 140,
+            baris: [[namaBendahara.toUpperCase(), 'Helvetica-Bold', 10]],
+            isi: (lebar) => (
+              <>
+                <Text>Singaraja, {tanggal}</Text>
+                <Text>Bendahara Pengeluaran</Text>
+                <View style={{ height: 50 }} />
+                <NamaTtd
+                  teks={namaBendahara.toUpperCase()}
+                  font="Helvetica-Bold"
+                  ukuran={10}
+                  lebar={lebar}
+                />
+                <Text>NIP. {nipBendahara}</Text>
+              </>
+            ),
+          },
+        ]}
+      />
     </Page>
   );
 };
@@ -2054,15 +2299,33 @@ const SPTJMPelaksana = ({ data, packItem }) => {
       </Text>
 
       {/* TTD di sisi kanan, teks rata kiri */}
-      <View style={sptjmStyles.ttd} wrap={false}>
-        <Text>
-          {tempat}, {tglTtd}
-        </Text>
-        <Text>Yang Membuat Pernyataan,</Text>
-        <View style={{ height: 60 }} />
-        <Text style={{ fontFamily: 'Times-Bold' }}>{pegawaiName.toUpperCase()}</Text>
-        <Text>NIP. {nip}</Text>
-      </View>
+      <KotakTtd
+        style={sptjmStyles.ttdWadah}
+        min={182}
+        maks={480}
+        baris={[
+          [`${tempat}, ${tglTtd}`, 'Times-Roman', 11.5],
+          [pegawaiName.toUpperCase(), 'Times-Bold', 11.5],
+          [`NIP. ${nip}`, 'Times-Roman', 11.5],
+        ]}
+      >
+        {(lebar) => (
+          <>
+            <Text>
+              {tempat}, {tglTtd}
+            </Text>
+            <Text>Yang Membuat Pernyataan,</Text>
+            <View style={{ height: 60 }} />
+            <NamaTtd
+              teks={pegawaiName.toUpperCase()}
+              font="Times-Bold"
+              ukuran={11.5}
+              lebar={lebar}
+            />
+            <Text>NIP. {nip}</Text>
+          </>
+        )}
+      </KotakTtd>
     </Page>
   );
 };
@@ -2088,7 +2351,7 @@ const sptjmStyles = StyleSheet.create({
   kvLabel: { width: 80 },
   menyatakan: { fontFamily: 'Times-Bold', marginTop: 22, marginBottom: 10 },
   paragraf: { textAlign: 'justify', marginBottom: 12 },
-  ttd: { marginLeft: '62%', marginTop: 24 },
+  ttdWadah: { marginTop: 24 },
 });
 
 // ─── SURAT PERNYATAAN PENGELUARAN BIAYA PERJALANAN DINAS ────────────────────
@@ -2127,7 +2390,7 @@ const sppStyles = StyleSheet.create({
   center: { textAlign: 'center' },
   bold: { fontFamily: 'Times-Bold' },
   ttdRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
-  ttdCol: { width: '48%', alignItems: 'center' },
+  ttdCol: { alignItems: 'center' },
   ttdSpace: { height: 62 },
   subTitle: { fontFamily: 'Times-Bold', textAlign: 'center', marginTop: 26, marginBottom: 18 },
   hitungRow: { flexDirection: 'row', paddingLeft: 6 },
@@ -2238,26 +2501,59 @@ const SuratPernyataanPengeluaran = ({ data }) => {
             </View>
 
             {/* Tanda terima: Bendahara (kiri) & pelaksana yang membuat pernyataan (kanan) */}
-            <View style={sppStyles.ttdRow} wrap={false}>
-              <View style={sppStyles.ttdCol}>
-                <Text> </Text>
-                <Text>Telah dibayarkan sejumlah :</Text>
-                <Text>Rp. {rupiah(dibayarkan)}</Text>
-                <Text>Bendahara Pengeluaran</Text>
-                <View style={sppStyles.ttdSpace} />
-                <Text style={sppStyles.bold}>{bendahara.nama.toUpperCase()}</Text>
-                <Text>NIP. {bendahara.nip}</Text>
-              </View>
-              <View style={sppStyles.ttdCol}>
-                <Text>Singaraja, {tanggalTtd}</Text>
-                <Text>Telah menerima jumlah uang sebesar :</Text>
-                <Text>Rp. {rupiah(total)}</Text>
-                <Text>Yang Membuat Pernyataan</Text>
-                <View style={sppStyles.ttdSpace} />
-                <Text style={sppStyles.bold}>{pelaksana.nama.toUpperCase()}</Text>
-                <Text>NIP. {pelaksana.nip}</Text>
-              </View>
-            </View>
+            <KolomTtd
+              style={sppStyles.ttdRow}
+              total={475}
+              kolom={[
+                {
+                  min: 228,
+                  kecil: 185,
+                  gaya: sppStyles.ttdCol,
+                  baris: [[bendahara.nama.toUpperCase(), 'Times-Bold', 11]],
+                  isi: (lebar) => (
+                    <>
+                      <Text> </Text>
+                      <Text>Telah dibayarkan sejumlah :</Text>
+                      <Text>Rp. {rupiah(dibayarkan)}</Text>
+                      <Text>Bendahara Pengeluaran</Text>
+                      <View style={sppStyles.ttdSpace} />
+                      <NamaTtd
+                        teks={bendahara.nama.toUpperCase()}
+                        font="Times-Bold"
+                        ukuran={11}
+                        lebar={lebar}
+                      />
+                      <Text>NIP. {bendahara.nip}</Text>
+                    </>
+                  ),
+                },
+                {
+                  min: 228,
+                  kecil: 185,
+                  gaya: sppStyles.ttdCol,
+                  baris: [
+                    [pelaksana.nama.toUpperCase(), 'Times-Bold', 11],
+                    ['Telah menerima jumlah uang sebesar :', 'Times-Roman', 11],
+                  ],
+                  isi: (lebar) => (
+                    <>
+                      <Text>Singaraja, {tanggalTtd}</Text>
+                      <Text>Telah menerima jumlah uang sebesar :</Text>
+                      <Text>Rp. {rupiah(total)}</Text>
+                      <Text>Yang Membuat Pernyataan</Text>
+                      <View style={sppStyles.ttdSpace} />
+                      <NamaTtd
+                        teks={pelaksana.nama.toUpperCase()}
+                        font="Times-Bold"
+                        ukuran={11}
+                        lebar={lebar}
+                      />
+                      <Text>NIP. {pelaksana.nip}</Text>
+                    </>
+                  ),
+                },
+              ]}
+            />
 
             {/* Perhitungan SPD rampung */}
             <View wrap={false}>
@@ -2365,16 +2661,21 @@ const lapStyles = StyleSheet.create({
   ttdKolom: { width: '50%', alignItems: 'center', paddingHorizontal: 8, marginTop: 6 },
 });
 
-/** Satu blok TTD pelaksana: ruang tanda tangan, nama, NIP. */
-const TtdPelaksana = ({ pegawai, no }) => {
+/**
+ * Satu blok TTD pelaksana: ruang tanda tangan, nama, NIP. `lebar` = ruang nama (pt); nama yang
+ * lebih panjang diperkecil hurufnya supaya tetap satu baris (bawaan: kolom TTD 50% − padding).
+ */
+const TtdPelaksana = ({ pegawai, no, lebar = 224 }) => {
   const [nama, nip] = String(pegawai || '').split('\n');
   return (
     <>
       <View style={{ height: 50 }} />
-      <Text>
-        {no ? `${no}. ` : ''}
-        {nama || '[Nama Pelaksana]'}
-      </Text>
+      <NamaTtd
+        teks={`${no ? `${no}. ` : ''}${nama || '[Nama Pelaksana]'}`}
+        font="Helvetica"
+        ukuran={10.5}
+        lebar={lebar}
+      />
       <Text>NIP. {nip?.replace('NIP. ', '') || '[NIP]'}</Text>
     </>
   );
@@ -2542,11 +2843,24 @@ const LaporanKegiatan = ({ data }) => {
       </BagianLap>
 
       {penandaTangan.length === 1 ? (
-        <View style={lapStyles.ttd} wrap={false}>
-          {tempatTanggal}
-          <Text style={{ marginTop: 6 }}>Pegawai yang Melaksanakan Tugas,</Text>
-          <TtdPelaksana pegawai={penandaTangan[0]} />
-        </View>
+        // Rata kanan (bawaan 48% lebar isi), melebar ke kiri bila nama panjang
+        <KotakTtd
+          style={{ marginTop: 20 }}
+          min={230}
+          maks={480}
+          baris={[
+            [String(penandaTangan[0] || '').split('\n')[0], 'Helvetica', 10.5],
+            ['Pegawai yang Melaksanakan Tugas,', 'Helvetica', 10.5],
+          ]}
+        >
+          {(lebar) => (
+            <>
+              {tempatTanggal}
+              <Text style={{ marginTop: 6 }}>Pegawai yang Melaksanakan Tugas,</Text>
+              <TtdPelaksana pegawai={penandaTangan[0]} lebar={lebar} />
+            </>
+          )}
+        </KotakTtd>
       ) : (
         <>
           {/* Tempat/tanggal + judul tidak boleh terpisah dari baris TTD pertama */}
@@ -3017,16 +3331,29 @@ const NotaDinas = ({ data }) => {
       </View>
 
       {/* FOOTER / TTD */}
-      <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 20 }}>
-        <View style={{ width: 250, textAlign: 'center' }}>
-          <Text style={{ marginBottom: 15 }}>
-            Singaraja, {data.tanggal_spby ? fmtDateDash(data.tanggal_spby) : '[Tanggal]'}
-          </Text>
-          <Text style={{ marginBottom: 60 }}>Pelaksana,</Text>
-          <Text style={{ fontFamily: 'Helvetica-Bold' }}>{namaPelaksana.toUpperCase()}</Text>
-          <Text>NIP. {nipPelaksana}</Text>
-        </View>
-      </View>
+      <KotakTtd
+        style={{ marginTop: 20 }}
+        gayaIsi={{ textAlign: 'center' }}
+        min={250}
+        maks={505}
+        baris={[[namaPelaksana.toUpperCase(), 'Helvetica-Bold', 11]]}
+      >
+        {(lebar) => (
+          <>
+            <Text style={{ marginBottom: 15 }}>
+              Singaraja, {data.tanggal_spby ? fmtDateDash(data.tanggal_spby) : '[Tanggal]'}
+            </Text>
+            <Text style={{ marginBottom: 60 }}>Pelaksana,</Text>
+            <NamaTtd
+              teks={namaPelaksana.toUpperCase()}
+              font="Helvetica-Bold"
+              ukuran={11}
+              lebar={lebar}
+            />
+            <Text>NIP. {nipPelaksana}</Text>
+          </>
+        )}
+      </KotakTtd>
     </View>
   );
 };

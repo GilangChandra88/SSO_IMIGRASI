@@ -480,7 +480,7 @@ export function tanggalRingkas(b) {
 /** SPBy sudah selesai (nomor LPJ terbit bersamaan, lewat Function selesaikanSpby). */
 export const spbySelesai = (b) => terkunci(b, isPerjadin(b) ? 'lpj' : 'spby');
 
-/** Nomor LPJ (`LPJ-TAHUN-BULAN-NNNN`) atau '' bila belum terbit. */
+/** Nomor LPJ (`NNNN`, urut per tahun; berkas lama `LPJ-TAHUN-BULAN-NNNN`) atau '' bila belum terbit. */
 export const lpjIdOf = (b) => b?.nomorLpj || '';
 
 /** Label nomor untuk tampilan: nomor LPJ, atau keterangan bila belum terbit. */
