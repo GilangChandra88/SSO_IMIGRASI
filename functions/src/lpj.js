@@ -369,8 +369,11 @@ exports.selesaikanSpby = callable('selesaikanSpby', async (req) => {
     const snap = await tx.get(ref);
     if (!snap.exists) throw new HttpsError('not-found', 'Berkas tidak ditemukan.');
     const d = snap.data();
-    if (!(d.anggotaUids || []).includes(p.uid)) {
-      throw new HttpsError('permission-denied', 'Anda bukan pembuat atau pelaksana berkas ini.');
+    if (!(d.anggotaUids || []).includes(p.uid) && !punya(p, 'keuangan')) {
+      throw new HttpsError(
+        'permission-denied',
+        'Hanya anggota berkas, Keuangan, atau Super Admin yang bisa menyelesaikan bagian ini.',
+      );
     }
     if (d.nomorLpj) throw new HttpsError('already-exists', 'Nomor LPJ berkas ini sudah terbit.');
     wajib(!d.dihapus, 'Berkas ini sudah dihapus; pulihkan dulu.');

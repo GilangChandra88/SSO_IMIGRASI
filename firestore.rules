@@ -612,7 +612,8 @@ service cloud.firestore {
         && !baru().keys().hasAny(['tte', 'spd', 'lpj', 'laporan', 'lampiran'])
         && !terkunci(baru(), 'sp') && !terkunci(baru(), 'spby')
         && auditBuat();
-      allow update: if anggotaDari(lama()) && ubahBerkasSah(id);
+      // Anggota berkas, atau Keuangan/Super Admin untuk berkas siapa pun (keputusan pemilik 2026-11-25)
+      allow update: if (anggotaDari(lama()) || keuangan()) && ubahBerkasSah(id);
       allow delete: if false; // lewat Function hapusBerkas
 
       // Bagian Keuangan: Verifikasi → SAKTI → Transfer → Arsip, berurutan.
@@ -635,7 +636,8 @@ service cloud.firestore {
       match /bukti/{b} {
         allow get: if keuangan() || anggotaBerkas(id);
         allow list: if (keuangan() || anggotaBerkas(id)) && batasDaftar(200);
-        allow create: if anggotaBerkas(id) && verifikasiBelumSelesai(id) && !berkasTerhapus(id)
+        allow create: if (anggotaBerkas(id) || keuangan()) && verifikasiBelumSelesai(id)
+          && !berkasTerhapus(id)
           && hanya(['pelaksanaId', 'label', 'berkas', 'dibuatPada', 'dibuatOleh'])
           && idSah(baru().pelaksanaId)
           && teksIsi(baru().label, 120)
