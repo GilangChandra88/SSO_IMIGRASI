@@ -263,13 +263,13 @@ const SuratPerintah = ({ data }) => (
 
     <View style={styles.ttdContainer} wrap={false}>
       <View style={styles.ttdBox}>
-        {/* "Singaraja 18 November 2026" lalu "Kepala Kantor" (Plt./Plh. menurut kategori) */}
+        {/* "Singaraja 18 November 2026" lalu "Kepala" (Plt./Plh. Kepala menurut kategori) */}
         <Text>
           {data['tempat_terbit'] || 'Singaraja'}{' '}
           {tanggalTtd(data['tanggal_dibuat_sp'] || data['tanggal_sp'])}
         </Text>
         <Text style={{ fontFamily: 'Times-Bold', marginTop: 4 }}>
-          {jabatanSP(data['kategori_pejabat']).ttd} Kantor
+          {jabatanSP(data['kategori_pejabat']).ttd}
         </Text>
       </View>
       {/* Kode ${ttd_pengirim} (rata kiri, sebaris dengan logo) diganti Srikandi dengan tanda tangan elektronik */}
