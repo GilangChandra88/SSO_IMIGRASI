@@ -24,6 +24,8 @@ import { PANGKAT_BAKU } from '../data/masterBaku';
 /** Data pegawai yang boleh ditulis klien (urutan sama dengan rules). */
 const FIELD_PEGAWAI = [
   'nama',
+  'gelarDepan',
+  'gelarBelakang',
   'nip',
   'statusKepegawaian',
   'pangkatId',
@@ -39,6 +41,8 @@ const FIELD_PEGAWAI = [
 
 export const PEGAWAI_KOSONG = Object.freeze({
   nama: '',
+  gelarDepan: '',
+  gelarBelakang: '',
   nip: '',
   statusKepegawaian: '',
   pangkatId: '',

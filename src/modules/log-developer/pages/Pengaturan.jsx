@@ -95,7 +95,7 @@ function FormAngka({ judul, ket, daftar, nilai, bawaan, kirim, kunciData, bilang
 
 /** Ambang anomali dan tarif perkiraan biaya Firebase. */
 export default function Pengaturan() {
-  const { data, memuat } = useTampilan('pengaturan');
+  const { data, memuat, galat } = useTampilan('pengaturan');
   const [siap, setSiap] = useState(false);
 
   // Form baru dipasang setelah nilai tersimpan termuat (nilai awal form tidak berubah lagi)
@@ -105,6 +105,7 @@ export default function Pengaturan() {
 
   return (
     <Halaman
+      galat={galat}
       judul="Pengaturan"
       sub="Batas anomali dan tarif untuk perkiraan biaya. Setiap perubahan tercatat di Akses & Segel."
     >

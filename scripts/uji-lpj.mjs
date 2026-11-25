@@ -98,10 +98,14 @@ async function riwayat(berkasId) {
   });
   return (await r.json()).filter((x) => x.document).map((x) => x.document.fields.kode.stringValue);
 }
-async function panggil(nama, data, token) {
+async function panggil(nama, data, token, ua = '') {
   const r = await fetch(`${FN}/${nama}`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...auth(token) },
+    headers: {
+      'Content-Type': 'application/json',
+      ...auth(token),
+      ...(ua ? { 'User-Agent': ua } : {}),
+    },
     body: JSON.stringify({ data }),
   });
   const j = await r.json();
@@ -2154,6 +2158,85 @@ cek('saldo awal terkunci setelah tutup buku', r.galat === 'FAILED_PRECONDITION',
     'panggilan Function tercatat (fungsi, hasil, durasi)',
     (await daftar('sistem_aktivitas', ['fn', 'catatPenjualanKantin'])).some(
       (x) => x.status === 'ok' && Number.isInteger(x.ms),
+    ),
+  );
+
+  // Satu akun di beberapa perangkat (perangkat = peramban + IP, dibaca server)
+  const UA_LAPTOP =
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36';
+  const UA_PONSEL =
+    'Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120.0 Mobile Safari/537.36';
+  const UA_TABLET =
+    'Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Version/17.0 Safari/604.1';
+  await panggil(
+    'catatSesi',
+    { jenis: 'mulai', sesiId: 'sesi-laptop-01', halaman: '/' },
+    T0.pl,
+    UA_LAPTOP,
+  );
+  await panggil(
+    'catatSesi',
+    { jenis: 'mulai', sesiId: 'sesi-laptop-02', halaman: '/koperasi' },
+    T0.pl,
+    UA_LAPTOP,
+  );
+  cek(
+    'dua tab di peramban yang sama tidak dianggap dua perangkat',
+    !(await daftar('sistem_anomali', ['kode', 'A11'])).some((x) => x.pelaku?.uid === AKUN.pl.uid),
+  );
+  await panggil(
+    'catatSesi',
+    { jenis: 'mulai', sesiId: 'sesi-ponsel-01', halaman: '/' },
+    T0.pl,
+    UA_PONSEL,
+  );
+  const a11 = (await daftar('sistem_anomali', ['kode', 'A11'])).find(
+    (x) => x.pelaku?.uid === AKUN.pl.uid,
+  );
+  const sesiPl = await baca('owner', 'sistem_sesi/' + AKUN.pl.uid);
+  cek(
+    'akun aktif di laptop & ponsel sekaligus terdeteksi (A11) beserta daftar perangkatnya',
+    a11?.rincian?.jumlahPerangkat === 2 &&
+      a11.rincian.perangkatLain?.[0]?.os === 'Windows' &&
+      a11.rincian.perangkatIni?.jenis === 'ponsel' &&
+      Object.keys(sesiPl?.perangkatAktif || {}).length === 2,
+    JSON.stringify({ a11: a11?.rincian, perangkat: Object.keys(sesiPl?.perangkatAktif || {}) }),
+  );
+  await panggil(
+    'catatSesi',
+    { jenis: 'detak', sesiId: 'sesi-ponsel-01', halaman: '/' },
+    T0.pl,
+    UA_PONSEL,
+  );
+  cek(
+    'detak berikutnya tidak menambah anomali',
+    (await daftar('sistem_anomali', ['kode', 'A11'])).find((x) => x.pelaku?.uid === AKUN.pl.uid)
+      ?.jumlah === 1,
+  );
+  await panggil(
+    'catatSesi',
+    { jenis: 'keluar', sesiId: 'sesi-ponsel-01', halaman: '/' },
+    T0.pl,
+    UA_PONSEL,
+  );
+  const sesiPl2 = await baca('owner', 'sistem_sesi/' + AKUN.pl.uid);
+  cek(
+    'keluar dari ponsel: ponsel ditandai keluar, laptop tetap online',
+    Object.values(sesiPl2.perangkatAktif).filter((v) => v.keluar).length === 1 &&
+      sesiPl2.online === true,
+    JSON.stringify(sesiPl2.perangkatAktif),
+  );
+  const plSegar = tokenLama(AKUN.pl, 5);
+  await panggil(
+    'catatSesi',
+    { jenis: 'mulai', sesiId: 'sesi-tablet-01', halaman: '/' },
+    plSegar,
+    UA_TABLET,
+  );
+  cek(
+    'masuk dari perangkat yang belum dikenal tercatat (A12)',
+    (await daftar('sistem_anomali', ['kode', 'A12'])).some(
+      (x) => x.pelaku?.uid === AKUN.pl.uid && x.rincian?.perangkatIni?.jenis === 'tablet',
     ),
   );
 

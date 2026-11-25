@@ -6,7 +6,8 @@ import PegawaiPicker from '../../components/PegawaiPicker';
 import PejabatPicker from '../../components/PejabatPicker';
 import PegawaiCards from '../../components/PegawaiCards';
 import Field from '../../ui/Field';
-import { BTN, FORM, NAVY, T } from '@/utils/uiTokens';
+import { BTN, FORM, NAVY, STATUS, T } from '@/utils/uiTokens';
+import { showToast } from '@/utils/toastStore';
 import { ANIM, hapusBaris } from '@/utils/animasi';
 
 function validateSp(sp) {
@@ -14,6 +15,7 @@ function validateSp(sp) {
   if (!sp.menimbang.trim()) e.menimbang = 'Wajib diisi';
   if (!sp.untuk[0] || !sp.untuk[0].trim()) e.untuk = 'Wajib diisi';
   if (sp.kepada.length === 0) e.kepada = 'Pilih minimal satu pegawai';
+  if (!sp.tanggal) e.tanggalSp = 'Wajib diisi';
   if (!sp.pejabat) e.pejabat = 'Pilih pejabat';
   return e;
 }
@@ -25,11 +27,31 @@ export default function StepSuratPerintah({ ctx }) {
   const setSp = (patch) => setPf((prev) => ({ ...prev, sp: { ...prev.sp, ...patch } }));
   const { dipa } = useDipa(ctx.pack.tahunAnggaran);
 
+  // SP sudah ditandai selesai tetapi SP ber-TTE belum diunggah: masih boleh diubah
+  const sudahSelesai = ctx.pack.sp?.terkunci === true;
+
+  async function simpanPerubahan() {
+    const e = validateSp(sp);
+    if (tandaiGalat(e)) return;
+    const ok = await persist(ctx.pfRef.current, { quiet: true, tahanLangkah: true });
+    if (ok) {
+      showToast('Perubahan Surat Perintah tersimpan.');
+      ctx.keDetail();
+    }
+  }
+
   function handleSelesai() {
     const e = validateSp(sp);
     if (tandaiGalat(e)) return;
     askConfirm({
       label: 'Surat Perintah',
+      pesan: (
+        <>
+          Setelah selesai, Surat Perintah masih bisa diubah sampai{' '}
+          <strong>SP ber-TTE dan nomor surat diunggah</strong>. Sesudah itu isinya tidak bisa diubah
+          lagi.
+        </>
+      ),
       onYes: async () => {
         // Final: isi terakhir + kunci ditulis bersama (tanggal resmi SP datang dari TTE)
         const ok = await persist(ctx.pfRef.current, {
@@ -54,6 +76,14 @@ export default function StepSuratPerintah({ ctx }) {
 
   return (
     <>
+      {sudahSelesai && (
+        <div
+          className={`rounded-xl border px-4 py-3 mb-3.5 text-[13px] ${STATUS.warnBg} ${STATUS.warnBorder} ${STATUS.warnInk}`}
+        >
+          Surat Perintah sudah ditandai selesai, tetapi masih bisa diubah karena SP ber-TTE dan
+          nomor surat belum diunggah. Bila sudah dicetak untuk TTE, cetak ulang setelah mengubah.
+        </div>
+      )}
       <div className={FORM.card}>
         <h3 className={`${FORM.cardTitle} mb-4`}>Surat Perintah</h3>
         <Field label="Menimbang" htmlFor="sp-menimbang" required err={errors.menimbang}>
@@ -125,6 +155,21 @@ export default function StepSuratPerintah({ ctx }) {
 
       <div className={FORM.card}>
         <h3 className={`${FORM.cardTitle} mb-4`}>Penandatangan</h3>
+        <Field
+          label="Tanggal Surat"
+          htmlFor="sp-tanggal"
+          required
+          hint="Dicetak di atas jabatan penandatangan, mis. Singaraja 18 November 2026"
+          err={errors.tanggalSp}
+        >
+          <input
+            id="sp-tanggal"
+            type="date"
+            value={sp.tanggal || ''}
+            onChange={(e) => setSp({ tanggal: e.target.value })}
+            className={`${FORM.input} ${errors.tanggalSp ? FORM.borderErr : FORM.borderOk} max-w-[240px]`}
+          />
+        </Field>
         <Field label="Pejabat Penandatangan (KPA/PLt/PLh)" required err={errors.pejabat}>
           <PejabatPicker
             pegawai={ctx.pegawai}
@@ -140,9 +185,15 @@ export default function StepSuratPerintah({ ctx }) {
         <button type="button" className={BTN.ghost} onClick={ctx.backToDetail}>
           <FaChevronLeft size={12} /> Kembali ke Detail LPJ
         </button>
-        <button type="button" className={BTN.primaryDark} onClick={handleSelesai}>
-          <FaCheck size={12} /> Selesai
-        </button>
+        {sudahSelesai ? (
+          <button type="button" className={BTN.primaryDark} onClick={simpanPerubahan}>
+            <FaCheck size={12} /> Simpan Perubahan
+          </button>
+        ) : (
+          <button type="button" className={BTN.primaryDark} onClick={handleSelesai}>
+            <FaCheck size={12} /> Selesai
+          </button>
+        )}
       </div>
     </>
   );

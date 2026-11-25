@@ -40,6 +40,28 @@ const JABATAN_SP = {
 };
 const jabatanSP = (kategori) => JABATAN_SP[kategori] || JABATAN_SP.kepala;
 
+const NAMA_BULAN = [
+  'Januari',
+  'Februari',
+  'Maret',
+  'April',
+  'Mei',
+  'Juni',
+  'Juli',
+  'Agustus',
+  'September',
+  'Oktober',
+  'November',
+  'Desember',
+];
+/** 'YYYY-MM-DD' → '18 November 2026' (blok tanda tangan surat). */
+const tanggalTtd = (iso) => {
+  const [y, m, d] = String(iso || '')
+    .split('-')
+    .map(Number);
+  return y && m && d ? `${d} ${NAMA_BULAN[m - 1]} ${y}` : '[Tanggal Surat]';
+};
+
 const fmtDateDash = (v) => {
   if (!v) return '...';
   const d = new Date(v);
@@ -241,8 +263,13 @@ const SuratPerintah = ({ data }) => (
 
     <View style={styles.ttdContainer} wrap={false}>
       <View style={styles.ttdBox}>
-        <Text style={{ fontFamily: 'Times-Bold' }}>
-          {jabatanSP(data['kategori_pejabat']).ttd} Kantor Imigrasi{'\n'}Kelas II TPI Buleleng
+        {/* "Singaraja 18 November 2026" lalu "Kepala Kantor" (Plt./Plh. menurut kategori) */}
+        <Text>
+          {data['tempat_terbit'] || 'Singaraja'}{' '}
+          {tanggalTtd(data['tanggal_dibuat_sp'] || data['tanggal_sp'])}
+        </Text>
+        <Text style={{ fontFamily: 'Times-Bold', marginTop: 4 }}>
+          {jabatanSP(data['kategori_pejabat']).ttd} Kantor
         </Text>
       </View>
       {/* Kode ${ttd_pengirim} (rata kiri, sebaris dengan logo) diganti Srikandi dengan tanda tangan elektronik */}

@@ -21,13 +21,14 @@ const lencanaStatus = (s) =>
 export default function Galat() {
   const [status, setStatus] = useState('baru');
   const [buka, setBuka] = useState(null);
-  const { daftar, nama, memuat, habis, segarkan, muatLagi, data } = useTampilan('galat', {
+  const { daftar, nama, memuat, habis, segarkan, muatLagi, data, galat } = useTampilan('galat', {
     status,
   });
   const kini = data?.server || Date.now();
 
   return (
     <Halaman
+      galat={galat}
       judul="Galat"
       sub="Kesalahan di browser pengguna dan di server. Galat yang sama digabung dan dihitung."
       onSegarkan={segarkan}

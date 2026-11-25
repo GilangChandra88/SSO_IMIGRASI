@@ -20,9 +20,10 @@ const AKSI = {
 };
 
 function DaftarAkses() {
-  const { daftar, nama, memuat, habis, muatLagi } = useTampilan('akses');
+  const { daftar, nama, memuat, habis, muatLagi, galat } = useTampilan('akses');
   return (
     <div className={K.kartuDaftar}>
+      {galat && <p className={`${K.kotakBahaya} ${K.teks} m-3`}>Gagal memuat: {galat}</p>}
       {daftar.map((l) => (
         <div
           key={l.id}
@@ -49,9 +50,10 @@ function DaftarAkses() {
 }
 
 function DaftarSegel() {
-  const { daftar, memuat } = useTampilan('segel');
+  const { daftar, memuat, galat } = useTampilan('segel');
   return (
     <div className={K.kartuDaftar}>
+      {galat && <p className={`${K.kotakBahaya} ${K.teks} m-3`}>Gagal memuat: {galat}</p>}
       {daftar.map((s) => (
         <div key={s.id} className={`${K.barisDiam} md:grid-cols-[120px_120px_minmax(0,1fr)]`}>
           <span className={K.judulBaris}>{s.tanggal}</span>

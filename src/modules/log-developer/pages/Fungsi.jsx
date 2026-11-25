@@ -16,7 +16,7 @@ const RENTANG = [
 /** Kinerja tiap Function (panggilan, penolakan, galat, rata-rata durasi) + potret sistem harian. */
 export default function Fungsi() {
   const [hari, setHari] = useState('7');
-  const { daftar, memuat, segarkan } = useTampilan('fungsi', { hari });
+  const { daftar, memuat, segarkan, galat } = useTampilan('fungsi', { hari });
 
   const perFungsi = useMemo(() => {
     const peta = {};
@@ -42,6 +42,7 @@ export default function Fungsi() {
 
   return (
     <Halaman
+      galat={galat}
       judul="Function & Sistem"
       sub="Kesehatan server: berapa kali tiap aksi dipanggil, berapa yang ditolak atau bergalat, dan lamanya."
       onSegarkan={segarkan}

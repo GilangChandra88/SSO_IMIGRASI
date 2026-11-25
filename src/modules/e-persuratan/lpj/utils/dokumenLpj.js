@@ -125,6 +125,8 @@ export function dataDokumen(pack, { dipa = null, pejabat = {} } = {}) {
     kegiatan_poin_1: (sp.untuk || [])[0] || '',
     tempat_terbit: 'Singaraja',
     tanggal_sp: tte.tanggalSurat || '',
+    // Tanggal di blok tanda tangan SP (diisi di form SP; cadangan = tanggal resmi TTE)
+    tanggal_dibuat_sp: sp.tanggal || tte.tanggalSurat || '',
     pejabat_ttd: sp.pejabat ? formatPegawai(sp.pejabat) : '',
     kategori_pejabat: sp.pejabat?.kategori || '',
     // SPD

@@ -349,6 +349,8 @@ exports.diPegawaiDitulis = onDocumentWritten(`${KOLEKSI.pegawai}/{pegawaiId}`, a
   if ((d.ultahMd || '') !== ultahMd) batch.update(sesudah.ref, { ultahMd });
   batch.set(ringkasRef, {
     nama: d.nama || '',
+    gelarDepan: d.gelarDepan || '',
+    gelarBelakang: d.gelarBelakang || '',
     nip: d.nip || '',
     pangkatNama: d.pangkatNama || '',
     golongan: d.golongan || '',

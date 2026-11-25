@@ -86,6 +86,8 @@ service cloud.firestore {
         && g.matches('^(I|II|III|IV|V|VI|VII|VIII|IX|X|XI|XII|XIII|XIV|XV|XVI|XVII)$');
     }
     function kunciPegawaiFn() { return ['email', 'authUid', 'peran', 'aktif', 'ultahMd']; }
+    // Gelar disimpan terpisah dari nama; boleh belum ada di dokumen lama (tidak wajib saat buat).
+    function kunciGelar() { return ['gelarDepan', 'gelarBelakang']; }
     // Foto ke-i (bila ada): path foto asli di folder pegawai itu sendiri (storage.rules).
     function fotoKe(id, l, i) {
       return l.size() <= i
@@ -108,6 +110,7 @@ service cloud.firestore {
         && teks(d.jabatanId, 64) && teks(d.jabatanNama, 160)
         && (d.get('unitId', '') == '' || idSah(d.unitId)) && teks(d.get('seksi', ''), 60)
         && (d.tanggalLahir == '' || tanggal(d.tanggalLahir))
+        && teks(d.get('gelarDepan', ''), 60) && teks(d.get('gelarBelakang', ''), 60)
         && fotoPathsSah(id, d.fotoPaths);
     }
 
@@ -115,12 +118,12 @@ service cloud.firestore {
       allow get: if kepegawaian() || (masuk() && pegawaiSaya() == id);
       allow list: if kepegawaian() && batasDaftar(500);
       allow create: if kepegawaian()
-        && hanya(kunciPegawaiKlien()) && wajib(kunciPegawaiKlien())
+        && hanya(kunciPegawaiKlien().concat(kunciGelar())) && wajib(kunciPegawaiKlien())
         && pegawaiSah(baru(), id) && auditBuat();
       // Data Super Admin hanya bisa diubah Super Admin; field akun/peran hanya oleh Cloud Function.
       allow update: if kepegawaian()
         && (superadmin() || !('superadmin' in lama().get('peran', [])))
-        && hanya(kunciPegawaiKlien().concat(kunciPegawaiFn()))
+        && hanya(kunciPegawaiKlien().concat(kunciGelar()).concat(kunciPegawaiFn()))
         && !berubah().hasAny(kunciPegawaiFn())
         && pegawaiSah(baru(), id) && auditUbah();
       allow delete: if false; // nonaktifkan lewat Function nonaktifkanPegawai
@@ -547,6 +550,13 @@ service cloud.firestore {
         || (bagianSah(baru(), b) && !terkunci(lama(), b)
           && (sebelumnya == '' || terkunci(lama(), sebelumnya)));
     }
+    // Surat Perintah: setelah ditandai selesai masih boleh diubah selama SP ber-TTE (bagian tte)
+    // belum terkunci; kunci SP tidak bisa dilepas. Setelah TTE terkunci, SP beku.
+    function spBerubahSah(k) {
+      return !k.hasAny(['sp'])
+        || (bagianSah(baru(), 'sp') && !terkunci(lama(), 'tte')
+          && (!terkunci(lama(), 'sp') || terkunci(baru(), 'sp')));
+    }
     function laporanSah(d) {
       return d.get('laporan', {}).get('foto', []).size() <= 10
         && teksLaporan(d, 'pendahuluan') && teksLaporan(d, 'maksud') && teksLaporan(d, 'ruangLingkup')
@@ -571,7 +581,7 @@ service cloud.firestore {
         && !k.hasAny(kunciBerkasFn().concat(['skema', 'jenis']))
         && d.versi == lama().versi + 1
         && isiBerubahSah(d, k)
-        && bagianBerubahSah(k, 'sp', '') && bagianBerubahSah(k, 'tte', 'sp')
+        && spBerubahSah(k) && bagianBerubahSah(k, 'tte', 'sp')
         && bagianBerubahSah(k, 'spd', 'tte') && bagianBerubahSah(k, 'lpj', 'spd')
         && bagianBerubahSah(k, 'laporan', 'lpj')
         && bagianBerubahSah(k, 'spby', '') && bagianBerubahSah(k, 'lampiran', 'spby')

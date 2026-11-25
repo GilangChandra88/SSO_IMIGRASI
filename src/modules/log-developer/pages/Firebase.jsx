@@ -105,13 +105,14 @@ function SalinPerintah({ perintah }) {
 /** Pemakaian Firebase dari Cloud Monitoring: kuota gratis, tren, dan perkiraan biaya. */
 export default function Firebase() {
   const [saring, setSaring] = useState({});
-  const { data: h, memuat } = useTampilan('firebase', saring);
+  const { data: h, memuat, galat } = useTampilan('firebase', saring);
   const d = h?.data;
   const t = h?.tarif;
   const biaya = d && t ? hitungBiaya(d, t) : null;
 
   return (
     <Halaman
+      galat={galat}
       judul="Pemakaian Firebase"
       sub="Angka dari Cloud Monitoring Google (sama dengan grafik Usage di Firebase Console). Diperbarui paling sering tiap 15 menit."
       memuat={memuat}
@@ -127,7 +128,7 @@ export default function Firebase() {
       }
     >
       {!h ? (
-        <p className={K.kosong}>Memuat…</p>
+        !galat && <p className={K.kosong}>Memuat…</p>
       ) : (
         <div className="flex flex-col gap-4">
           {h.galat && (

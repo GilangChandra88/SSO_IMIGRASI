@@ -5,6 +5,7 @@ import { showToast } from '@/utils/toastStore';
 import { pesanGalat } from '@/utils/pesanGalat';
 import Halaman from '../components/Halaman';
 import Pelaku from '../components/Pelaku';
+import PerangkatAktif from '../components/PerangkatAktif';
 import MeterKuota from '../components/MeterKuota';
 import { useTampilan } from '../hooks/useTampilan';
 import { useLogDev } from '../konteks/konteks';
@@ -112,7 +113,7 @@ function GrafikJam({ jam }) {
 
 export default function Ringkasan() {
   const { kunci } = useLogDev();
-  const { data, memuat, segarkan } = useTampilan('ringkasan', {}, { otomatisMs: 60000 });
+  const { data, memuat, segarkan, galat } = useTampilan('ringkasan', {}, { otomatisMs: 60000 });
   const [memeriksa, setMemeriksa] = useState(false);
   const kini = data?.server || Date.now();
   const hariIni = data?.metrik?.find((m) => m.id === data.hariIni);
@@ -143,15 +144,26 @@ export default function Ringkasan() {
   const periksaTerakhir = data?.pemeriksaanTerakhir;
   return (
     <Halaman
+      galat={galat}
       judul="Ringkasan Sistem"
       sub="Diperbarui otomatis tiap 60 detik. Semua waktu WITA."
       onSegarkan={segarkan}
       memuat={memuat}
     >
       {!data ? (
-        <p className={K.kosong}>Memuat…</p>
+        !galat && <p className={K.kosong}>Memuat…</p>
       ) : (
         <div className="flex flex-col gap-4">
+          {data.peringatan?.length > 0 && (
+            <div className={`${K.kotakBahaya} ${K.teks}`} role="alert">
+              <p className={K.judulBaris}>Sebagian data belum bisa dimuat</p>
+              <ul className="list-disc pl-5 mt-1">
+                {data.peringatan.map((p) => (
+                  <li key={p}>{p}</li>
+                ))}
+              </ul>
+            </div>
+          )}
           <div className={K.grid4}>
             <Stat
               label="Online sekarang"
@@ -199,6 +211,7 @@ export default function Ringkasan() {
                           nama={data.nama}
                         />
                         <span className={`${K.mono} block`}>{s.halaman}</span>
+                        <PerangkatAktif sesi={s} kini={kini} ringkas />
                       </span>
                       <span className={`${K.redup} shrink-0`}>
                         {relatif(s.terakhirAktif, kini)}

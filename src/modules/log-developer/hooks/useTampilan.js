@@ -13,6 +13,7 @@ export function useTampilan(tampilan, saring = {}, { otomatisMs = 0, ukuran = 30
   const { baca } = useLogDev();
   const [keadaan, setKeadaan] = useState({ data: null, daftar: [], nama: {}, habis: true });
   const [memuat, setMemuat] = useState(true);
+  const [galat, setGalat] = useState('');
   const kunciSaring = JSON.stringify(saring);
   const urutan = useRef(0);
 
@@ -23,6 +24,7 @@ export function useTampilan(tampilan, saring = {}, { otomatisMs = 0, ukuran = 30
       try {
         const hasil = await baca(tampilan, { saring: JSON.parse(kunciSaring), setelah, ukuran });
         if (ke !== urutan.current) return; // hasil kueri lama (saring sudah berganti)
+        setGalat('');
         setKeadaan((s) => ({
           data: hasil,
           daftar: setelah ? [...s.daftar, ...(hasil.daftar || [])] : hasil.daftar || [],
@@ -30,8 +32,11 @@ export function useTampilan(tampilan, saring = {}, { otomatisMs = 0, ukuran = 30
           habis: hasil.habis !== false,
         }));
       } catch (err) {
-        if (!perluKunciUlang(err) && !diam)
-          showToast(pesanGalat(err, 'Gagal memuat log.'), 'error');
+        if (perluKunciUlang(err) || ke !== urutan.current) return;
+        const pesan = pesanGalat(err, 'Gagal memuat log.');
+        // Muatan pertama gagal: tampilkan di halaman (bukan "Memuat…" selamanya)
+        setGalat(pesan);
+        if (!diam) showToast(pesan, 'error');
       } finally {
         if (ke === urutan.current) setMemuat(false);
       }
@@ -55,6 +60,7 @@ export function useTampilan(tampilan, saring = {}, { otomatisMs = 0, ukuran = 30
   return {
     ...keadaan,
     memuat,
+    galat,
     segarkan: () => muat(),
     muatLagi: () => terakhir && muat(terakhir),
   };

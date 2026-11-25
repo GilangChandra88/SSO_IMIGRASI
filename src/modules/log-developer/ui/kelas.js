@@ -56,6 +56,7 @@ export const K = Object.freeze({
   tombolKecil: `inline-flex items-center gap-1.5 min-h-8 px-3 rounded-lg text-xs font-bold cursor-pointer border ${T.borderStrong} ${T.surface} ${T.ink2} ${T.hoverSurface2} ${ANIM.tekan} disabled:opacity-45`,
 
   // Detail
+  kotakBahaya: `rounded-xl border p-3 ${STATUS.critBorder} ${STATUS.critBg}`,
   kotakInfo: `rounded-xl border p-3 ${STATUS.infoBorder} ${STATUS.infoBg}`,
   meterLintas: `block w-full h-2.5 rounded-full appearance-none border-0 overflow-hidden ${T.bgBorder} [&::-webkit-progress-bar]:bg-transparent`,
   meterIsiBaik:

@@ -157,3 +157,77 @@ export function dataBelumLengkap(p, kontak) {
   if (!kontak?.noWa) kosong.push('No. WA');
   return kosong;
 }
+
+// ─── Gelar ───────────────────────────────────────────────────────────────────
+// Nama di `pegawai.nama` disimpan TANPA gelar (dipakai tanda tangan, dokumen, daftar). Gelar
+// disimpan terpisah di `gelarDepan` & `gelarBelakang`; `namaBergelar()` dipakai bila gelar perlu.
+
+/** Gelar depan yang dikenali (dicocokkan tanpa titik; huruf besar/kecil dibedakan untuk dr/Dr). */
+const GELAR_DEPAN = new Set([
+  'Prof',
+  'Dr',
+  'dr',
+  'drg',
+  'Drs',
+  'Dra',
+  'Ir',
+  'Hj',
+  'Ns',
+  'Apt',
+  'apt',
+  'KH',
+]);
+/** "H." (Haji) hanya dikenali bila bertitik, agar inisial nama tanpa titik tidak ikut terpotong. */
+const GELAR_DEPAN_BERTITIK = new Set(['H']);
+/** Gelar akademik di belakang tanpa koma, mis. "S.H.", "M.Si", "A.Md.", "S.Tr.Im", "SE". */
+const POLA_GELAR_BELAKANG =
+  /^((S|M|D[1-4]|A|B|Dr)\.[A-Za-z]{1,6}\.?(\.?[A-Za-z]{1,6}\.?)*|(SH|MH|SE|ST|SKom|SIP|SPd|MPd|MM|MSi|SSos|AMd|Amd|MKn|MBA|SAk|Ak|CA|PhD|Ph\.D\.?))\.?,?$/;
+
+/** Satu token gelar depan, termasuk gabungan seperti "Dr.Ir." atau "Prof.Dr.". */
+function gelarDepanSah(token) {
+  if (!token.includes('.')) return GELAR_DEPAN.has(token) && token !== 'H';
+  const bagian = token.split('.').filter(Boolean);
+  return (
+    bagian.length > 0 && bagian.every((b) => GELAR_DEPAN.has(b) || GELAR_DEPAN_BERTITIK.has(b))
+  );
+}
+
+/**
+ * "Dr. Budi Contoh, S.H., M.H." → { nama: 'Budi Contoh', gelarDepan: 'Dr.', gelarBelakang: 'S.H., M.H.' }.
+ * Gelar belakang dikenali sesudah koma pertama atau sebagai token bergelar di ujung nama.
+ * `ragu` = sisa nama masih memuat titik/koma (perlu dicek manual).
+ */
+export function pisahGelar(teks) {
+  let s = String(teks ?? '')
+    .replace(/\s+/g, ' ')
+    .trim()
+    // Gelar depan yang menempel ke nama tanpa spasi: "Ir.Budi" → "Ir. Budi"
+    .replace(/^((?:(?:Prof|Dr|dr|drg|Drs|Dra|Ir|Hj?|Ns|Apt|KH)\.)+)(?=[A-Z])/, '$1 ');
+  let belakang = '';
+  const koma = s.indexOf(',');
+  if (koma >= 0) {
+    belakang = s.slice(koma + 1).trim();
+    s = s.slice(0, koma).trim();
+  }
+  const token = s.split(' ').filter(Boolean);
+  const depan = [];
+  while (token.length > 1 && gelarDepanSah(token[0])) depan.push(token.shift());
+  const ekor = [];
+  while (token.length > 1 && POLA_GELAR_BELAKANG.test(token[token.length - 1])) {
+    ekor.unshift(token.pop().replace(/,$/, ''));
+  }
+  const gelarBelakang = [ekor.join(', '), belakang].filter(Boolean).join(', ');
+  const nama = token.join(' ');
+  return {
+    nama,
+    gelarDepan: depan.join(' '),
+    gelarBelakang,
+    ragu: /[.,]/.test(nama),
+  };
+}
+
+/** Nama lengkap dengan gelar: "Dr. Budi Contoh, S.H., M.H." (dipakai hanya bila gelar diperlukan). */
+export function namaBergelar(p) {
+  const inti = [p?.gelarDepan, p?.nama].filter(Boolean).join(' ');
+  return p?.gelarBelakang ? `${inti}, ${p.gelarBelakang}` : inti;
+}

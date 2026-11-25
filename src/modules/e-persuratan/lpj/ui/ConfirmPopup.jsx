@@ -4,8 +4,11 @@ import Modal from '@/components/Modal';
 import { BTN, FONT, T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
 
-/** "Tandai X selesai?" — konfirmasi sebelum sebuah fase dikunci (final). */
-export default function ConfirmPopup({ docLabel = 'Surat Perintah', onYes, onNo, busy }) {
+/**
+ * "Tandai X selesai?" — konfirmasi sebelum sebuah fase dikunci (final). `pesan` (opsional)
+ * menggantikan peringatan bawaan "tidak akan bisa diedit lagi".
+ */
+export default function ConfirmPopup({ docLabel = 'Surat Perintah', pesan, onYes, onNo, busy }) {
   return (
     <Modal widthClass="max-w-[420px]" onClose={onNo} labelledBy="judul-konfirmasi">
       <div className="flex gap-3.5 px-6 pt-6">
@@ -22,7 +25,11 @@ export default function ConfirmPopup({ docLabel = 'Surat Perintah', onYes, onNo,
             Tandai {docLabel} selesai?
           </h3>
           <p className={`mt-1.5 text-[13px] leading-[1.55] ${T.inkMuted}`}>
-            {docLabel} yang sudah ditandai selesai <strong>tidak akan bisa diedit lagi</strong>.
+            {pesan || (
+              <>
+                {docLabel} yang sudah ditandai selesai <strong>tidak akan bisa diedit lagi</strong>.
+              </>
+            )}
           </p>
         </div>
       </div>

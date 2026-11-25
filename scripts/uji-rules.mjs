@@ -323,6 +323,33 @@ await cek(
   ubah(U.kep, 'pegawai/pPG', { nama: 'Budi Contoh Baru', diubahOleh: 'uKEP' }, ['diubahPada']),
 );
 await cek(
+  'Kepegawaian menyimpan gelar terpisah dari nama',
+  true,
+  ubah(
+    U.kep,
+    'pegawai/pPG',
+    { gelarDepan: 'Dr.', gelarBelakang: 'S.H., M.H.', diubahOleh: 'uKEP' },
+    ['diubahPada'],
+  ),
+);
+await cek(
+  'gelar lebih dari 60 karakter',
+  false,
+  ubah(U.kep, 'pegawai/pPG', { gelarBelakang: 'S.'.repeat(31), diubahOleh: 'uKEP' }, [
+    'diubahPada',
+  ]),
+);
+await cek(
+  'Kepegawaian membuat pegawai bergelar',
+  true,
+  buat(
+    U.kep,
+    'pegawai/pBaru3',
+    { ...pegawaiDasar, gelarDepan: '', gelarBelakang: 'S.Kom.', ...audit('uKEP') },
+    AUDIT,
+  ),
+);
+await cek(
   'Kepegawaian mengubah data Super Admin',
   false,
   ubah(U.kep, 'pegawai/pSA2', { nama: 'X', diubahOleh: 'uKEP' }, ['diubahPada']),
@@ -593,12 +620,22 @@ await cek(
   buat(U.pg, 'lpj_berkas/BN4', { ...berkasBaru, spd: { terkunci: false } }, AUDIT),
 );
 await cek(
-  'mengubah SP yang sudah terkunci',
-  false,
+  'mengubah SP yang sudah selesai selama SP ber-TTE belum diunggah',
+  true,
   ubah(
     U.pg,
     'lpj_berkas/B1',
     { sp: { terkunci: true, menimbang: 'diubah' }, versi: 4, diubahOleh: 'uPG' },
+    ['diubahPada'],
+  ),
+);
+await cek(
+  'membuka lagi kunci SP yang sudah selesai',
+  false,
+  ubah(
+    U.pg,
+    'lpj_berkas/B1',
+    { sp: { terkunci: false, menimbang: 'diubah' }, versi: 5, diubahOleh: 'uPG' },
     ['diubahPada'],
   ),
 );
@@ -608,21 +645,31 @@ await cek(
   ubah(
     U.pg,
     'lpj_berkas/B1',
-    { tte: { terkunci: false, nomorSurat: 'X' }, versi: 4, diubahOleh: 'uPG' },
+    { tte: { terkunci: false, nomorSurat: 'X' }, versi: 5, diubahOleh: 'uPG' },
     ['diubahPada'],
   ),
 );
 await cek(
   'mengisi SPD sebelum TTE terkunci',
   false,
-  ubah(U.pg, 'lpj_berkas/B1', { spd: { terkunci: false }, versi: 5, diubahOleh: 'uPG' }, [
+  ubah(U.pg, 'lpj_berkas/B1', { spd: { terkunci: false }, versi: 6, diubahOleh: 'uPG' }, [
     'diubahPada',
   ]),
 );
 await cek(
   'simpan tanpa menaikkan versi',
   false,
-  ubah(U.pg, 'lpj_berkas/B1', { uraian: 'lain', versi: 4, diubahOleh: 'uPG' }, ['diubahPada']),
+  ubah(U.pg, 'lpj_berkas/B1', { uraian: 'lain', versi: 5, diubahOleh: 'uPG' }, ['diubahPada']),
+);
+await cek(
+  'mengubah SP setelah SP ber-TTE & nomor surat disimpan final',
+  false,
+  ubah(
+    U.pg,
+    'lpj_berkas/B3',
+    { sp: { terkunci: true, menimbang: 'diubah' }, versi: 6, diubahOleh: 'uPG' },
+    ['diubahPada'],
+  ),
 );
 await cek(
   'mengisi LPJ setelah SPD terkunci',

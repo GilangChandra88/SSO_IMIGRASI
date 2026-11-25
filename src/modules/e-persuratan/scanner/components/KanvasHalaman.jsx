@@ -64,6 +64,7 @@ export default function KanvasHalaman({ kerja, aktifId, onAktif, imporBerkas, pi
   const teksRef = useRef(null);
   const ctrlOcr = useRef(null);
   const aktifRef = useRef(aktifId);
+  const lompatInstan = useRef(false); // gulir berikutnya langsung lompat (antrean impor)
   const dariKanvas = useRef(false); // aktif berganti karena gulir/klik di kanvas → jangan menggulir
   const sedangLompat = useRef(false);
   const timerLompat = useRef(null);
@@ -83,8 +84,15 @@ export default function KanvasHalaman({ kerja, aktifId, onAktif, imporBerkas, pi
   const antreEfektif = [...antre, ...belumDikenal.filter((id) => !antre.includes(id))];
   const kepala = antreEfektif[0] ?? null;
   const menunggu = new Set(antreEfektif.slice(1));
-  // PDF tebal tidak perlu menunggu lama: tempo dipercepat bila antrean panjang
-  const tempo = antreEfektif.length > 6 ? 'kilat' : antreEfektif.length > 2 ? 'cepat' : 'normal';
+  // Halaman impor muncul super cepat; hasil pindaian dipercepat bila antrean panjang
+  const kepalaImpor = !!kepala && halaman.find((h) => h.id === kepala)?.sumber !== 'scan';
+  const tempo = kepalaImpor
+    ? 'impor'
+    : antreEfektif.length > 6
+      ? 'kilat'
+      : antreEfektif.length > 2
+        ? 'cepat'
+        : 'normal';
 
   useEffect(() => {
     const ada = new Set(halaman.map((h) => h.id));
@@ -100,8 +108,10 @@ export default function KanvasHalaman({ kerja, aktifId, onAktif, imporBerkas, pi
 
   const selesaiMasuk = useCallback((id) => setAntre((a) => a.filter((x) => x !== id)), []);
 
-  // Giliran halaman berikutnya → jadikan aktif (kanvas menggulir ke sana)
+  // Giliran halaman berikutnya → jadikan aktif (kanvas menggulir ke sana; halaman impor
+  // langsung melompat tanpa gulir halus)
   useEffect(() => {
+    lompatInstan.current = kepalaImpor;
     if (kepala) onAktif(kepala);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- hanya saat kepala antrean berganti
   }, [kepala]);
@@ -171,7 +181,9 @@ export default function KanvasHalaman({ kerja, aktifId, onAktif, imporBerkas, pi
     const el = aktifId && akar?.querySelector(`[data-id="${aktifId}"]`);
     if (!el) return;
     sedangLompat.current = true;
-    akar.scrollTo({ top: el.offsetTop - 16, behavior: kurangiGerakan() ? 'auto' : 'smooth' });
+    const instan = kurangiGerakan() || lompatInstan.current;
+    lompatInstan.current = false;
+    akar.scrollTo({ top: el.offsetTop - 16, behavior: instan ? 'auto' : 'smooth' });
     clearTimeout(timerLompat.current);
     timerLompat.current = setTimeout(() => {
       sedangLompat.current = false;

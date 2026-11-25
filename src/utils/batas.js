@@ -8,6 +8,7 @@
 /** Panjang maksimum teks (karakter). */
 export const PANJANG = Object.freeze({
   namaPegawai: 120,
+  gelar: 60, // gelarDepan & gelarBelakang pegawai (sama dengan rules)
   namaMaster: 160, // pangkat, jabatan, unit kerja
   kodeUnit: 20,
   singkatanUnit: 30, // label pendek unit (dipakai sebagai seksi di modul lain)

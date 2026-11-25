@@ -1,6 +1,7 @@
 import { useNavigate } from 'react-router-dom';
 import Halaman from '../components/Halaman';
 import Pelaku from '../components/Pelaku';
+import PerangkatAktif from '../components/PerangkatAktif';
 import DaftarKosong from '../components/DaftarKosong';
 import { useTampilan } from '../hooks/useTampilan';
 import { K } from '../ui/kelas';
@@ -19,13 +20,18 @@ function statusSesi(s, kini) {
 /** Semua akun yang pernah membuka aplikasi: status, halaman terakhir, IP, perangkat, versi. */
 export default function PenggunaAktif() {
   const navigate = useNavigate();
-  const { daftar, nama, memuat, data, segarkan } = useTampilan('sesi', {}, { otomatisMs: 60000 });
+  const { daftar, nama, memuat, data, segarkan, galat } = useTampilan(
+    'sesi',
+    {},
+    { otomatisMs: 60000 },
+  );
   const kini = data?.server || Date.now();
 
   return (
     <Halaman
+      galat={galat}
       judul="Pengguna"
-      sub="Status login tiap akun. Ketuk baris untuk melihat riwayat aktivitasnya."
+      sub="Status login tiap akun dan perangkat yang sedang dipakai. Ketuk baris untuk melihat riwayat aktivitasnya."
       onSegarkan={segarkan}
       memuat={memuat}
     >
@@ -47,7 +53,10 @@ export default function PenggunaAktif() {
             >
               <span className="flex items-start gap-2 min-w-0">
                 <span className={`${st.kelas} mt-1.5 shrink-0`} title={st.label} />
-                <Pelaku uid={s.uid} email={s.email} ip={s.ip} alat={s.perangkat} nama={nama} />
+                <span className="min-w-0">
+                  <Pelaku uid={s.uid} email={s.email} ip={s.ip} alat={s.perangkat} nama={nama} />
+                  <PerangkatAktif sesi={s} kini={kini} />
+                </span>
               </span>
               <span className="min-w-0">
                 <span className={`${K.mono} block`}>{s.halaman || '-'}</span>

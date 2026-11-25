@@ -14,6 +14,7 @@ import {
   golonganPns,
   golonganPppk,
   nipBersih,
+  pisahGelar,
   tanggalDariNip,
   tanggalSah,
   waBersih,
@@ -25,7 +26,9 @@ import {
 /** Judul kolom templat (urutan mengikuti tabel kepegawaian kantor). */
 export const KOLOM_TEMPLAT = [
   'NIP',
+  'Gelar Depan',
   'Nama',
+  'Gelar Belakang',
   'Tgl Lahir',
   'Alamat',
   'Email Pribadi',
@@ -42,7 +45,9 @@ export const KOLOM_TEMPLAT = [
 export function templatCsv() {
   const contoh = [
     '00000000 000000 0 000',
-    'Budi Contoh, S.H.',
+    '',
+    'Budi Contoh',
+    'S.H.',
     '01-01-1990',
     'Jl. Contoh No. 1, Singaraja',
     'budi.contoh@contoh.test',
@@ -114,6 +119,8 @@ const PETA_JUDUL = {
   nama: 'nama',
   namalengkap: 'nama',
   namapegawai: 'nama',
+  gelardepan: 'gelarDepan',
+  gelarbelakang: 'gelarBelakang',
   tgllahir: 'tanggalLahir',
   tanggallahir: 'tanggalLahir',
   tgllhr: 'tanggalLahir',
@@ -325,7 +332,13 @@ export function bacaBaris(isiCsv) {
     } else if (nip && nip.length !== 18)
       tolak = `NIP harus 18 digit (terbaca ${nip.length} digit).`;
 
-    const nama = ambil(b, peta.kolom, 'nama');
+    // Gelar dipisah dari nama (nama disimpan tanpa gelar); kolom Gelar Depan/Belakang menang
+    const dipisah = pisahGelar(ambil(b, peta.kolom, 'nama'));
+    const nama = dipisah.nama;
+    const gelar = (kolom, cadangan) =>
+      (ambil(b, peta.kolom, kolom) || cadangan).slice(0, PANJANG.gelar);
+    const gelarDepan = gelar('gelarDepan', dipisah.gelarDepan);
+    const gelarBelakang = gelar('gelarBelakang', dipisah.gelarBelakang);
     if (!nama) tolak ||= 'Nama kosong.';
     else if (nama.length > PANJANG.namaPegawai)
       tolak ||= `Nama lebih dari ${PANJANG.namaPegawai} karakter.`;
@@ -390,6 +403,8 @@ export function bacaBaris(isiCsv) {
     return {
       no: i + 2, // nomor baris di berkas (baris 1 = judul)
       nama,
+      gelarDepan,
+      gelarBelakang,
       nip,
       tanggalLahir,
       status,
@@ -409,6 +424,8 @@ export function bacaBaris(isiCsv) {
 
 const SAMA_FIELD = [
   'nama',
+  'gelarDepan',
+  'gelarBelakang',
   'nip',
   'statusKepegawaian',
   'pangkatId',
@@ -520,6 +537,8 @@ export function nilaiImpor(baris, konteks, { petaUnit = {}, buatJabatan = true }
     const unitAkhir = isi(unitId, lama?.unitId);
     const data = {
       nama: r.nama,
+      gelarDepan: isi(r.gelarDepan, lama?.gelarDepan),
+      gelarBelakang: isi(r.gelarBelakang, lama?.gelarBelakang),
       nip: isi(r.nip, lama?.nip),
       statusKepegawaian: isi(r.status, lama?.statusKepegawaian),
       pangkatId: p ? p.id : r.golongan ? '' : lama?.pangkatId || '',

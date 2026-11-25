@@ -30,10 +30,15 @@ function tanpaFieldBerkas(bagian, isi) {
   return hasil;
 }
 
-/** Bagian boleh ditulis sekarang: bagian sebelumnya terkunci dan dirinya belum (rules `urut`/`tetap`). */
+/**
+ * Bagian boleh ditulis sekarang: bagian sebelumnya terkunci dan dirinya belum (rules `urut`/`tetap`).
+ * Pengecualian: Surat Perintah yang sudah selesai masih boleh diubah selama SP ber-TTE (`tte`)
+ * belum terkunci (rules `spBerubahSah`).
+ */
 export function bolehTulis(pack, bagian) {
   const urutan = BAGIAN[pack.jenis] || [];
   const i = urutan.indexOf(bagian);
+  if (bagian === 'sp' && i === 0) return pack.tte?.terkunci !== true;
   if (i < 0 || pack[bagian]?.terkunci === true) return false;
   return i === 0 || pack[urutan[i - 1]]?.terkunci === true;
 }

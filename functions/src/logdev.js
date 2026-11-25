@@ -173,52 +173,83 @@ async function bacaTampilan(tampilan, saring, setelah, ukuran) {
   switch (tampilan) {
     case 'ringkasan': {
       const hariIni = jamWita().tanggal;
+      // Setiap bagian dimuat sendiri-sendiri: bila satu gagal (mis. indeks database belum siap),
+      // bagian lain tetap tampil dan kegagalannya dilaporkan di `peringatan`.
+      const peringatan = [];
+      const KOSONG = { docs: [], empty: true, size: 0 };
+      const HITUNG_KOSONG = { data: () => ({ count: 0 }) };
+      const DOK_KOSONG = { exists: false, get: () => undefined };
+      const bagian = (nama, janji, cadangan) =>
+        janji.catch((err) => {
+          const pesan = String(err?.message || err);
+          peringatan.push(
+            `${nama}: ${/index/i.test(pesan) ? 'indeks database belum siap (deploy firestore:indexes)' : pesan.slice(0, 160)}`,
+          );
+          return cadangan;
+        });
       // Hemat baca: metrik hari ini saja (1 dokumen) & anomali dihitung, bukan diunduh
       const baruTingkat = (tingkat) =>
-        kol('sistemAnomali')
-          .where('status', '==', 'baru')
-          .where('tingkat', '==', tingkat)
-          .count()
-          .get();
+        bagian(
+          `Anomali ${tingkat}`,
+          kol('sistemAnomali')
+            .where('status', '==', 'baru')
+            .where('tingkat', '==', tingkat)
+            .count()
+            .get(),
+          HITUNG_KOSONG,
+        );
       const [
         online,
         galatBaru,
         anomaliBaru,
         kritis,
-        peringatan,
+        peringatanAn,
         info,
         metrik,
         segel,
         pengaturan,
         firebase,
       ] = await Promise.all([
-        kol('sistemSesi')
-          .where('terakhirAktif', '>=', Timestamp.fromMillis(sekarang - 5 * 60000))
-          .orderBy('terakhirAktif', 'desc')
-          .limit(200)
-          .get(),
-        kol('sistemGalat').where('status', '==', 'baru').count().get(),
-        kol('sistemAnomali')
-          .where('status', '==', 'baru')
-          .orderBy('terakhirPada', 'desc')
-          .limit(5)
-          .get(),
+        bagian(
+          'Pengguna online',
+          kol('sistemSesi')
+            .where('terakhirAktif', '>=', Timestamp.fromMillis(sekarang - 5 * 60000))
+            .orderBy('terakhirAktif', 'desc')
+            .limit(200)
+            .get(),
+          KOSONG,
+        ),
+        bagian(
+          'Galat baru',
+          kol('sistemGalat').where('status', '==', 'baru').count().get(),
+          HITUNG_KOSONG,
+        ),
+        bagian(
+          'Anomali terbaru',
+          kol('sistemAnomali')
+            .where('status', '==', 'baru')
+            .orderBy('terakhirPada', 'desc')
+            .limit(5)
+            .get(),
+          KOSONG,
+        ),
         baruTingkat('kritis'),
         baruTingkat('peringatan'),
         baruTingkat('info'),
-        kol('sistemMetrik').doc(hariIni).get(),
-        kol('sistemSegel').orderBy('tanggal', 'desc').limit(1).get(),
-        kol('sistemPengaturan').doc('logdev').get(),
+        bagian('Metrik hari ini', kol('sistemMetrik').doc(hariIni).get(), DOK_KOSONG),
+        bagian('Segel', kol('sistemSegel').orderBy('tanggal', 'desc').limit(1).get(), KOSONG),
+        bagian('Pengaturan', kol('sistemPengaturan').doc('logdev').get(), DOK_KOSONG),
         // Kuota Firebase dari cache (diambil ulang dari Google paling sering tiap 15 menit)
-        pemakaianFirebase({ cekAnomali: cekKuota }),
+        bagian('Kuota Firebase', pemakaianFirebase({ cekAnomali: cekKuota }), null),
       ]);
       const perTingkat = {
         kritis: kritis.data().count,
-        peringatan: peringatan.data().count,
+        peringatan: peringatanAn.data().count,
         info: info.data().count,
       };
       return {
         hariIni,
+        peringatan,
         online: online.docs.map(baris).filter((s) => s.online !== false),
         galatBaru: galatBaru.data().count,
         anomaliBaru: {
@@ -228,7 +259,9 @@ async function bacaTampilan(tampilan, saring, setelah, ukuran) {
         },
         metrik: metrik.exists ? [baris(metrik)] : [],
         segelTerakhir: segel.empty ? null : baris(segel.docs[0]),
-        pemeriksaanTerakhir: keJson(pengaturan.get('pemeriksaanTerakhir') || null),
+        pemeriksaanTerakhir: keJson(
+          (pengaturan.exists && pengaturan.get('pemeriksaanTerakhir')) || null,
+        ),
         firebase,
       };
     }
@@ -487,6 +520,28 @@ const ID_SESI = /^[A-Za-z0-9-]{8,64}$/;
  * Detak sesi dari browser. Masukan: { jenis, sesiId, halaman, versi }. IP & perangkat dibaca
  * server. `mulai` dengan login ≤ 2 menit lalu dicatat sebagai `masuk`.
  */
+const LIMA_MENIT = 5 * 60000;
+const SIMPAN_PERANGKAT_MS = 30 * HARI_MS;
+const MAKS_PERANGKAT = 10;
+
+/** Ringkas satu perangkat untuk rincian anomali/tampilan. */
+const infoPerangkat = (v) => ({
+  ip: v.ip || '',
+  peramban: v.perangkat?.peramban || '',
+  os: v.perangkat?.os || '',
+  jenis: v.perangkat?.jenis || '',
+  halaman: v.halaman || '',
+});
+
+/**
+ * Detak sesi dari browser. Masukan: { jenis, sesiId, halaman, versi }. IP & perangkat dibaca
+ * server. `mulai` dengan login ≤ 2 menit lalu dicatat sebagai `masuk`.
+ *
+ * Perangkat = sidik(user-agent, IP) — dua tab di peramban yang sama = satu perangkat; tidak ada
+ * penanda yang disimpan di peramban. `perangkatAktif` menyimpan ≤10 perangkat yang dipakai akun ini
+ * dalam 30 hari. A11: perangkat ini mulai aktif saat perangkat lain masih aktif (≤ 5 menit).
+ * A12: masuk dari perangkat yang belum pernah dipakai akun ini dalam 30 hari.
+ */
 exports.catatSesi = callable(
   'catatSesi',
   async (req) => {
@@ -503,41 +558,73 @@ exports.catatSesi = callable(
     const s = await ref.get();
     const lama = s.exists ? s.data() : {};
     const sekarang = Date.now();
-    const terakhir = lama.terakhirAktif?.toMillis?.() || 0;
-    const sesiSama = lama.sesiId === d.sesiId;
-    if (d.jenis === 'detak' && sesiSama && sekarang - terakhir < 60000) return { ok: true };
+    const ms = (v) => v?.terakhirAktif?.toMillis?.() || 0;
+    const kunci = sidik(klien.ua, klien.ip).slice(0, 16);
+    const daftarLama = lama.perangkatAktif || {};
+    const ini = daftarLama[kunci];
+
+    // Hemat tulis: detak/halaman yang sama dari perangkat yang sama tidak ditulis ulang
+    if (d.jenis === 'detak' && ini && !ini.keluar && sekarang - ms(ini) < 60000)
+      return { ok: true };
     if (
       d.jenis === 'halaman' &&
-      sesiSama &&
-      lama.halaman === halaman &&
-      sekarang - terakhir < 10000
+      ini &&
+      ini.halaman === halaman &&
+      ini.sesiId === d.sesiId &&
+      sekarang - ms(ini) < 10000
     ) {
       return { ok: true };
     }
     const baruMasuk = sekarang / 1000 - Number(req.auth.token.auth_time || 0) <= BUKA_MAKS_DETIK;
     const jenis = d.jenis === 'mulai' && baruMasuk ? 'masuk' : d.jenis;
 
-    // A11: akun yang sama aktif di dua tempat (sesi lain dari IP lain masih berdetak < 5 menit)
-    if (
-      d.jenis === 'mulai' &&
-      lama.sesiId &&
-      !sesiSama &&
-      lama.online &&
-      sekarang - terakhir < 5 * 60000 &&
-      lama.ip &&
-      lama.ip !== klien.ip
-    ) {
-      await aman(
-        catatAnomali({
-          kode: 'A11',
-          tingkat: 'peringatan',
-          judul: 'Akun dipakai di dua tempat sekaligus',
-          pelaku: ringkasPelaku(pelaku, klien),
-          rincian: { ipLain: lama.ip, perangkatLain: lama.perangkat || null },
-          kunci: `${p.uid}|${jamWita().tanggal}`,
-        }),
-      );
+    // Perangkat lain yang masih aktif (≤ 5 menit, belum keluar)
+    const aktifLain = Object.entries(daftarLama).filter(
+      ([k, v]) => k !== kunci && !v.keluar && sekarang - ms(v) < LIMA_MENIT,
+    );
+    const iniBaruAktif = !ini || ini.keluar || sekarang - ms(ini) >= LIMA_MENIT;
+    const anomali = [];
+    if (d.jenis !== 'keluar' && iniBaruAktif && aktifLain.length) {
+      anomali.push({
+        kode: 'A11',
+        tingkat: 'peringatan',
+        judul: `Akun aktif di ${aktifLain.length + 1} perangkat sekaligus`,
+        rincian: {
+          jumlahPerangkat: aktifLain.length + 1,
+          perangkatIni: infoPerangkat({ ...klien, halaman }),
+          perangkatLain: aktifLain.slice(0, 5).map(([, v]) => infoPerangkat(v)),
+        },
+        kunci: `${p.uid}|${jamWita().tanggal}`,
+      });
     }
+    if (jenis === 'masuk' && !ini && Object.keys(daftarLama).length) {
+      anomali.push({
+        kode: 'A12',
+        tingkat: 'info',
+        judul: 'Masuk dari perangkat baru',
+        rincian: {
+          perangkatIni: infoPerangkat({ ...klien, halaman }),
+          perangkatDikenal: Object.keys(daftarLama).length,
+        },
+      });
+    }
+    await Promise.all(
+      anomali.map((x) => aman(catatAnomali({ ...x, pelaku: ringkasPelaku(pelaku, klien) }))),
+    );
+
+    // Daftar perangkat: buang yang > 30 hari & sisakan 10 terbaru
+    const hapus = {};
+    const tersisa = Object.entries(daftarLama)
+      .filter(([k]) => k !== kunci)
+      .filter(([k, v]) => {
+        const basi = sekarang - ms(v) > SIMPAN_PERANGKAT_MS;
+        if (basi) hapus[k] = FieldValue.delete();
+        return !basi;
+      })
+      .sort((x, y) => ms(y[1]) - ms(x[1]));
+    tersisa.slice(MAKS_PERANGKAT - 1).forEach(([k]) => {
+      hapus[k] = FieldValue.delete();
+    });
 
     await ref.set(
       {
@@ -546,15 +633,28 @@ exports.catatSesi = callable(
         pegawaiId: p.pegawaiId,
         peran: p.peran,
         sesiId: d.sesiId,
-        online: d.jenis !== 'keluar',
+        online: d.jenis !== 'keluar' || aktifLain.length > 0,
         terakhirAktif: FieldValue.serverTimestamp(),
         halaman: halaman || lama.halaman || '',
         ip: klien.ip,
         ua: klien.ua,
         perangkat: klien.perangkat,
         versi,
-        ...(d.jenis === 'mulai' || !sesiSama ? { mulaiPada: FieldValue.serverTimestamp() } : {}),
+        ...(d.jenis === 'mulai' || !ini ? { mulaiPada: FieldValue.serverTimestamp() } : {}),
         ...(d.jenis === 'keluar' ? { keluarPada: FieldValue.serverTimestamp() } : {}),
+        perangkatAktif: {
+          ...hapus,
+          [kunci]: {
+            ip: klien.ip,
+            perangkat: klien.perangkat,
+            sesiId: d.sesiId,
+            halaman: halaman || ini?.halaman || '',
+            versi,
+            keluar: d.jenis === 'keluar',
+            terakhirAktif: FieldValue.serverTimestamp(),
+            ...(!ini || d.jenis === 'mulai' ? { mulaiPada: FieldValue.serverTimestamp() } : {}),
+          },
+        },
       },
       { merge: true },
     );
