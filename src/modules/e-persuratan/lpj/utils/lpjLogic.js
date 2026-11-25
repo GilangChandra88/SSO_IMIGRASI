@@ -434,6 +434,7 @@ export const lpjDashType = (b) => (isPerjadin(b) ? 'perjadin' : 'non-perjadin');
 
 /** Label kolom "Tahap": Draft / Selesai (+ gaya) */
 export function lpjTahapDisplay(b) {
+  if (terhapus(b)) return { label: 'Terhapus', done: false, terhapus: true };
   if (b?.status === 'selesai') return { label: 'Selesai', done: true };
   return { label: 'Draft', done: false };
 }
@@ -449,7 +450,10 @@ export function faseAktifLabel(b) {
  * final. Keuangan tidak menyunting isi fase (rules menolak). Tampilan saja; rules yang menegakkan.
  */
 export const canEditPack = (b, { uid }) =>
-  !!b && b.status !== 'selesai' && (b.anggotaUids || []).includes(uid);
+  !!b && !terhapus(b) && b.status !== 'selesai' && (b.anggotaUids || []).includes(uid);
+
+/** Berkas dihapus lunak (pindah ke tab Terhapus, bisa dipulihkan). */
+export const terhapus = (b) => !!b?.dihapus || b?.tahap === 'terhapus';
 
 /** Tanggal ringkasan untuk Daftar/Detail. */
 export function tanggalRingkas(b) {
@@ -476,11 +480,12 @@ export const lpjIdOf = (b) => b?.nomorLpj || '';
 export const lpjIdLabel = (b) => lpjIdOf(b) || 'Belum bernomor';
 
 /**
- * Tampilkan tombol hapus: draf tanpa nomor oleh pembuatnya; Super Admin juga berkas bernomor
- * yang belum diarsip. Tampilan saja; Function hapusBerkas yang menegakkan.
+ * Boleh menghapus/memulihkan (hapus lunak): anggota berkas, Keuangan, atau Super Admin; berkas
+ * yang sudah diarsip tidak bisa dihapus. Tampilan saja; Function hapusBerkas/pulihkanBerkas
+ * yang menegakkan.
  */
-export function canDeletePack(b, { uid, isSuperAdmin }) {
-  if (!b) return false;
-  if (isSuperAdmin) return !(b.keuangan?.arsip === true);
-  return !lpjIdOf(b) && b.dibuatOleh === uid;
-}
+const bolehKelola = (b, { uid, isAdmin, isSuperAdmin }) =>
+  !!b && (isAdmin || isSuperAdmin || (b.anggotaUids || []).includes(uid));
+export const canDeletePack = (b, user) =>
+  bolehKelola(b, user) && !terhapus(b) && b.keuangan?.arsip !== true;
+export const canRestorePack = (b, user) => bolehKelola(b, user) && terhapus(b);

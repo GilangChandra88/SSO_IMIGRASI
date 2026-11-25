@@ -49,6 +49,7 @@ const FUNGSI_PENTING = new Set([
   'aturUlangSandi',
   'aturPenghitung',
   'hapusBerkas',
+  'pulihkanBerkas',
   'hapusNodeMak',
   'batalkanRealisasi',
   'pulihkanRealisasi',

@@ -30,7 +30,6 @@ import { httpsCallable } from 'firebase/functions';
 import { db, functions } from '@/config/firebase';
 import { DOK_KEUANGAN, KOLEKSI, SUBKOLEKSI_LPJ } from '@/config/koleksi';
 import { LIMIT_KUERI } from '@/utils/batas';
-import { hentikanPantau } from '@/utils/usePantauBersama';
 import { JENIS } from '../data/masterLpj';
 import { spbyKosong, spKosong } from '../utils/modelKosong';
 
@@ -230,11 +229,11 @@ export const selesaikanSpby = (berkasId) => panggil('selesaikanSpby', { berkasId
 export const hitungTahapLpj = (tahunAnggaran) => panggil('hitungTahapLpj', { tahunAnggaran });
 
 /**
- * Hapus berkas beserta subkoleksi dan berkas Storage-nya (draf: pembuat/Super Admin; bernomor:
- * Super Admin + alasan, realisasinya dibatalkan). Listener berkas ini dihentikan dulu, karena
- * listener dokumen yang terhapus ditolak rules.
+ * Hapus LUNAK (anggota berkas, Keuangan, Super Admin): berkas ditandai terhapus, pindah ke tab
+ * Terhapus, dan bisa dipulihkan. Berkas bernomor wajib alasan; realisasinya dibatalkan dan
+ * dilepas dari DRPP.
  */
-export function hapusBerkas(berkasId, alasan = '') {
-  hentikanPantau(`lpj_berkas:${berkasId}`);
-  return panggil('hapusBerkas', { berkasId, alasan });
-}
+export const hapusBerkas = (berkasId, alasan = '') => panggil('hapusBerkas', { berkasId, alasan });
+
+/** Pulihkan berkas terhapus; realisasi yang dibatalkan karena penghapusan aktif lagi. */
+export const pulihkanBerkas = (berkasId) => panggil('pulihkanBerkas', { berkasId });

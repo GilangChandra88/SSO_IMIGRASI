@@ -759,6 +759,44 @@ await cek(
     ['dibuatPada'],
   ),
 );
+// Hapus lunak: tanda `dihapus` hanya ditulis Function; berkas terhapus terkunci untuk browser
+await buat(
+  U.owner,
+  'lpj_berkas/BHAPUS',
+  {
+    ...berkasDasar(['uPG']),
+    versi: 4,
+    nomorLpj: `LPJ-${TAHUN}-10-0099`,
+    sp: { terkunci: true },
+    dihapus: { oleh: 'uPG', alasan: 'uji' },
+  },
+  AUDIT,
+);
+await cek(
+  'anggota menandai berkas terhapus sendiri (harus lewat Function)',
+  false,
+  ubah(U.pg, 'lpj_berkas/B1', { dihapus: { oleh: 'uPG' }, versi: 6, diubahOleh: 'uPG' }, [
+    'diubahPada',
+  ]),
+);
+await cek(
+  'menyunting berkas yang terhapus',
+  false,
+  ubah(U.pg, 'lpj_berkas/BHAPUS', { uraian: 'diubah', versi: 5, diubahOleh: 'uPG' }, [
+    'diubahPada',
+  ]),
+);
+await cek(
+  'Keuangan memproses berkas yang terhapus',
+  false,
+  buat(
+    U.keu,
+    'lpj_berkas/BHAPUS/keuangan/status',
+    { verifikasi: { selesai: false }, ...audit('uKEU') },
+    AUDIT,
+  ),
+);
+await cek('anggota masih bisa membaca berkas terhapus', true, ambil(U.pg, 'lpj_berkas/BHAPUS'));
 await cek(
   'verifikasi untuk berkas belum bernomor',
   false,

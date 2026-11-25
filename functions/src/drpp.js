@@ -54,6 +54,12 @@ async function bacaBerkas(tx, ids, tahunAnggaran, wajib = ids) {
       if (d) hasil.push({ id, d, k: kSnaps[i].exists ? kSnaps[i].data() : {} });
       return;
     }
+    if (d?.dihapus) {
+      throw new HttpsError(
+        'failed-precondition',
+        `Berkas ${d.nomorLpj || d.uraian} sudah dihapus.`,
+      );
+    }
     if (!d?.nomorLpj) {
       throw new HttpsError('failed-precondition', `Berkas ${d?.uraian || id} belum bernomor LPJ.`);
     }

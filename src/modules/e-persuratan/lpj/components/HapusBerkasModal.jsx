@@ -6,8 +6,8 @@ import { lpjIdOf, uraianOf } from '../utils/lpjLogic';
 import { BTN, FONT, FORM, STATUS, T } from '@/utils/uiTokens';
 
 /**
- * Popup konfirmasi hapus berkas LPJ (lihat canDeletePack). Berkas bernomor (hanya Super Admin)
- * wajib disertai alasan. Hanya bertanya; penghapusan dan animasi baris keluar dijalankan
+ * Popup konfirmasi hapus LUNAK berkas LPJ (lihat canDeletePack): berkas pindah ke tab Terhapus
+ * dan bisa dipulihkan. Alasan wajib untuk berkas bernomor, opsional untuk draf. Hanya bertanya; penghapusan dan animasi baris keluar dijalankan
  * pemanggil lewat `onYa(alasan)` (lihat BerkasListPage).
  */
 export default function HapusBerkasModal({ pack, onClose, onYa }) {
@@ -37,34 +37,39 @@ export default function HapusBerkasModal({ pack, onClose, onYa }) {
             Hapus berkas {nomor || 'ini'}?
           </h3>
           <p className={`mt-1.5 text-[13px] leading-[1.55] break-words ${T.inkMuted}`}>
-            "{uraianOf(pack) || 'Tanpa uraian'}" beserta isi dan berkas unggahannya akan{' '}
-            <strong>dihapus permanen</strong> dan tidak bisa dikembalikan.
+            "{uraianOf(pack) || 'Tanpa uraian'}" dipindah ke <strong>Terhapus</strong>. Isi dan
+            berkas unggahannya tetap tersimpan, dan berkas bisa dipulihkan kapan saja dari tab
+            Terhapus di Daftar LPJ.
           </p>
           {nomor && (
-            <>
-              <p className={`mt-2 text-[12.5px] leading-[1.55] ${STATUS.critInk}`}>
-                Nomor {nomor} tidak akan dipakai ulang. Realisasinya di History MAK dibatalkan
-                (tidak dihapus) dan tidak lagi dihitung di Rekap.
-              </p>
-              <label htmlFor="alasan-hapus" className={`${FORM.label} mt-3`}>
-                Alasan penghapusan <span className="text-[#ef4444]">*</span>
-              </label>
-              <textarea
-                id="alasan-hapus"
-                rows={2}
-                maxLength={PANJANG.alasanBatal}
-                value={alasan}
-                aria-invalid={galat || undefined}
-                onChange={(e) => {
-                  setAlasan(e.target.value);
-                  setGalat(false);
-                }}
-                className={`${FORM.textarea} ${galat ? FORM.borderErr : FORM.borderOk}`}
-                autoFocus
-              />
-              {galat && <p className={FORM.err}>Alasan wajib diisi untuk berkas bernomor.</p>}
-            </>
+            <p className={`mt-2 text-[12.5px] leading-[1.55] ${STATUS.critInk}`}>
+              Selama terhapus, realisasi {nomor} di MAK dibatalkan (tidak dihitung di Rekap) dan
+              berkas dilepas dari DRPP. Saat dipulihkan, realisasinya aktif lagi; DRPP perlu
+              ditambahkan ulang oleh Keuangan.
+            </p>
           )}
+          <label htmlFor="alasan-hapus" className={`${FORM.label} mt-3`}>
+            Alasan penghapusan{' '}
+            {nomor ? (
+              <span className="text-[#ef4444]">*</span>
+            ) : (
+              <span className={T.inkMuted}>(opsional)</span>
+            )}
+          </label>
+          <textarea
+            id="alasan-hapus"
+            rows={2}
+            maxLength={PANJANG.alasanBatal}
+            value={alasan}
+            aria-invalid={galat || undefined}
+            onChange={(e) => {
+              setAlasan(e.target.value);
+              setGalat(false);
+            }}
+            className={`${FORM.textarea} ${galat ? FORM.borderErr : FORM.borderOk}`}
+            autoFocus
+          />
+          {galat && <p className={FORM.err}>Alasan wajib diisi untuk berkas bernomor.</p>}
         </div>
       </div>
       <div className="flex justify-end gap-2 px-6 pt-5 pb-6">

@@ -68,8 +68,10 @@ export function useDaftarBerkas({ uid, semua = false, tahunAnggaran, tahap = '' 
     }
   };
 
+  // Berkas dihapus lunak tidak tampil di daftar biasa; Daftar LPJ menampilkannya di tab Terhapus
   return {
-    berkas,
+    berkas: berkas.filter((b) => b.tahap !== 'terhapus'),
+    terhapus: berkas.filter((b) => b.tahap === 'terhapus'),
     memuat,
     galat,
     bisaLagi: pertama.length === LIMIT_KUERI.halaman && !tambahan.habis,
