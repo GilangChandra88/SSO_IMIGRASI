@@ -16,6 +16,7 @@ import {
   FaClock,
   FaLock,
   FaPen,
+  FaTrashRestore,
   FaPrint,
   FaArrowRight,
   FaPlus,
@@ -27,6 +28,8 @@ import {
 import { useBerkas } from '../hooks/useBerkas';
 import { useLpjUser } from '../hooks/useLpjUser';
 import { usePegawaiRingkas } from '@/context/usePegawaiRingkas';
+import { pulihkanBerkas } from '../services/berkasDb';
+import { pesanGalat } from '@/utils/pesanGalat';
 import { useDokumenLpj } from '../hooks/useDokumenLpj';
 import {
   STAGE_STATUS_LABEL,
@@ -43,6 +46,7 @@ import {
   overallProgress,
   stagesWithStatus,
   terkunci,
+  canRestorePack,
 } from '../utils/lpjLogic';
 import LinkBack from '../ui/LinkBack';
 import TombolBuat from '../components/TombolBuat';
@@ -122,6 +126,20 @@ export default function PackDetail({ packId }) {
   }
 
   const canEdit = canEditPack(pack, user);
+  const dihapus = pack.dihapus || null;
+  const namaPenghapus = dihapus
+    ? pegawai.find((x) => x.authUid === dihapus.oleh)?.nama || 'pengguna lain'
+    : '';
+  async function pulihkan() {
+    try {
+      const hasil = await pulihkanBerkas(pack.id);
+      showToast(
+        `Berkas dipulihkan${hasil?.realisasiDipulihkan ? `, ${hasil.realisasiDipulihkan} realisasi MAK aktif lagi` : ''}.`,
+      );
+    } catch (err) {
+      showToast(pesanGalat(err, 'Gagal memulihkan berkas.'), 'error');
+    }
+  }
   const nomor = lpjIdOf(pack);
 
   const tahap = lpjTahapDisplay(pack);
@@ -148,6 +166,25 @@ export default function PackDetail({ packId }) {
   return (
     <Shell wadahRef={isiRef}>
       <LinkBack onClick={backToList}>Kembali ke Daftar LPJ</LinkBack>
+
+      {dihapus && (
+        <div
+          data-bertahap
+          role="alert"
+          className={`flex flex-wrap items-center justify-between gap-3 rounded-[14px] border px-5 py-4 mb-5 ${STATUS.critBg} ${STATUS.critBorder}`}
+        >
+          <div className={`text-[13px] leading-[1.55] ${STATUS.critInk}`}>
+            <strong>Berkas ini terhapus</strong> oleh {namaPenghapus}
+            {dihapus.alasan ? ` — ${dihapus.alasan}` : ''}. Isinya hanya bisa dilihat; pulihkan
+            untuk melanjutkan.
+          </div>
+          {canRestorePack(pack, user) && (
+            <button type="button" className={BTN.sm} onClick={pulihkan}>
+              <FaTrashRestore size={12} /> Pulihkan
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Kartu judul */}
       <div data-bertahap className={`${NAVY.gradient} rounded-[14px] px-5 sm:px-6 py-5 mb-5`}>

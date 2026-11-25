@@ -116,10 +116,10 @@ async function ubahStatusRealisasi(p, realisasiId, keStatus, alasan) {
     }
     if (keStatus === 'aktif') {
       const berkas = await tx.get(db.collection(KOLEKSI.lpjBerkas).doc(r.berkasId));
-      if (!berkas.exists) {
+      if (!berkas.exists || berkas.get('dihapus')) {
         throw new HttpsError(
           'failed-precondition',
-          'Berkas LPJ realisasi ini sudah dihapus, jadi tidak bisa dipulihkan.',
+          'Berkas LPJ realisasi ini sudah dihapus. Pulihkan berkasnya dari Daftar LPJ (tab Terhapus).',
         );
       }
     }

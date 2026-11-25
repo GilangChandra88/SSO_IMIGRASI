@@ -398,24 +398,92 @@ cek(
   JSON.stringify(ringkas2?.tahap),
 );
 
-// ── Hapus ────────────────────────────────────────────────────────────────
+// ── Hapus (lunak) & pulihkan ─────────────────────────────────────────────
+const rekapSebelum = (await baca('owner', `mak_rekap/${T}`))?.item?.I1?.total;
 cek(
-  'pembuat menghapus berkas bernomor ditolak',
-  (await panggil('hapusBerkas', { berkasId: B }, T0.pg)).galat === 'PERMISSION_DENIED',
+  'bukan anggota berkas menghapus ditolak',
+  (await panggil('hapusBerkas', { berkasId: B }, T0.lain)).galat === 'PERMISSION_DENIED',
 );
 cek(
-  'Super Admin menghapus berkas bernomor tanpa alasan ditolak',
-  (await panggil('hapusBerkas', { berkasId: B }, T0.sa)).galat === 'INVALID_ARGUMENT',
+  'menghapus berkas bernomor tanpa alasan ditolak',
+  (await panggil('hapusBerkas', { berkasId: B }, T0.pg)).galat === 'INVALID_ARGUMENT',
 );
+cek(
+  'anggota berkas menghapus berkas bernomor dengan alasan',
+  (await panggil('hapusBerkas', { berkasId: B, alasan: 'Salah kegiatan' }, T0.pg)).hasil
+    ?.dihapus === true,
+);
+const bHapus = await baca('owner', `lpj_berkas/${B}`);
+cek(
+  'berkas tidak dihapus fisik, hanya ditandai terhapus (isi & keuangan tetap ada)',
+  bHapus?.dihapus?.alasan === 'Salah kegiatan' &&
+    bHapus.dihapus.oleh === AKUN.pg.uid &&
+    !!(await baca('owner', `lpj_berkas/${B}/keuangan/status`)),
+  JSON.stringify(bHapus?.dihapus),
+);
+const realHapus = await daftar('mak_realisasi', ['berkasId', B]);
+cek(
+  'realisasi dibatalkan karena penghapusan',
+  realHapus.length === 2 &&
+    realHapus.every((x) => x.status === 'batal' && x.batalKarena === 'hapusBerkas'),
+  JSON.stringify(realHapus.map((x) => [x.status, x.batalKarena])),
+);
+cek('rekap MAK dikurangi', (await baca('owner', `mak_rekap/${T}`))?.item?.I1?.total === 0);
+const ringkasHapus = await sampai(async () => {
+  const x = await baca('owner', `lpj_ringkas/${B}`);
+  return x?.tahap === 'terhapus' ? x : null;
+});
+cek(
+  'ringkasan pindah ke tahap terhapus (keluar dari daftar & tab Keuangan)',
+  ringkasHapus?.dihapus?.alasan === 'Salah kegiatan',
+  JSON.stringify(ringkasHapus?.tahap),
+);
+cek(
+  'riwayat mencatat penghapusan',
+  !!(await sampai(async () => (await riwayat(B)).includes('dihapus'))),
+);
+r = await tulis(
+  T0.pg,
+  `lpj_berkas/${B}`,
+  { uraian: 'diubah saat terhapus', versi: (bHapus?.versi || 0) + 1, diubahOleh: AKUN.pg.uid },
+  { ubah: true, waktu: ['diubahPada'] },
+);
+cek('berkas terhapus tidak bisa disunting', r !== true, r);
+cek(
+  'menghapus berkas yang sudah terhapus ditolak',
+  (await panggil('hapusBerkas', { berkasId: B, alasan: 'lagi' }, T0.pg)).galat ===
+    'FAILED_PRECONDITION',
+);
+cek(
+  'bukan anggota memulihkan ditolak',
+  (await panggil('pulihkanBerkas', { berkasId: B }, T0.lain)).galat === 'PERMISSION_DENIED',
+);
+r = await panggil('pulihkanBerkas', { berkasId: B }, T0.keu);
+cek(
+  'Keuangan memulihkan berkas: realisasi aktif lagi',
+  r.hasil?.dipulihkan === true && r.hasil.realisasiDipulihkan === 2,
+  JSON.stringify(r),
+);
+const realPulih = await daftar('mak_realisasi', ['berkasId', B]);
+cek(
+  'realisasi aktif & rekap kembali seperti sebelum dihapus',
+  realPulih.every((x) => x.status === 'aktif' && !x.batalKarena) &&
+    (await baca('owner', `mak_rekap/${T}`))?.item?.I1?.total === rekapSebelum,
+  JSON.stringify({ realPulih: realPulih.map((x) => x.status), rekapSebelum }),
+);
+cek(
+  'ringkasan kembali ke tahapnya',
+  !!(await sampai(async () => (await baca('owner', `lpj_ringkas/${B}`))?.tahap === 'sakti')),
+);
+cek(
+  'memulihkan berkas yang tidak terhapus ditolak',
+  (await panggil('pulihkanBerkas', { berkasId: B }, T0.pg)).galat === 'FAILED_PRECONDITION',
+);
+// Dihapus lagi (Super Admin) — keadaan ini dipakai uji MAK sesudahnya
 cek(
   'Super Admin menghapus berkas bernomor dengan alasan',
-  (await panggil('hapusBerkas', { berkasId: B, alasan: 'Data uji' }, T0.sa)).hasil?.terhapus ===
+  (await panggil('hapusBerkas', { berkasId: B, alasan: 'Data uji' }, T0.sa)).hasil?.dihapus ===
     true,
-);
-cek(
-  'berkas & subkoleksi terhapus',
-  !(await baca('owner', `lpj_berkas/${B}`)) &&
-    !(await baca('owner', `lpj_berkas/${B}/keuangan/status`)),
 );
 const real2 = await daftar('mak_realisasi', ['berkasId', B]);
 cek(
@@ -428,10 +496,6 @@ cek(
   'rekap dikurangi saat berkas bernomor dihapus',
   rekap2?.item?.I1?.total === 0 && rekap2?.item?.I1?.real?.['10'] === 0,
   JSON.stringify(rekap2?.item),
-);
-cek(
-  'ringkasan ikut terhapus',
-  !!(await sampai(async () => !(await baca('owner', `lpj_ringkas/${B}`)))),
 );
 
 const B2 = 'BERKAS2';
@@ -457,12 +521,18 @@ cek(
 );
 cek(
   'pembuat menghapus draf sendiri',
-  (await panggil('hapusBerkas', { berkasId: B2 }, T0.pg)).hasil?.terhapus === true,
+  (await panggil('hapusBerkas', { berkasId: B2 }, T0.pg)).hasil?.dihapus === true,
+);
+cek(
+  'pembuat memulihkan draf sendiri',
+  (await panggil('pulihkanBerkas', { berkasId: B2 }, T0.pg)).hasil?.dipulihkan === true,
 );
 const log = (await daftar('sistem_log')).map((x) => x.aksi);
 cek(
-  'sistem_log mencatat selesaikanSpby & hapusBerkas',
-  log.includes('selesaikanSpby') && log.filter((a) => a === 'hapusBerkas').length === 2,
+  'sistem_log mencatat selesaikanSpby, hapusBerkas & pulihkanBerkas',
+  log.includes('selesaikanSpby') &&
+    log.filter((a) => a === 'hapusBerkas').length === 3 &&
+    log.filter((a) => a === 'pulihkanBerkas').length === 2,
   JSON.stringify(log),
 );
 
@@ -785,6 +855,33 @@ cek(
   JSON.stringify({ masuk: d7?.masuk, r7: r7?.keuangan }),
 );
 
+// Berkas bernomor yang tercantum di DRPP (belum diarsip) lalu dihapus → lepas dari DRPP
+const B9 = 'BERKAS9';
+await tulis('owner', `lpj_berkas/${B9}`, {
+  skema: 1,
+  jenis: 'nonperjadin',
+  uraian: 'Berkas bernomor untuk uji hapus',
+  tahunAnggaran: T,
+  versi: 1,
+  dicetak: {},
+  nomorLpj: `LPJ-${T}-01-9999`,
+  spby: { terkunci: true, pelaksana: [orang('pPG', 'Budi Contoh')] },
+  anggotaUids: [AKUN.pg.uid],
+  ...audit(AKUN.pg.uid),
+});
+r = await panggil('ubahDaftarDrpp', { drppId: drppId2, berkasIds: [B3, B9] }, T0.keu);
+cek('berkas bernomor ditambahkan ke DRPP', !r.galat, JSON.stringify(r));
+r = await panggil('hapusBerkas', { berkasId: B9, alasan: 'Uji lepas DRPP' }, T0.sa);
+const d9 = await baca('owner', `lpj_drpp/${drppId2}`);
+cek(
+  'berkas bernomor yang dihapus lepas dari DRPP (berkas lain tetap)',
+  r.hasil?.dihapus === true &&
+    !d9?.berkasIds?.includes(B9) &&
+    d9?.berkasIds?.includes(B3) &&
+    !d9?.masuk?.[B9],
+  JSON.stringify({ r, berkasIds: d9?.berkasIds }),
+);
+
 // ── Dashboard Keuangan: hitungTahapLpj ───────────────────────────────────
 cek(
   'pegawai meminta jumlah per tahap ditolak',
@@ -802,9 +899,11 @@ const harapTahap = Object.fromEntries(
     ringkasT.filter((x) => x.tahap === t).length,
   ]),
 );
+// Berkas terhapus (hapus lunak) tidak ikut dihitung
+const aktifT = ringkasT.filter((x) => x.tahap !== 'terhapus');
 const harapJenis = {
-  perjadin: ringkasT.filter((x) => x.jenis === 'perjadin').length,
-  nonperjadin: ringkasT.filter((x) => x.jenis === 'nonperjadin').length,
+  perjadin: aktifT.filter((x) => x.jenis === 'perjadin').length,
+  nonperjadin: aktifT.filter((x) => x.jenis === 'nonperjadin').length,
 };
 const hitungKeu = await panggil('hitungTahapLpj', { tahunAnggaran: T }, T0.keu);
 const hitungSa = await panggil('hitungTahapLpj', { tahunAnggaran: T }, T0.sa);

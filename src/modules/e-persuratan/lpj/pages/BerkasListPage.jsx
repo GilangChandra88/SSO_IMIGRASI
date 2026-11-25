@@ -5,13 +5,21 @@
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaChevronDown, FaFilter, FaPlus, FaRegTrashAlt, FaSearch } from 'react-icons/fa';
+import {
+  FaChevronDown,
+  FaFilter,
+  FaPlus,
+  FaRegTrashAlt,
+  FaSearch,
+  FaTrashRestore,
+} from 'react-icons/fa';
 import { useDaftarBerkas } from '../hooks/useBerkas';
-import { hapusBerkas as hapusBerkasServer } from '../services/berkasDb';
+import { hapusBerkas as hapusBerkasServer, pulihkanBerkas } from '../services/berkasDb';
 import { useLpjUser } from '../hooks/useLpjUser';
 import {
   isPerjadin,
   canDeletePack,
+  canRestorePack,
   jenisLabel,
   lpjIdLabel,
   lpjIdOf,
@@ -43,9 +51,11 @@ const CHIP_ON = 'bg-[#0E2340] text-[#EAF0FA] dark:bg-[#081524]';
 
 export function TahapPill({ pack }) {
   const d = lpjTahapDisplay(pack);
-  const cls = d.done
-    ? STATUS.doneOn
-    : 'bg-[#eff6ff] text-[#1d4ed8] border-[#bfdbfe] dark:bg-[rgba(57,135,229,.18)] dark:text-[#7DB6F3] dark:border-[rgba(125,182,243,.35)]';
+  const cls = d.terhapus
+    ? `${STATUS.critBg} ${STATUS.critInk} ${STATUS.critBorder}`
+    : d.done
+      ? STATUS.doneOn
+      : 'bg-[#eff6ff] text-[#1d4ed8] border-[#bfdbfe] dark:bg-[rgba(57,135,229,.18)] dark:text-[#7DB6F3] dark:border-[rgba(125,182,243,.35)]';
   return (
     <span
       className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-full border whitespace-nowrap ${cls}`}
@@ -62,7 +72,8 @@ export default function BerkasListPage() {
   const { uid, isAdmin, pegawaiLogin } = user;
   const [tahun, setTahun] = useState(tahunIni);
   const {
-    berkas: packs,
+    berkas: packsAktif,
+    terhapus: packsTerhapus,
     memuat: loading,
     galat: error,
     bisaLagi,
@@ -74,6 +85,9 @@ export default function BerkasListPage() {
   const [type, setType] = useState('all');
   const [status, setStatus] = useState('all');
   const [filterOpen, setFilterOpen] = useState(false);
+  // Tab Terhapus: berkas yang dihapus lunak, bisa dipulihkan
+  const [lihatTerhapus, setLihatTerhapus] = useState(false);
+  const packs = lihatTerhapus ? packsTerhapus : packsAktif;
   const [showCreate, setShowCreate] = useState(false);
   const [hapusPack, setHapusPack] = useState(null);
   // Baris yang sedang dianimasikan keluar (dihapus)
@@ -179,6 +193,7 @@ export default function BerkasListPage() {
     setQ('');
     setType('all');
     setStatus('all');
+    setLihatTerhapus(false);
     setBaru({ id });
     // Cadangan: bila berkas tidak kunjung muncul di daftar (ringkasan ditulis pemicu server),
     // jangan biarkan barisnya tertahan
@@ -202,7 +217,7 @@ export default function BerkasListPage() {
     await anim.tutup;
     try {
       await hapusBerkasServer(pack.id, alasan);
-      showToast(`Berkas ${lpjIdOf(pack) || `"${uraianOf(pack)}"`} dihapus.`);
+      showToast(`Berkas ${lpjIdOf(pack) || `"${uraianOf(pack)}"`} dipindah ke Terhapus.`);
     } catch (err) {
       anim.pulihkan();
       setKeluarIds((s) => {
@@ -211,6 +226,21 @@ export default function BerkasListPage() {
         return n;
       });
       showToast(pesanGalat(err, 'Gagal menghapus berkas.'), 'error');
+    }
+  }
+
+  async function jalankanPulihkan(pack) {
+    try {
+      const hasil = await pulihkanBerkas(pack.id);
+      showToast(
+        `Berkas ${lpjIdOf(pack) || `"${uraianOf(pack)}"`} dipulihkan${
+          hasil?.realisasiDipulihkan
+            ? `, ${hasil.realisasiDipulihkan} realisasi MAK aktif lagi`
+            : ''
+        }.`,
+      );
+    } catch (err) {
+      showToast(pesanGalat(err, 'Gagal memulihkan berkas.'), 'error');
     }
   }
 
@@ -268,6 +298,15 @@ export default function BerkasListPage() {
                   {label}
                 </button>
               ))}
+              <button
+                type="button"
+                aria-pressed={lihatTerhapus}
+                onClick={() => setLihatTerhapus((v) => !v)}
+                className={`${CHIP} flex items-center gap-1.5 ${lihatTerhapus ? CHIP_ON : CHIP_OFF}`}
+              >
+                <FaRegTrashAlt size={11} /> Terhapus
+                {packsTerhapus.length > 0 && ` (${packsTerhapus.length})`}
+              </button>
             </div>
             <div className="ml-auto flex items-center gap-2.5">
               <select
@@ -358,7 +397,11 @@ export default function BerkasListPage() {
 
               {filtered.length === 0 && (
                 <div className={`p-12 text-center text-sm ${T.inkMuted}`}>
-                  {loading ? 'Memuat data LPJ…' : 'Tidak ada data yang sesuai filter.'}
+                  {loading
+                    ? 'Memuat data LPJ…'
+                    : lihatTerhapus
+                      ? 'Tidak ada berkas terhapus.'
+                      : 'Tidak ada data yang sesuai filter.'}
                 </div>
               )}
 
@@ -378,6 +421,7 @@ export default function BerkasListPage() {
                       navigate(`/e-persuratan/lpj/${pack.id}`, { state: { sorot: 'aktif' } })
                     }
                     onHapus={canDeletePack(pack, user) ? () => setHapusPack(pack) : null}
+                    onPulihkan={canRestorePack(pack, user) ? () => jalankanPulihkan(pack) : null}
                   />
                 </Lipat>
               ))}
@@ -421,7 +465,7 @@ export default function BerkasListPage() {
   );
 }
 
-function BerkasRow({ pack, urutan = 0, onDetail, onHapus }) {
+function BerkasRow({ pack, urutan = 0, onDetail, onHapus, onPulihkan }) {
   const pelaksana = pelaksanaOf(pack);
   const total = lpjRowTotal(pack);
   const uraian = uraianOf(pack);
@@ -474,6 +518,21 @@ function BerkasRow({ pack, urutan = 0, onDetail, onHapus }) {
           <TahapPill pack={pack} />
         </div>
         <div className="px-2 py-3.5 flex justify-end items-center">
+          {onPulihkan && (
+            <button
+              type="button"
+              title="Pulihkan berkas"
+              aria-label={`Pulihkan berkas ${lpjIdOf(pack) || uraian}`}
+              onClick={(e) => {
+                e.stopPropagation();
+                onPulihkan();
+              }}
+              onKeyDown={(e) => e.stopPropagation()}
+              className={`w-[30px] h-[30px] shrink-0 grid place-items-center rounded-[7px] border ${ANIM.pilih} ${STATUS.goodBorder} ${STATUS.goodBg} ${STATUS.goodInk} hover:brightness-95`}
+            >
+              <FaTrashRestore size={12} />
+            </button>
+          )}
           {onHapus && (
             <button
               type="button"

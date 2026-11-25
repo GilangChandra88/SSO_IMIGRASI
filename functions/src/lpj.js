@@ -5,14 +5,13 @@
  */
 
 const { onDocumentWritten } = require('firebase-functions/v2/firestore');
-const { getStorage } = require('firebase-admin/storage');
 const {
   HttpsError,
   FieldValue,
   db,
   KOLEKSI,
   pemanggil,
-  superadmin,
+  punya,
   wajibPeran,
   idSah,
   teksSah,
@@ -56,6 +55,7 @@ const terkunci = (d, b) => d?.[b]?.terkunci === true;
 
 /** Tahap berkas: draft → verif → sakti → transfer → arsip → drpp (menunggu DRPP) → selesai. */
 function tahapDari(d, k) {
+  if (d.dihapus) return 'terhapus'; // hapus lunak: keluar dari daftar & semua tab Keuangan
   if (!d.nomorLpj) return 'draft';
   if (!k.verifikasi?.selesai) return 'verif';
   if (!k.sakti?.selesai) return 'sakti';
@@ -154,6 +154,13 @@ async function segarkanBerkas(id, d, k, riwayatBaru = [], oleh = '') {
         totalVerifikasi: k.verifikasi?.selesai ? totalVerifikasiDari(d, k) : null,
         tanggalArsip: k.arsip?.tanggalArsip || '',
       },
+      dihapus: d.dihapus
+        ? {
+            pada: d.dihapus.pada || null,
+            oleh: d.dihapus.oleh || '',
+            alasan: d.dihapus.alasan || '',
+          }
+        : null,
       dibuatOleh: d.dibuatOleh || '',
       dibuatPada: d.dibuatPada || FieldValue.serverTimestamp(),
       diubahPada: FieldValue.serverTimestamp(),
@@ -172,6 +179,14 @@ function riwayatBerkas(sebelum, sesudah) {
     if (!terkunci(sebelum, b) && terkunci(sesudah, b))
       hasil.push({ kode: `kunci_${b}`, teks: LABEL_KUNCI[b] });
   });
+  if (!sebelum.dihapus && sesudah.dihapus) {
+    hasil.push({
+      kode: 'dihapus',
+      teks: `Berkas dihapus${sesudah.dihapus.alasan ? `: ${sesudah.dihapus.alasan}` : ''}`,
+    });
+  }
+  if (sebelum.dihapus && !sesudah.dihapus)
+    hasil.push({ kode: 'dipulihkan', teks: 'Berkas dipulihkan' });
   if (!sebelum.nomorLpj && sesudah.nomorLpj) {
     hasil.push({ kode: 'nomor', teks: `Nomor LPJ ${sesudah.nomorLpj} terbit` });
   }
@@ -193,6 +208,7 @@ const sidikRingkas = (d) =>
     pelaksanaDari(d).map((o) => [o?.pegawaiId, o?.nama]),
     progresDari(d).selesai,
     (Number(d.versi) || 0) > 1,
+    !!d.dihapus,
   ]);
 
 // ─── Pemicu ───────────────────────────────────────────────────────────────────
@@ -283,6 +299,10 @@ exports.diKeuanganDitulis = onDocumentWritten(
   `${KOLEKSI.lpjBerkas}/{berkasId}/${SUB.keuangan}/{dok}`,
   async (event) => {
     const id = event.params.berkasId;
+    // keuangan/status hanya terhapus bersama berkasnya (hapusBerkas; rules menolak hapus). Jangan
+    // menyegarkan apa pun: berkas induk bisa saja belum terhapus saat pemicu ini berjalan, dan
+    // ringkasan yang ditulis ulang akan muncul lagi di Daftar LPJ sebagai berkas hantu.
+    if (!event.data?.after?.exists) return;
     const berkas = await berkasRef(id).get();
     if (!berkas.exists) return;
     const d = berkas.data();
@@ -353,6 +373,7 @@ exports.selesaikanSpby = callable('selesaikanSpby', async (req) => {
       throw new HttpsError('permission-denied', 'Anda bukan pembuat atau pelaksana berkas ini.');
     }
     if (d.nomorLpj) throw new HttpsError('already-exists', 'Nomor LPJ berkas ini sudah terbit.');
+    wajib(!d.dihapus, 'Berkas ini sudah dihapus; pulihkan dulu.');
 
     const bagian = perjadin(d) ? 'lpj' : 'spby';
     if (perjadin(d)) wajib(terkunci(d, 'spd'), 'SPD belum ditetapkan final.');
@@ -479,86 +500,163 @@ exports.selesaikanSpby = callable('selesaikanSpby', async (req) => {
   return { nomorLpj: nomor };
 });
 
-// ─── Hapus berkas ─────────────────────────────────────────────────────────────
+// ─── Hapus (lunak) & pulihkan berkas ──────────────────────────────────────────
+
+/** Anggota berkas (pembuat + pelaksana ber-akun), Keuangan, atau Super Admin. */
+function wajibBolehHapus(p, d) {
+  if (!(d.anggotaUids || []).includes(p.uid) && !punya(p, 'keuangan')) {
+    throw new HttpsError(
+      'permission-denied',
+      'Hanya anggota berkas, Keuangan, atau Super Admin yang bisa menghapus/memulihkan berkas ini.',
+    );
+  }
+}
 
 /**
- * Menghapus berkas beserta subkoleksi, ringkasan, dan folder Storage-nya.
- * - Belum bernomor: pembuat berkas atau Super Admin.
- * - Sudah bernomor: hanya Super Admin, wajib alasan, dan belum diarsip; realisasi dibatalkan
- *   (bukan dihapus) dan nomor LPJ tidak dipakai ulang.
- * Masukan: { berkasId, alasan? }.
+ * Hapus LUNAK: berkas tidak dihapus fisik, hanya ditandai `dihapus` (tahap ringkasan 'terhapus'),
+ * hilang dari daftar & tab Keuangan, dan bisa dipulihkan dengan pulihkanBerkas. Isi, subkoleksi,
+ * dan berkas Storage tetap ada.
+ * - Anggota berkas, Keuangan, atau Super Admin; berkas yang sudah diarsip tidak bisa dihapus.
+ * - Berkas bernomor: wajib alasan; realisasi aktifnya dibatalkan (`batalKarena: 'hapusBerkas'`)
+ *   dan rekap MAK dikurangi; berkas dilepas dari DRPP yang mencantumkannya. Semua satu transaksi.
+ * Masukan: { berkasId, alasan? }. Hasil: { dihapus: true }.
  */
 exports.hapusBerkas = callable('hapusBerkas', async (req) => {
   const p = pemanggil(req);
   const berkasId = idSah(req.data?.berkasId, 'ID berkas');
   const ref = berkasRef(berkasId);
-  const snap = await ref.get();
-  if (!snap.exists) throw new HttpsError('not-found', 'Berkas tidak ditemukan.');
-  const d = snap.data();
-  let alasan = '';
+  const awal = await ref.get();
+  if (!awal.exists) throw new HttpsError('not-found', 'Berkas tidak ditemukan.');
+  wajibBolehHapus(p, awal.data()); // hak akses dulu, baru kelengkapan isian
+  const alasan = teksSah(req.data?.alasan, 300, 'Alasan', { wajib: !!awal.get('nomorLpj') });
+  const k = (await keuanganRef(berkasId).get()).data() || {};
+  wajib(!k.arsip?.selesai, 'Berkas yang sudah diarsip tidak bisa dihapus.');
 
-  if (!d.nomorLpj) {
-    if (d.dibuatOleh !== p.uid && !superadmin(p)) {
-      throw new HttpsError('permission-denied', 'Hanya pembuat berkas yang bisa menghapusnya.');
-    }
-  } else {
-    if (!superadmin(p)) {
-      throw new HttpsError('permission-denied', 'Berkas bernomor hanya bisa dihapus Super Admin.');
-    }
-    alasan = teksSah(req.data?.alasan, 300, 'Alasan');
-    const k = (await keuanganRef(berkasId).get()).data() || {};
-    wajib(!k.arsip?.selesai, 'Berkas yang sudah diarsip tidak bisa dihapus.');
-    // Realisasi yang masih aktif dibatalkan dan dikurangkan dari rekap dalam satu transaksi
-    await db.runTransaction(async (tx) => {
-      const realisasi = await tx.get(
-        db.collection(KOLEKSI.makRealisasi).where('berkasId', '==', berkasId),
-      );
-      const aktif = realisasi.docs.filter((r) => r.get('status') === 'aktif');
-      aktif.forEach((r) =>
-        tx.update(r.ref, {
-          status: 'batal',
-          alasanBatal: `Berkas dihapus: ${alasan}`,
-          dibatalkanPada: FieldValue.serverTimestamp(),
-          dibatalkanOleh: p.uid,
-          ...jejakUbah(p.uid),
-        }),
-      );
-      ubahRekap(
-        tx,
-        aktif.map((r) => ({
-          tahunAnggaran: r.get('tahunAnggaran'),
-          itemNodeId: r.get('itemNodeId'),
-          bulan: r.get('bulan'),
-          jumlah: -r.get('jumlah'),
-        })),
-      );
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError('not-found', 'Berkas tidak ditemukan.');
+    const d = snap.data();
+    wajibBolehHapus(p, d);
+    wajib(!d.dihapus, 'Berkas ini sudah dihapus.');
+    const realisasi = d.nomorLpj
+      ? await tx.get(db.collection(KOLEKSI.makRealisasi).where('berkasId', '==', berkasId))
+      : { docs: [] };
+    const drpp = d.nomorLpj
+      ? await tx.get(
+          db.collection(KOLEKSI.lpjDrpp).where('berkasIds', 'array-contains', berkasId).limit(10),
+        )
+      : { docs: [] };
+
+    drpp.docs.forEach((x) => {
+      tx.update(x.ref, {
+        berkasIds: FieldValue.arrayRemove(berkasId),
+        [`masuk.${berkasId}`]: FieldValue.delete(),
+        ...jejakUbah(p.uid),
+      });
+      catatLog(tx, {
+        modul: 'lpj',
+        aksi: 'ubahDaftarDrpp',
+        target: x.ref.path,
+        nilaiLama: { berkasIds: x.get('berkasIds') || [] },
+        nilaiBaru: { berkasIds: (x.get('berkasIds') || []).filter((y) => y !== berkasId) },
+        alasan: `Berkas ${d.nomorLpj} dihapus: ${alasan}`,
+        oleh: p.uid,
+      });
     });
-  }
-
-  await catatLog(null, {
-    modul: 'lpj',
-    aksi: 'hapusBerkas',
-    target: ref.path,
-    nilaiLama: { nomorLpj: d.nomorLpj || null, uraian: d.uraian || '' },
-    alasan,
-    oleh: p.uid,
-  });
-  await db.recursiveDelete(ref);
-  await db.collection(KOLEKSI.lpjRingkas).doc(berkasId).delete();
-  try {
-    await getStorage()
-      .bucket()
-      .deleteFiles({ prefix: `lpj/${berkasId}/` });
-  } catch {
-    // Berkas Storage gagal dihapus (mis. izin bucket belum diberikan): data Firestore sudah terhapus.
-    await catatLog(null, {
+    const aktif = realisasi.docs.filter((r) => r.get('status') === 'aktif');
+    aktif.forEach((r) =>
+      tx.update(r.ref, {
+        status: 'batal',
+        batalKarena: 'hapusBerkas',
+        alasanBatal: `Berkas dihapus: ${alasan || '-'}`,
+        dibatalkanPada: FieldValue.serverTimestamp(),
+        dibatalkanOleh: p.uid,
+        ...jejakUbah(p.uid),
+      }),
+    );
+    ubahRekap(
+      tx,
+      aktif.map((r) => ({
+        tahunAnggaran: r.get('tahunAnggaran'),
+        itemNodeId: r.get('itemNodeId'),
+        bulan: r.get('bulan'),
+        jumlah: -r.get('jumlah'),
+      })),
+    );
+    tx.update(ref, {
+      dihapus: {
+        pada: FieldValue.serverTimestamp(),
+        oleh: p.uid,
+        alasan,
+        drppIds: drpp.docs.map((x) => x.id),
+      },
+      ...jejakUbah(p.uid),
+    });
+    catatLog(tx, {
       modul: 'lpj',
-      aksi: 'hapusBerkasStorageGagal',
-      target: `lpj/${berkasId}/`,
+      aksi: 'hapusBerkas',
+      target: ref.path,
+      nilaiLama: { nomorLpj: d.nomorLpj || null, uraian: d.uraian || '' },
+      nilaiBaru: { realisasiDibatalkan: aktif.length, drppDilepas: drpp.docs.map((x) => x.id) },
+      alasan,
       oleh: p.uid,
     });
-  }
-  return { terhapus: true };
+  });
+  return { dihapus: true };
+});
+
+/**
+ * Pulihkan berkas yang dihapus lunak (anggota berkas, Keuangan, atau Super Admin). Realisasi yang
+ * dibatalkan KARENA penghapusan aktif lagi dan rekap MAK ditambah kembali; realisasi yang
+ * dibatalkan Super Admin secara terpisah tetap batal. Berkas tidak otomatis masuk lagi ke DRPP.
+ * Masukan: { berkasId }. Hasil: { dipulihkan: true, realisasiDipulihkan }.
+ */
+exports.pulihkanBerkas = callable('pulihkanBerkas', async (req) => {
+  const p = pemanggil(req);
+  const berkasId = idSah(req.data?.berkasId, 'ID berkas');
+  const ref = berkasRef(berkasId);
+  return db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) throw new HttpsError('not-found', 'Berkas tidak ditemukan.');
+    const d = snap.data();
+    wajibBolehHapus(p, d);
+    wajib(!!d.dihapus, 'Berkas ini tidak dalam keadaan terhapus.');
+    const realisasi = d.nomorLpj
+      ? await tx.get(db.collection(KOLEKSI.makRealisasi).where('berkasId', '==', berkasId))
+      : { docs: [] };
+    const pulih = realisasi.docs.filter(
+      (r) => r.get('status') === 'batal' && r.get('batalKarena') === 'hapusBerkas',
+    );
+    pulih.forEach((r) =>
+      tx.update(r.ref, {
+        status: 'aktif',
+        batalKarena: FieldValue.delete(),
+        alasanBatal: '',
+        dibatalkanPada: null,
+        dibatalkanOleh: '',
+        ...jejakUbah(p.uid),
+      }),
+    );
+    ubahRekap(
+      tx,
+      pulih.map((r) => ({
+        tahunAnggaran: r.get('tahunAnggaran'),
+        itemNodeId: r.get('itemNodeId'),
+        bulan: r.get('bulan'),
+        jumlah: r.get('jumlah'),
+      })),
+    );
+    tx.update(ref, { dihapus: FieldValue.delete(), ...jejakUbah(p.uid) });
+    catatLog(tx, {
+      modul: 'lpj',
+      aksi: 'pulihkanBerkas',
+      target: ref.path,
+      nilaiLama: { dihapus: { oleh: d.dihapus.oleh || '', alasan: d.dihapus.alasan || '' } },
+      nilaiBaru: { realisasiDipulihkan: pulih.length },
+      oleh: p.uid,
+    });
+    return { dipulihkan: true, realisasiDipulihkan: pulih.length };
+  });
 });
 
 // ─── Dashboard Keuangan ───────────────────────────────────────────────────────
@@ -584,10 +682,18 @@ exports.hitungTahapLpj = callable('hitungTahapLpj', async (req) => {
       .count()
       .get()
       .then((s) => s.data().count);
+  const jenisAktif = async (j) => {
+    const q = tahunIni.where('jenis', '==', j);
+    const [semua, terhapus] = await Promise.all([
+      hitung(q),
+      hitung(q.where('tahap', '==', 'terhapus')),
+    ]);
+    return semua - terhapus;
+  };
   const [perTahap, perjadinN, nonperjadinN] = await Promise.all([
     Promise.all(TAHAP_RINGKAS.map((t) => hitung(tahunIni.where('tahap', '==', t)))),
-    hitung(tahunIni.where('jenis', '==', 'perjadin')),
-    hitung(tahunIni.where('jenis', '==', 'nonperjadin')),
+    jenisAktif('perjadin'),
+    jenisAktif('nonperjadin'),
   ]);
   return {
     tahap: Object.fromEntries(TAHAP_RINGKAS.map((t, i) => [t, perTahap[i]])),

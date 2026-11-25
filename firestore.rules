@@ -485,11 +485,14 @@ service cloud.firestore {
     function jalurKeuangan(id) { return /databases/$(database)/documents/lpj_berkas/$(id)/keuangan/status; }
     function anggotaDari(d) { return masuk() && uid() in d.anggotaUids; }
     function anggotaBerkas(id) { return anggotaDari(get(jalurBerkas(id)).data); }
+    // Berkas dihapus lunak (Function hapusBerkas): hanya bisa dibaca & dipulihkan lewat Function.
+    function berkasTerhapus(id) { return get(jalurBerkas(id)).data.get('dihapus', null) != null; }
 
     function bagianPerjadin() { return ['sp', 'tte', 'spd', 'lpj', 'laporan']; }
     function bagianNonPerjadin() { return ['spby', 'lampiran']; }
     function kunciBerkasFn() {
-      return ['anggotaUids', 'tahap', 'status', 'nomorLpj', 'nomorLpjPada', 'realisasiTercatat'];
+      return ['anggotaUids', 'tahap', 'status', 'nomorLpj', 'nomorLpjPada', 'realisasiTercatat',
+              'dihapus'];
     }
     function kunciBerkasKlien(jenis) {
       return ['skema', 'jenis', 'uraian', 'tahunAnggaran', 'versi', 'dicetak']
@@ -580,6 +583,7 @@ service cloud.firestore {
       return hanya(kunciBerkasKlien(lama().jenis).concat(kunciBerkasFn()))
         && !k.hasAny(kunciBerkasFn().concat(['skema', 'jenis']))
         && d.versi == lama().versi + 1
+        && lama().get('dihapus', null) == null
         && isiBerubahSah(d, k)
         && spBerubahSah(k) && bagianBerubahSah(k, 'tte', 'sp')
         && bagianBerubahSah(k, 'spd', 'tte') && bagianBerubahSah(k, 'lpj', 'spd')
@@ -616,11 +620,12 @@ service cloud.firestore {
         allow get: if keuangan() || anggotaBerkas(id);
         allow list: if false;
         allow create: if keuangan() && dok == 'status'
-          && get(jalurBerkas(id)).data.get('nomorLpj', null) != null
+          && get(jalurBerkas(id)).data.get('nomorLpj', null) != null && !berkasTerhapus(id)
           && hanya(kunciKeuangan()) && keuanganSah(baru(), id) && auditBuat()
           && drppIdDari(baru()) == null;
         allow update: if keuangan() && dok == 'status'
           && hanya(kunciKeuangan()) && keuanganSah(baru(), id) && auditUbah()
+          && !berkasTerhapus(id)
           && (!tahapSelesai(lama(), 'arsip') || superadmin())
           && drppTetap();
         allow delete: if false;
@@ -630,7 +635,7 @@ service cloud.firestore {
       match /bukti/{b} {
         allow get: if keuangan() || anggotaBerkas(id);
         allow list: if (keuangan() || anggotaBerkas(id)) && batasDaftar(200);
-        allow create: if anggotaBerkas(id) && verifikasiBelumSelesai(id)
+        allow create: if anggotaBerkas(id) && verifikasiBelumSelesai(id) && !berkasTerhapus(id)
           && hanya(['pelaksanaId', 'label', 'berkas', 'dibuatPada', 'dibuatOleh'])
           && idSah(baru().pelaksanaId)
           && teksIsi(baru().label, 120)
