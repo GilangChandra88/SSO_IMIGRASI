@@ -15,9 +15,16 @@ const { setGlobalOptions } = require('firebase-functions/v2');
 // Berjalan sebagai akun layanan khusus berizin minimum, bukan akun bawaan Compute; akhiran "@"
 // dilengkapi CLI menjadi <nama>@<proyek>.iam.gserviceaccount.com.
 // Penyiapannya: docs/rencana-pembersihan-firebase.md (Cloud Functions: akun layanan).
+// CPU penuh + beberapa permintaan per mesin (docs/rencana-percepatan.md Tahap 4): server "bangun"
+// lebih cepat (bawaan 0,17 vCPU membuat aksi pertama menunggu beberapa detik) dan permintaan
+// bersamaan dilayani satu mesin tanpa antre. CPU hanya dibayar saat melayani permintaan. Aman
+// karena kode tidak menyimpan data per permintaan di variabel global (hanya cache bersama).
 setGlobalOptions({
   region: 'asia-southeast2',
   maxInstances: 5,
+  cpu: 1,
+  memory: '512MiB',
+  concurrency: 40,
   serviceAccount: 'fungsi-imigrasi@',
 });
 

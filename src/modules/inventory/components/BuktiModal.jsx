@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { pdf } from '@react-pdf/renderer';
 import { FaPen, FaPrint, FaTimes } from 'react-icons/fa';
 import Modal from '@/components/Modal';
 import { showToast } from '@/utils/toastStore';
@@ -8,7 +7,6 @@ import { K } from '../ui/kelas';
 import { useEscape } from '../hooks/useEscape';
 import { useInventori } from '../hooks/useInventori';
 import { formatTanggalPanjang, idTransaksi, totalBarang } from '../utils/stokLogic';
-import BuktiPdf from './BuktiPdf';
 
 /** Bukti serah terima barang keluar. Cetak = PDF di tab baru (penampil PDF punya tombol cetak). */
 export default function BuktiModal({ transaksi, onTutup, onUbah }) {
@@ -21,6 +19,11 @@ export default function BuktiModal({ transaksi, onTutup, onUbah }) {
     const win = window.open('', '_blank');
     setMencetak(true);
     try {
+      // Pembuat PDF diunduh saat dibutuhkan (docs/rencana-percepatan.md Tahap 3)
+      const [{ pdf }, { default: BuktiPdf }] = await Promise.all([
+        import('@react-pdf/renderer'),
+        import('./BuktiPdf'),
+      ]);
       const blob = await pdf(<BuktiPdf transaksi={transaksi} barang={barang} />).toBlob();
       const url = URL.createObjectURL(blob);
       if (win) win.location.href = url;
