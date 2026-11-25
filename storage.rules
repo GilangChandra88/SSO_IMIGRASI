@@ -49,31 +49,31 @@ service firebase.storage {
     // Scan Surat Perintah ber-TTE: diunggah anggota selama tahap TTE belum terkunci.
     match /lpj/{berkasId}/tte/{nama} {
       allow get: if keuangan() || anggota(berkasId);
-      allow create: if anggota(berkasId) && faseAktif(berkasId, 'tte', 'sp')
+      allow create: if (anggota(berkasId) || keuangan()) && faseAktif(berkasId, 'tte', 'sp')
         && unggahSah(nama) && gambarAtauPdf() && maksKB(5120);
-      allow delete: if anggota(berkasId) && faseAktif(berkasId, 'tte', 'sp');
+      allow delete: if (anggota(berkasId) || keuangan()) && faseAktif(berkasId, 'tte', 'sp');
     }
 
     // Foto Laporan Kegiatan: gambar ≤ 300 KB (dikompres di browser).
     match /lpj/{berkasId}/laporan/{nama} {
       allow get: if keuangan() || anggota(berkasId);
-      allow create: if anggota(berkasId) && faseAktif(berkasId, 'laporan', 'lpj')
+      allow create: if (anggota(berkasId) || keuangan()) && faseAktif(berkasId, 'laporan', 'lpj')
         && unggahSah(nama) && gambar() && maksKB(300);
-      allow delete: if anggota(berkasId) && faseAktif(berkasId, 'laporan', 'lpj');
+      allow delete: if (anggota(berkasId) || keuangan()) && faseAktif(berkasId, 'laporan', 'lpj');
     }
 
     // Lampiran Non-Perjadin: foto bukti/produk & nota pembayaran, gambar ≤ 1 MB.
     match /lpj/{berkasId}/lampiran/{jenis}/{nama} {
       allow get: if keuangan() || anggota(berkasId);
-      allow create: if anggota(berkasId) && jenis in ['foto', 'nota'] && faseAktif(berkasId, 'lampiran', 'spby')
+      allow create: if (anggota(berkasId) || keuangan()) && jenis in ['foto', 'nota'] && faseAktif(berkasId, 'lampiran', 'spby')
         && unggahSah(nama) && gambar() && maksKB(1024);
-      allow delete: if anggota(berkasId) && faseAktif(berkasId, 'lampiran', 'spby');
+      allow delete: if (anggota(berkasId) || keuangan()) && faseAktif(berkasId, 'lampiran', 'spby');
     }
 
     // Bukti pengeluaran per pelaksana: boleh setelah berkas final, selama verifikasi belum selesai.
     match /lpj/{berkasId}/bukti/{pegawaiId}/{nama} {
       allow get: if keuangan() || anggota(berkasId);
-      allow create: if anggota(berkasId) && !tahapSelesai(berkasId, 'verifikasi')
+      allow create: if (anggota(berkasId) || keuangan()) && !tahapSelesai(berkasId, 'verifikasi')
         && unggahSah(nama) && gambarAtauPdf() && maksKB(5120);
       allow delete: if (anggota(berkasId) && !tahapSelesai(berkasId, 'verifikasi')) || keuangan();
     }

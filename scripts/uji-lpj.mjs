@@ -293,6 +293,13 @@ cek(
   'bukan anggota memanggil selesaikanSpby ditolak',
   (await panggil('selesaikanSpby', { berkasId: B }, T0.lain)).galat === 'PERMISSION_DENIED',
 );
+// Keuangan bukan anggota berkas ini, tetapi boleh mengerjakannya: lolos hak akses, ditolak validasi
+const olehKeu = await panggil('selesaikanSpby', { berkasId: B }, T0.keu);
+cek(
+  'Keuangan boleh menyelesaikan SPBy berkas orang lain (lolos hak akses)',
+  olehKeu.galat === 'FAILED_PRECONDITION',
+  JSON.stringify(olehKeu),
+);
 const salah = await panggil('selesaikanSpby', { berkasId: B }, T0.pg);
 cek(
   'item MAK di luar Akun terpilih ditolak server',

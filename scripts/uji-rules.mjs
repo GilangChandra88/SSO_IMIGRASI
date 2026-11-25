@@ -699,9 +699,19 @@ await cek(
 await cek('bukan anggota membaca berkas', false, ambil(U.pg2, 'lpj_berkas/B1'));
 await cek('Keuangan membaca berkas', true, ambil(U.keu, 'lpj_berkas/B1'));
 await cek(
-  'Keuangan menyunting isi fase (D5 belum diizinkan)',
+  'pegawai bukan anggota menyunting berkas orang lain',
   false,
+  ubah(U.pg2, 'lpj_berkas/B3', { uraian: 'x', versi: 7, diubahOleh: 'uPG2' }, ['diubahPada']),
+);
+await cek(
+  'Keuangan menyunting isi fase berkas siapa pun (keputusan 2026-11-25)',
+  true,
   ubah(U.keu, 'lpj_berkas/B3', { uraian: 'x', versi: 7, diubahOleh: 'uKEU' }, ['diubahPada']),
+);
+await cek(
+  'Super Admin menyunting isi fase berkas siapa pun',
+  true,
+  ubah(U.sa, 'lpj_berkas/B3', { uraian: 'y', versi: 8, diubahOleh: 'uSA' }, ['diubahPada']),
 );
 await cek(
   'daftar lpj_berkas langsung (harus lewat ringkas)',
@@ -1316,6 +1326,11 @@ await cek(
   'bukan anggota mengunggah scan TTE',
   false,
   unggah(U.pg2, 'lpj/B1/tte/1767225600001-scan.pdf', 'application/pdf'),
+);
+await cek(
+  'Keuangan mengunggah scan TTE berkas orang lain',
+  true,
+  unggah(U.keu, 'lpj/B1/tte/1767225600005-scan.pdf', 'application/pdf'),
 );
 await cek('mengunggah SVG', false, unggah(U.pg, 'lpj/B1/tte/1767225600002-x.svg', 'image/svg+xml'));
 await cek(

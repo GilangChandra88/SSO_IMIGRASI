@@ -446,11 +446,14 @@ export function faseAktifLabel(b) {
 }
 
 /**
- * Pengguna boleh mengubah isi berkas: anggota berkas (pembuat/pelaksana ber-akun) selama belum
- * final. Keuangan tidak menyunting isi fase (rules menolak). Tampilan saja; rules yang menegakkan.
+ * Pengguna boleh mengubah isi berkas: anggota berkas (pembuat/pelaksana ber-akun), atau Keuangan /
+ * Super Admin untuk berkas siapa pun, selama belum final. Tampilan saja; rules yang menegakkan.
  */
-export const canEditPack = (b, { uid }) =>
-  !!b && !terhapus(b) && b.status !== 'selesai' && (b.anggotaUids || []).includes(uid);
+export const canEditPack = (b, { uid, isAdmin, isSuperAdmin }) =>
+  !!b &&
+  !terhapus(b) &&
+  b.status !== 'selesai' &&
+  (isAdmin || isSuperAdmin || (b.anggotaUids || []).includes(uid));
 
 /** Berkas dihapus lunak (pindah ke tab Terhapus, bisa dipulihkan). */
 export const terhapus = (b) => !!b?.dihapus || b?.tahap === 'terhapus';

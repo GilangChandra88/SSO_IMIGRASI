@@ -35,7 +35,7 @@ export default function BuktiPengeluaran({ pack, user, showToast }) {
   const { bukti } = useBuktiBerkas(pack.id);
   const { keuangan } = useKeuanganBerkas(pack.id);
   const terbuka = !keuangan?.verifikasi?.selesai;
-  const bolehUnggah = terbuka && (pack.anggotaUids || []).includes(user.uid);
+  const bolehUnggah = terbuka && (user.isAdmin || (pack.anggotaUids || []).includes(user.uid));
   const bolehHapus = (b) => user.isAdmin || (terbuka && b.dibuatOleh === user.uid);
   const [unggahUntuk, setUnggahUntuk] = useState(null); // pelaksana yang popup unggahnya terbuka
   const [lihat, setLihat] = useState(null); // { label, files }
