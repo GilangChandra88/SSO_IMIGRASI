@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { Suspense, lazy } from 'react';
 import { FaTimes, FaSpinner } from 'react-icons/fa';
-import SuratPreviewCanvas from './SuratPreviewCanvas';
+// Kanvas PDF (@react-pdf/renderer) diunduh saat pratinjau pertama dibuka (rencana-percepatan Tahap 3)
+const SuratPreviewCanvas = lazy(() => import('./SuratPreviewCanvas'));
 import { ANIM } from '@/utils/animasi';
 import { useDariTombol } from '@/components/animasi';
 
@@ -10,14 +11,6 @@ import { useDariTombol } from '@/components/animasi';
 export default function SuratPreviewModal({ surat, onClose }) {
   // Tumbuh dari tombol "Lihat" & kembali ke sana saat ditutup
   const { dialogRef, latarRef } = useDariTombol();
-  const [loading, setLoading] = useState(true);
-
-  // Simulasi loading sebentar agar komponen PDF siap
-  useEffect(() => {
-    const timer = setTimeout(() => setLoading(false), 800);
-    return () => clearTimeout(timer);
-  }, []);
-
   const dummyData = surat.instanceData || {};
 
   return (
@@ -49,18 +42,20 @@ export default function SuratPreviewModal({ surat, onClose }) {
 
         {/* Content Area */}
         <div className="flex-1 relative overflow-hidden bg-slate-100 dark:bg-slate-950 flex flex-col">
-          {loading ? (
-            <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 dark:bg-slate-950/80 backdrop-blur-md z-10">
-              <FaSpinner className="animate-spin text-indigo-500 mb-4" size={32} />
-              <p className="text-slate-600 dark:text-slate-300 font-medium animate-pulse">
-                Menyiapkan pratinjau dokumen...
-              </p>
-            </div>
-          ) : (
+          <Suspense
+            fallback={
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/80 dark:bg-slate-950/80 backdrop-blur-md z-10">
+                <FaSpinner className="animate-spin text-indigo-500 mb-4" size={32} />
+                <p className="text-slate-600 dark:text-slate-300 font-medium animate-pulse">
+                  Menyiapkan pratinjau dokumen...
+                </p>
+              </div>
+            }
+          >
             <div className="flex-1 h-full w-full">
               <SuratPreviewCanvas surat={surat} formData={dummyData} packItem={surat._packItem} />
             </div>
-          )}
+          </Suspense>
         </div>
       </div>
     </div>
