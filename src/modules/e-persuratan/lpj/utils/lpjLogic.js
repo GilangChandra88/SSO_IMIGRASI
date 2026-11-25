@@ -447,13 +447,17 @@ export function faseAktifLabel(b) {
 
 /**
  * Pengguna boleh mengubah isi berkas: anggota berkas (pembuat/pelaksana ber-akun), atau Keuangan /
- * Super Admin untuk berkas siapa pun, selama belum final. Tampilan saja; rules yang menegakkan.
+ * Super Admin untuk berkas siapa pun, selama berkas belum diarsip — fase yang sudah selesai pun
+ * masih bisa diedit (keputusan 2026-11-25). Tampilan saja; rules yang menegakkan.
  */
 export const canEditPack = (b, { uid, isAdmin, isSuperAdmin }) =>
   !!b &&
   !terhapus(b) &&
-  b.status !== 'selesai' &&
+  !diarsip(b) &&
   (isAdmin || isSuperAdmin || (b.anggotaUids || []).includes(uid));
+
+/** Berkas sudah diarsip Keuangan (tahap ringkasan/berkas 'drpp'/'selesai'): isi tidak bisa diubah lagi. */
+export const diarsip = (b) => b?.tahap === 'drpp' || b?.tahap === 'selesai';
 
 /** Berkas dihapus lunak (pindah ke tab Terhapus, bisa dipulihkan). */
 export const terhapus = (b) => !!b?.dihapus || b?.tahap === 'terhapus';

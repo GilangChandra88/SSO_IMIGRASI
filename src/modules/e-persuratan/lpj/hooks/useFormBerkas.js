@@ -2,7 +2,8 @@
  * Isian form LPJ (Perjadin & Non-Perjadin): salinan lokal bagian berkas + simpan otomatis.
  *
  * - Simpanan hanya mengirim field yang berubah (dot-path, versi + 1) pada bagian yang boleh ditulis
- *   saat ini (bagian sebelumnya terkunci, dirinya belum) — sama dengan firestore.rules.
+ *   saat ini (bagian sebelumnya terkunci) — sama dengan firestore.rules. Bagian yang sudah selesai
+ *   tidak ikut simpan otomatis; perubahannya baru dikirim lewat tombol (Simpan Perubahan/Kembali).
  * - Pembandingnya isi yang benar-benar tersimpan, sehingga nilai awal model kosong (mis. "Maksud"
  *   SPD = uraian kegiatan) ikut tersimpan pada simpan pertama.
  * - Status kunci dibaca dari berkas live (`pack`), karena LPJ/SPBy dikunci Function.
@@ -31,15 +32,13 @@ function tanpaFieldBerkas(bagian, isi) {
 }
 
 /**
- * Bagian boleh ditulis sekarang: bagian sebelumnya terkunci dan dirinya belum (rules `urut`/`tetap`).
- * Pengecualian: Surat Perintah yang sudah selesai masih boleh diubah selama SP ber-TTE (`tte`)
- * belum terkunci (rules `spBerubahSah`).
+ * Bagian boleh ditulis sekarang: bagian sebelumnya sudah terkunci (fase berurutan). Bagian yang
+ * sudah selesai pun boleh diedit selama berkas belum diarsip (rules `bagianBerubahSah`).
  */
 export function bolehTulis(pack, bagian) {
   const urutan = BAGIAN[pack.jenis] || [];
   const i = urutan.indexOf(bagian);
-  if (bagian === 'sp' && i === 0) return pack.tte?.terkunci !== true;
-  if (i < 0 || pack[bagian]?.terkunci === true) return false;
+  if (i < 0) return false;
   return i === 0 || pack[urutan[i - 1]]?.terkunci === true;
 }
 
@@ -95,7 +94,11 @@ export function useFormBerkas(pack, user, { showToast, isiAwal }) {
     const next = typeof nextOrFn === 'function' ? nextOrFn(pfRef.current) : nextOrFn;
     setPf(next);
     if (!opts.auto) otomatis.bersih(); // simpanan ini sudah memuat isian terbaru
-    const terbuka = urutan.filter((b) => bolehTulis(pack, b));
+    // Simpan otomatis tidak menyentuh bagian yang sudah selesai (isinya final sampai pengguna
+    // menekan Simpan Perubahan), supaya ketikan setengah jadi tidak masuk ke dokumen resmi.
+    const terbuka = urutan.filter(
+      (b) => bolehTulis(pack, b) && !(opts.auto && pack[b]?.terkunci === true),
+    );
     const perubahan = {};
     terbuka.forEach((b) =>
       Object.assign(

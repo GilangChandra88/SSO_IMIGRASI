@@ -5,8 +5,8 @@ import { BTN, FONT, T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
 
 /**
- * "Tandai X selesai?" — konfirmasi sebelum sebuah fase dikunci (final). `pesan` (opsional)
- * menggantikan peringatan bawaan "tidak akan bisa diedit lagi".
+ * "Tandai X selesai?" — konfirmasi sebelum sebuah fase ditandai selesai. Fase yang selesai masih
+ * bisa diedit sampai berkas diarsip Keuangan. `pesan` (opsional) menggantikan keterangan bawaan.
  */
 export default function ConfirmPopup({ docLabel = 'Surat Perintah', pesan, onYes, onNo, busy }) {
   return (
@@ -27,7 +27,8 @@ export default function ConfirmPopup({ docLabel = 'Surat Perintah', pesan, onYes
           <p className={`mt-1.5 text-[13px] leading-[1.55] ${T.inkMuted}`}>
             {pesan || (
               <>
-                {docLabel} yang sudah ditandai selesai <strong>tidak akan bisa diedit lagi</strong>.
+                Fase berikutnya akan terbuka. {docLabel} masih bisa diedit lewat tombol{' '}
+                <strong>Edit</strong> di Detail LPJ sampai berkas diarsip Keuangan.
               </>
             )}
           </p>

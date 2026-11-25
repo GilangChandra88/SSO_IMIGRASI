@@ -546,19 +546,19 @@ service cloud.firestore {
     // dihitung sekali, dan hanya bagian/field yang berubah yang diperiksa: isi yang tidak berubah
     // sudah diperiksa saat ditulis (berkas dibuat lewat rules create, field Fn ditulis Function).
 
-    // Bagian b yang berubah: bentuknya sah, belum terkunci, dan bagian sebelumnya sudah terkunci
-    // (fase berurutan; '' = bagian pertama). Bagian terkunci tidak bisa diubah lagi.
-    function bagianBerubahSah(k, b, sebelumnya) {
-      return !k.hasAny([b])
-        || (bagianSah(baru(), b) && !terkunci(lama(), b)
-          && (sebelumnya == '' || terkunci(lama(), sebelumnya)));
+    // Berkas sudah diarsip Keuangan (keuangan/status.arsip.selesai): isi fase tidak bisa diubah lagi.
+    function berkasDiarsip(id) {
+      return exists(jalurKeuangan(id))
+        && get(jalurKeuangan(id)).data.get('arsip', {}).get('selesai', false) == true;
     }
-    // Surat Perintah: setelah ditandai selesai masih boleh diubah selama SP ber-TTE (bagian tte)
-    // belum terkunci; kunci SP tidak bisa dilepas. Setelah TTE terkunci, SP beku.
-    function spBerubahSah(k) {
-      return !k.hasAny(['sp'])
-        || (bagianSah(baru(), 'sp') && !terkunci(lama(), 'tte')
-          && (!terkunci(lama(), 'sp') || terkunci(baru(), 'sp')));
+    // Bagian b yang berubah: bentuknya sah dan bagian sebelumnya sudah terkunci (fase berurutan;
+    // '' = bagian pertama). Bagian yang sudah selesai (terkunci) masih boleh diedit selama berkas
+    // belum diarsip (keputusan pemilik 2026-11-25), tetapi kuncinya tidak bisa dilepas.
+    function bagianBerubahSah(k, b, sebelumnya, id) {
+      return !k.hasAny([b])
+        || (bagianSah(baru(), b)
+          && (sebelumnya == '' || terkunci(lama(), sebelumnya))
+          && (!terkunci(lama(), b) || (terkunci(baru(), b) && !berkasDiarsip(id))));
     }
     function laporanSah(d) {
       return d.get('laporan', {}).get('foto', []).size() <= 10
@@ -585,13 +585,14 @@ service cloud.firestore {
         && d.versi == lama().versi + 1
         && lama().get('dihapus', null) == null
         && isiBerubahSah(d, k)
-        && spBerubahSah(k) && bagianBerubahSah(k, 'tte', 'sp')
-        && bagianBerubahSah(k, 'spd', 'tte') && bagianBerubahSah(k, 'lpj', 'spd')
-        && bagianBerubahSah(k, 'laporan', 'lpj')
-        && bagianBerubahSah(k, 'spby', '') && bagianBerubahSah(k, 'lampiran', 'spby')
-        // LPJ & SPBy dikunci hanya oleh Function selesaikanSpby (sekaligus nomor & realisasi).
-        && (!k.hasAny(['lpj']) || !terkunci(d, 'lpj'))
-        && (!k.hasAny(['spby']) || !terkunci(d, 'spby'))
+        && bagianBerubahSah(k, 'sp', '', id) && bagianBerubahSah(k, 'tte', 'sp', id)
+        && bagianBerubahSah(k, 'spd', 'tte', id) && bagianBerubahSah(k, 'lpj', 'spd', id)
+        && bagianBerubahSah(k, 'laporan', 'lpj', id)
+        && bagianBerubahSah(k, 'spby', '', id) && bagianBerubahSah(k, 'lampiran', 'spby', id)
+        // LPJ & SPBy dikunci PERTAMA KALI hanya oleh Function selesaikanSpby (nomor & realisasi);
+        // sesudahnya boleh diedit (realisasi diselaraskan pemicu diBerkasDitulis).
+        && (!k.hasAny(['lpj']) || !terkunci(d, 'lpj') || terkunci(lama(), 'lpj'))
+        && (!k.hasAny(['spby']) || !terkunci(d, 'spby') || terkunci(lama(), 'spby'))
         && (!k.hasAny(['uraian', 'tahunAnggaran']) || lama().get('nomorLpj', null) == null)
         && auditUbah()
         && (!k.hasAny(['tte']) || scanBaruSah(id))

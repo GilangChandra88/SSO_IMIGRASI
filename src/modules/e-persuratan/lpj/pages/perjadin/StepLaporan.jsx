@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import {
+  FaCheck,
   FaChevronLeft,
   FaCircleNotch,
   FaInfoCircle,
@@ -8,6 +9,7 @@ import {
   FaUpload,
 } from 'react-icons/fa';
 import { formatUkuran } from '@/utils/berkasStorage';
+import BannerEditFase from '../../components/BannerEditFase';
 import { PANJANG } from '@/utils/batas';
 import { LAP_PENUTUP_BAKU, LAP_SECTIONS } from '../../data/masterLpj';
 import { formatTanggal } from '../../utils/formatTanggal';
@@ -104,6 +106,8 @@ export default function StepLaporan({ ctx }) {
     }
   }
 
+  const sudahSelesai = ctx.sudahSelesai('laporan');
+
   function handleSelesai() {
     const e = {};
     if (!lap.tanggalLaporan) e.tanggalLaporan = 'Wajib diisi';
@@ -112,6 +116,10 @@ export default function StepLaporan({ ctx }) {
     });
     if (!lap.penandatangan) e.penandatangan = 'Pilih penanda tangan';
     if (tandaiGalat(e)) return;
+    if (sudahSelesai) {
+      ctx.simpanPerubahan(ctx.pfRef.current, 'Perubahan Laporan Kegiatan tersimpan.');
+      return;
+    }
     askConfirm({
       label: 'Laporan Kegiatan',
       onYes: async () => {
@@ -137,6 +145,7 @@ export default function StepLaporan({ ctx }) {
 
   return (
     <>
+      {sudahSelesai && <BannerEditFase label="Laporan Kegiatan" />}
       <div className={FORM.cardMuted}>
         <div className={`text-[11px] font-bold uppercase tracking-[.06em] mb-1.5 ${T.ink2}`}>
           Konteks · read-only
@@ -309,7 +318,15 @@ export default function StepLaporan({ ctx }) {
           onClick={handleSelesai}
           disabled={uploading}
         >
-          <FaRegSave size={13} /> Simpan &amp; Selesaikan Berkas
+          {sudahSelesai ? (
+            <>
+              <FaCheck size={12} /> Simpan Perubahan
+            </>
+          ) : (
+            <>
+              <FaRegSave size={13} /> Simpan &amp; Selesaikan Berkas
+            </>
+          )}
         </button>
       </div>
     </>

@@ -221,12 +221,29 @@ exports.diBerkasDitulis = onDocumentWritten(`${KOLEKSI.lpjBerkas}/{berkasId}`, a
     await db.collection(KOLEKSI.lpjRingkas).doc(id).delete();
     return;
   }
+  const oleh = sesudah.diubahOleh || sesudah.dibuatOleh || '';
+  // Fase yang sudah selesai diedit (sampai diarsip): realisasi MAK & register nomor surat ikut isi
+  // terbaru. Diperiksa sebelum penghemat di bawah karena keduanya tidak selalu mengubah ringkasan.
+  if (
+    sebelum?.nomorLpj &&
+    sesudah.nomorLpj &&
+    sidikRealisasi(sebelum) !== sidikRealisasi(sesudah)
+  ) {
+    await sinkronRealisasi(id, oleh);
+  }
+  if (
+    terkunci(sebelum, 'tte') &&
+    terkunci(sesudah, 'tte') &&
+    (sebelum.tte?.nomorSurat !== sesudah.tte?.nomorSurat ||
+      sebelum.tte?.tanggalSurat !== sesudah.tte?.tanggalSurat)
+  ) {
+    await catatNomorSrikandi(id, sesudah);
+  }
   const riwayat = riwayatBerkas(sebelum, sesudah);
   // Simpan otomatis yang tidak mengubah ringkasan (mis. mengetik "Menimbang") selesai tanpa
   // baca/tulis apa pun: form menyimpan tiap beberapa detik, jadi ini penghemat biaya utama.
   if (sebelum && !riwayat.length && sidikRingkas(sebelum) === sidikRingkas(sesudah)) return;
   const k = (await keuanganRef(id).get()).data() || {};
-  const oleh = sesudah.diubahOleh || sesudah.dibuatOleh || '';
   if (!terkunci(sebelum, 'tte') && terkunci(sesudah, 'tte')) await catatNomorSrikandi(id, sesudah);
   await segarkanBerkas(id, sesudah, k, riwayat, oleh);
 });
@@ -247,7 +264,20 @@ async function catatNomorSrikandi(id, d) {
   const hitungRef = db.collection(KOLEKSI.sistemPenghitung).doc(`srikandi_${tahun}`);
   const oleh = d.diubahOleh || d.dibuatOleh || '';
   await db.runTransaction(async (tx) => {
-    if ((await tx.get(ref)).exists) return;
+    const ada = await tx.get(ref);
+    if (ada.exists) {
+      // TTE diedit sesudah selesai: ikuti nomor/tanggal/perihal terbaru (nomor urut tetap)
+      const isi = {
+        nomor,
+        tanggal,
+        perihal: String(d.uraian || '').slice(0, 300),
+        tujuan: tujuan.slice(0, 200),
+      };
+      if (Object.entries(isi).some(([k, v]) => ada.get(k) !== v)) {
+        tx.update(ref, { ...isi, ...jejakUbah(oleh) });
+      }
+      return;
+    }
     const hitung = await tx.get(hitungRef);
     const urut = (hitung.exists ? Number(hitung.get('nilai')) || 0 : 0) + 1;
     tx.set(hitungRef, { nilai: urut, diubahPada: FieldValue.serverTimestamp() });
@@ -267,6 +297,172 @@ async function catatNomorSrikandi(id, d) {
       dibuatPada: FieldValue.serverTimestamp(),
       dibuatOleh: oleh,
       ...jejakUbah(oleh),
+    });
+  });
+}
+
+/** Sidik isi yang menentukan realisasi MAK (tanggal, Akun, baris transaksi). */
+const sidikRealisasi = (d) =>
+  JSON.stringify([
+    tanggalSpbyDari(d),
+    makDari(d).akunNodeId || '',
+    transaksiDari(d).map((x) => [x?.barisId, x?.itemNodeId, x?.jumlah, x?.pelaksanaId]),
+  ]);
+
+/**
+ * Fase LPJ/SPBy yang sudah selesai boleh diedit (sampai diarsip): realisasi `mak_realisasi` dan
+ * `mak_rekap` disesuaikan dengan isi terbaru dalam satu transaksi. Baris yang berubah diperbarui,
+ * baris baru dicatat, baris yang hilang dibatalkan (`batalKarena: 'ubahLpj'`). Realisasi yang
+ * dibatalkan Super Admin atau karena berkas dihapus tidak disentuh. Bila isian tidak sah (mis. item
+ * MAK di luar Akun terpilih), realisasi dibiarkan dan kejadiannya dicatat di log.
+ */
+async function sinkronRealisasi(id, oleh) {
+  const ref = berkasRef(id);
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (!snap.exists) return;
+    const d = snap.data();
+    if (!d.nomorLpj || !d.realisasiTercatat || d.dihapus) return;
+    const lama = await tx.get(db.collection(KOLEKSI.makRealisasi).where('berkasId', '==', id));
+    const tanggal = tanggalSpbyDari(d);
+    const mak = makDari(d);
+    const transaksi = transaksiDari(d);
+    const itemIds = [...new Set(transaksi.map((x) => x?.itemNodeId).filter(Boolean))];
+    const nodeSnaps = itemIds.length
+      ? await tx.getAll(...itemIds.map((x) => db.collection(KOLEKSI.makNode).doc(x)))
+      : [];
+    const nodes = Object.fromEntries(nodeSnaps.map((s) => [s.id, s.exists ? s.data() : null]));
+    const idBaris = new Set();
+    const tidakSah = !tanggalSah(tanggal)
+      ? 'tanggal LPJ/SPBy tidak sah'
+      : !mak.akunNodeId
+        ? 'Akun MAK belum dipilih'
+        : !transaksi.length
+          ? 'transaksi kosong'
+          : transaksi
+              .map((x, i) => {
+                const n = nodes[x?.itemNodeId];
+                const no = `baris ${i + 1}`;
+                if (typeof x?.barisId !== 'string' || !x.barisId || idBaris.has(x.barisId))
+                  return `${no}: ID baris tidak sah`;
+                idBaris.add(x.barisId);
+                if (!Number.isInteger(x.jumlah) || x.jumlah <= 0) return `${no}: jumlah tidak sah`;
+                if (!n || n.tingkat !== 'item' || n.aktif === false)
+                  return `${no}: item MAK tidak ditemukan/nonaktif`;
+                if (n.indukId !== mak.akunNodeId) return `${no}: item di luar Akun terpilih`;
+                if (n.tahunAnggaran !== d.tahunAnggaran)
+                  return `${no}: tahun anggaran item berbeda`;
+                return '';
+              })
+              .find(Boolean) || '';
+    if (tidakSah) {
+      catatLog(tx, {
+        modul: 'lpj',
+        aksi: 'sinkronRealisasiDitunda',
+        target: ref.path,
+        alasan: `Realisasi belum diperbarui: ${tidakSah}`,
+        oleh,
+      });
+      return;
+    }
+
+    const [tahun, bulan] = tanggal.split('-').map(Number);
+    const lamaById = new Map(lama.docs.map((r) => [r.id, r]));
+    const ingin = new Set();
+    const rekap = [];
+    let diubah = 0;
+    let dibatalkan = 0;
+    transaksi.forEach((x) => {
+      const docId = `${id}_${x.barisId}`;
+      ingin.add(docId);
+      const n = nodes[x.itemNodeId];
+      const isi = {
+        tahunAnggaran: d.tahunAnggaran,
+        tahun,
+        bulan,
+        tanggal,
+        itemNodeId: x.itemNodeId,
+        akunNodeId: mak.akunNodeId,
+        berkasId: id,
+        nomorLpj: d.nomorLpj,
+        jenis: d.jenis,
+        jumlah: x.jumlah,
+        pelaksanaId: x.pelaksanaId || '',
+        status: 'aktif',
+        alasanBatal: '',
+        salinan: {
+          makKode: mak.kode || '',
+          itemKode: n.kode || '',
+          itemNama: n.nama || '',
+          uraian: d.uraian || '',
+        },
+        ...jejakUbah(oleh),
+      };
+      const ada = lamaById.get(docId);
+      if (ada) {
+        const a = ada.data();
+        if (a.status === 'batal' && a.batalKarena !== 'ubahLpj') return; // batal manual/hapus
+        const sama =
+          a.status === 'aktif' &&
+          ['tahun', 'bulan', 'tanggal', 'itemNodeId', 'akunNodeId', 'jumlah', 'pelaksanaId'].every(
+            (k) => a[k] === isi[k],
+          );
+        if (sama) return;
+        if (a.status === 'aktif') {
+          rekap.push({
+            tahunAnggaran: a.tahunAnggaran,
+            itemNodeId: a.itemNodeId,
+            bulan: a.bulan,
+            jumlah: -a.jumlah,
+          });
+        }
+        tx.update(ada.ref, {
+          ...isi,
+          batalKarena: FieldValue.delete(),
+          dibatalkanPada: null,
+          dibatalkanOleh: '',
+        });
+      } else {
+        tx.set(db.collection(KOLEKSI.makRealisasi).doc(docId), {
+          ...isi,
+          dibuatPada: FieldValue.serverTimestamp(),
+          dibuatOleh: oleh,
+        });
+      }
+      diubah += 1;
+      rekap.push({
+        tahunAnggaran: d.tahunAnggaran,
+        itemNodeId: x.itemNodeId,
+        bulan,
+        jumlah: x.jumlah,
+      });
+    });
+    lama.docs.forEach((r) => {
+      if (ingin.has(r.id) || r.get('status') !== 'aktif') return;
+      tx.update(r.ref, {
+        status: 'batal',
+        batalKarena: 'ubahLpj',
+        alasanBatal: 'Baris transaksi dihapus dari berkas',
+        dibatalkanPada: FieldValue.serverTimestamp(),
+        dibatalkanOleh: oleh,
+        ...jejakUbah(oleh),
+      });
+      dibatalkan += 1;
+      rekap.push({
+        tahunAnggaran: r.get('tahunAnggaran'),
+        itemNodeId: r.get('itemNodeId'),
+        bulan: r.get('bulan'),
+        jumlah: -r.get('jumlah'),
+      });
+    });
+    if (!diubah && !dibatalkan) return;
+    ubahRekap(tx, rekap);
+    catatLog(tx, {
+      modul: 'lpj',
+      aksi: 'sinkronRealisasi',
+      target: ref.path,
+      nilaiBaru: { diubah, dibatalkan },
+      oleh,
     });
   });
 }

@@ -225,6 +225,26 @@ await buat(
   },
   AUDIT,
 );
+await buat(
+  U.owner,
+  'lpj_berkas/BARSIP',
+  {
+    ...berkasDasar(['uPG']),
+    versi: 9,
+    nomorLpj: `LPJ-${TAHUN}-10-0009`,
+    sp: { terkunci: true },
+    tte: { terkunci: true },
+    spd: { terkunci: true },
+    lpj: { terkunci: true },
+  },
+  AUDIT,
+);
+await buat(U.owner, 'lpj_berkas/BARSIP/keuangan/status', {
+  verifikasi: { selesai: true },
+  sakti: { selesai: true },
+  transfer: { selesai: true },
+  arsip: { selesai: true },
+});
 await buat(U.owner, 'lpj_ringkas/B1', { anggotaUids: ['uPG'], tahunAnggaran: TAHUN });
 await buat(U.owner, 'lpj_ringkas/BX', { anggotaUids: ['uLAIN'], tahunAnggaran: TAHUN });
 const drppDasar = {
@@ -662,16 +682,6 @@ await cek(
   ubah(U.pg, 'lpj_berkas/B1', { uraian: 'lain', versi: 5, diubahOleh: 'uPG' }, ['diubahPada']),
 );
 await cek(
-  'mengubah SP setelah SP ber-TTE & nomor surat disimpan final',
-  false,
-  ubah(
-    U.pg,
-    'lpj_berkas/B3',
-    { sp: { terkunci: true, menimbang: 'diubah' }, versi: 6, diubahOleh: 'uPG' },
-    ['diubahPada'],
-  ),
-);
-await cek(
   'mengisi LPJ setelah SPD terkunci',
   true,
   ubah(
@@ -712,6 +722,77 @@ await cek(
   'Super Admin menyunting isi fase berkas siapa pun',
   true,
   ubah(U.sa, 'lpj_berkas/B3', { uraian: 'y', versi: 8, diubahOleh: 'uSA' }, ['diubahPada']),
+);
+// Fase yang sudah selesai masih bisa diedit sampai berkas diarsip (keputusan 2026-11-25)
+await cek(
+  'mengubah SP setelah SP ber-TTE & nomor surat selesai (belum diarsip)',
+  true,
+  ubah(
+    U.pg,
+    'lpj_berkas/B3',
+    { sp: { terkunci: true, menimbang: 'diubah' }, versi: 9, diubahOleh: 'uPG' },
+    ['diubahPada'],
+  ),
+);
+await cek(
+  'mengubah SPD yang sudah selesai (belum diarsip)',
+  true,
+  ubah(
+    U.pg,
+    'lpj_berkas/B3',
+    { spd: { terkunci: true, maksud: 'diubah' }, versi: 10, diubahOleh: 'uPG' },
+    ['diubahPada'],
+  ),
+);
+await cek(
+  'membuka lagi kunci SPD yang sudah selesai',
+  false,
+  ubah(
+    U.pg,
+    'lpj_berkas/B3',
+    { spd: { terkunci: false, maksud: 'diubah' }, versi: 11, diubahOleh: 'uPG' },
+    ['diubahPada'],
+  ),
+);
+await cek(
+  'mengubah LPJ yang sudah dikunci Function (belum diarsip)',
+  true,
+  ubah(
+    U.pg,
+    'lpj_berkas/B2',
+    { lpj: { terkunci: true, transaksi: [] }, versi: 10, diubahOleh: 'uPG' },
+    ['diubahPada'],
+  ),
+);
+await cek(
+  'membuka lagi kunci LPJ',
+  false,
+  ubah(
+    U.pg,
+    'lpj_berkas/B2',
+    { lpj: { terkunci: false, transaksi: [] }, versi: 11, diubahOleh: 'uPG' },
+    ['diubahPada'],
+  ),
+);
+await cek(
+  'anggota mengubah SP berkas yang sudah diarsip',
+  false,
+  ubah(
+    U.pg,
+    'lpj_berkas/BARSIP',
+    { sp: { terkunci: true, menimbang: 'diubah' }, versi: 10, diubahOleh: 'uPG' },
+    ['diubahPada'],
+  ),
+);
+await cek(
+  'Keuangan mengubah LPJ berkas yang sudah diarsip',
+  false,
+  ubah(
+    U.keu,
+    'lpj_berkas/BARSIP',
+    { lpj: { terkunci: true, transaksi: [] }, versi: 10, diubahOleh: 'uKEU' },
+    ['diubahPada'],
+  ),
 );
 await cek(
   'daftar lpj_berkas langsung (harus lewat ringkas)',
@@ -1331,6 +1412,16 @@ await cek(
   'Keuangan mengunggah scan TTE berkas orang lain',
   true,
   unggah(U.keu, 'lpj/B1/tte/1767225600005-scan.pdf', 'application/pdf'),
+);
+await cek(
+  'mengganti scan TTE setelah TTE selesai (belum diarsip)',
+  true,
+  unggah(U.pg, 'lpj/B3/tte/1767225600006-scan.pdf', 'application/pdf'),
+);
+await cek(
+  'mengunggah scan TTE berkas yang sudah diarsip',
+  false,
+  unggah(U.pg, 'lpj/BARSIP/tte/1767225600007-scan.pdf', 'application/pdf'),
 );
 await cek('mengunggah SVG', false, unggah(U.pg, 'lpj/B1/tte/1767225600002-x.svg', 'image/svg+xml'));
 await cek(

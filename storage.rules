@@ -26,9 +26,11 @@ service firebase.storage {
     function berkas(id) { return firestore.get(/databases/(default)/documents/lpj_berkas/$(id)).data; }
     function anggota(id) { return masuk() && request.auth.uid in berkas(id).anggotaUids; }
     function terkunci(d, b) { return d.get(b, {}).get('terkunci', false) == true; }
-    // Fase sedang berjalan: fase sebelumnya sudah terkunci, fase ini belum.
+    // Fase terbuka untuk unggahan: fase sebelumnya sudah terkunci, dan fase ini belum selesai ATAU
+    // sudah selesai tetapi berkas belum diarsip (fase selesai boleh diedit, keputusan 2026-11-25).
     function faseAktif(id, b, sebelumnya) {
-      return terkunci(berkas(id), sebelumnya) && !terkunci(berkas(id), b);
+      return terkunci(berkas(id), sebelumnya)
+        && (!terkunci(berkas(id), b) || !tahapSelesai(id, 'arsip'));
     }
     function jalurKeuangan(id) { return /databases/(default)/documents/lpj_berkas/$(id)/keuangan/status; }
     function tahapSelesai(id, t) {

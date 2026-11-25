@@ -9,6 +9,7 @@ import PegawaiPicker from '../../components/PegawaiPicker';
 import PegawaiCards from '../../components/PegawaiCards';
 import TransaksiTable from '../../components/TransaksiTable';
 import Field from '../../ui/Field';
+import BannerEditFase from '../../components/BannerEditFase';
 import { BTN, FONT, FORM, LAYOUT, NAVY, STATUS, T } from '@/utils/uiTokens';
 
 const URAIAN_MAX = PANJANG.uraianBerkas;
@@ -37,9 +38,16 @@ export default function StepRincianBayar({ ctx }) {
   const akun = mak.byId[np.mak?.akunNodeId];
   const akunItems = itemDiAkun(mak.nodes, np.mak?.akunNodeId);
 
+  const sudahSelesai = ctx.sudahSelesai('spby');
+
   function handleSelesai() {
     const e = npValidateForm(np, pf.uraian);
     if (tandaiGalat(e)) return;
+    if (sudahSelesai) {
+      // Nomor LPJ tetap; realisasi MAK disesuaikan Function dengan transaksi terbaru
+      ctx.simpanPerubahan(ctx.pfRef.current, 'Perubahan SPBy & Rincian Bayar tersimpan.');
+      return;
+    }
     askConfirm({
       label: 'SPBy & Rincian Bayar',
       onYes: async () => {
@@ -81,6 +89,12 @@ export default function StepRincianBayar({ ctx }) {
         </div>
       </div>
       {ctx.infoSimpan}
+      {sudahSelesai && (
+        <BannerEditFase
+          label="SPBy & Rincian Bayar"
+          catatan="Realisasi MAK ikut diperbarui sesuai transaksi terbaru."
+        />
+      )}
 
       <div className="max-w-[860px] mx-auto">
         <div className={FORM.card}>
@@ -202,7 +216,7 @@ export default function StepRincianBayar({ ctx }) {
             <FaChevronLeft size={12} /> Kembali ke Detail LPJ
           </button>
           <button type="button" className={BTN.primaryDark} onClick={handleSelesai}>
-            <FaCheck size={12} /> Selesai
+            <FaCheck size={12} /> {sudahSelesai ? 'Simpan Perubahan' : 'Selesai'}
           </button>
         </div>
       </div>
