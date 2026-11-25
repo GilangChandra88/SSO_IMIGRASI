@@ -25,7 +25,8 @@ import KejutanUltah from '../ulang-tahun/KejutanUltah';
 import BannerUltah from '../ulang-tahun/BannerUltah';
 import { keluarAkun } from '@/utils/keluarAkun';
 
-export default function Portal() {
+/** `siapkanAplikasi(path)` (dari App.jsx) mengunduh kode aplikasi lebih dulu saat kartu disentuh. */
+export default function Portal({ siapkanAplikasi }) {
   const navigate = useNavigate();
   const { currentUser, userData, isKepegawaian, punyaPeran, isRealSuperAdmin } = useAuth();
   const bolehKoperasi = punyaPeran(PERAN.koperasi);
@@ -203,6 +204,8 @@ export default function Portal() {
               onClick={() =>
                 app.terkunci ? showToast(app.pesanTerkunci, 'error') : navigate(app.path)
               }
+              onPointerEnter={() => !app.terkunci && siapkanAplikasi?.(app.path)}
+              onTouchStart={() => !app.terkunci && siapkanAplikasi?.(app.path)}
               className={`group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 hover:shadow-lg hover:border-cyan-400/50 dark:hover:border-cyan-500/50 transition-all cursor-pointer relative overflow-hidden flex flex-col h-full ${app.terkunci ? 'opacity-60' : ''}`}
             >
               <div className="flex justify-between items-start mb-6">

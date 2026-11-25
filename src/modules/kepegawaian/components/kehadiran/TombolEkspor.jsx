@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import { FaFileExcel, FaFilePdf } from 'react-icons/fa';
-import { pdf } from '@react-pdf/renderer';
 import { showToast } from '@/utils/toastStore';
 import { simpanBerkas } from '@/utils/xlsx';
 import { unduhExcel } from '../../utils/eksporKehadiran';
 import { K } from '../../ui/kelas';
-import TabelPdf from './TabelPdf';
 
 const waktuCetak = () =>
   new Intl.DateTimeFormat('id-ID', {
@@ -24,6 +22,11 @@ export default function TombolEkspor({ buatTabel, nonaktif }) {
       const tabel = buatTabel();
       if (jenis === 'xlsx') unduhExcel(tabel);
       else {
+        // Pembuat PDF diunduh saat dibutuhkan (docs/rencana-percepatan.md Tahap 3)
+        const [{ pdf }, { default: TabelPdf }] = await Promise.all([
+          import('@react-pdf/renderer'),
+          import('./TabelPdf'),
+        ]);
         const blob = await pdf(
           <TabelPdf tabel={tabel} dicetak={`${waktuCetak()} WITA`} />,
         ).toBlob();

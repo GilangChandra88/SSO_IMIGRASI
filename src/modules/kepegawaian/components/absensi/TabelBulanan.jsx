@@ -1,13 +1,11 @@
 import { useState } from 'react';
 import { FaFileExcel, FaFilePdf, FaSearch } from 'react-icons/fa';
-import { pdf } from '@react-pdf/renderer';
 import { formatNip } from '@/utils/dataPegawai';
 import { showToast } from '@/utils/toastStore';
 import { simpanBerkas } from '@/utils/xlsx';
 import { JEDA_PULANG_MENIT, labelBulan } from '../../utils/absensi';
 import { namaBerkasAbsensi, unduhExcelAbsensi } from '../../utils/eksporAbsensi';
 import { K, KISI_ABSEN } from '../../ui/kelas';
-import PdfAbsensiBulanan from './PdfAbsensiBulanan';
 
 const waktuCetak = () =>
   new Intl.DateTimeFormat('id-ID', {
@@ -52,6 +50,11 @@ export default function TabelBulanan({ rekap, bulanan, daftarBulan, onBulan, onP
     try {
       if (jenis === 'xlsx') unduhExcelAbsensi(rekap, bulanan);
       else {
+        // Pembuat PDF diunduh saat dibutuhkan (docs/rencana-percepatan.md Tahap 3)
+        const [{ pdf }, { default: PdfAbsensiBulanan }] = await Promise.all([
+          import('@react-pdf/renderer'),
+          import('./PdfAbsensiBulanan'),
+        ]);
         const blob = await pdf(
           <PdfAbsensiBulanan rekap={rekap} bulanan={bulanan} dicetak={`${waktuCetak()} WITA`} />,
         ).toBlob();

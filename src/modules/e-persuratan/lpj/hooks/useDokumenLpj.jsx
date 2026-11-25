@@ -3,7 +3,7 @@ import SuratPreviewModal from '@/components/SuratPreview/SuratPreviewModal';
 import { usePejabat } from '@/context/usePejabat';
 import { useDipa } from '../../useDipa';
 import { resolveDokumen, tanggalPejabat } from '../utils/dokumenLpj';
-import { cetakPdf, pdfGabungan } from '../utils/cetakPdf';
+import { cetakPdf, pdfGabungan, siapkanPdf } from '../utils/cetakPdf';
 import DocPreviewPopup from '../ui/DocPreviewPopup';
 import LampiranViewer from '../components/LampiranViewer';
 import PdfGabunganModal from '../components/PdfGabunganModal';
@@ -24,6 +24,12 @@ import PdfGabunganModal from '../components/PdfGabunganModal';
 export function useDokumenLpj({ pack, showToast, mak, pejabat, verifikasi }) {
   const [preview, setPreview] = useState(null);
   const urutGabungan = useRef(0); // abaikan hasil penyusunan yang popupnya sudah ditutup
+  // Halaman ini untuk melihat/mencetak dokumen: unduh pembuat PDF diam-diam sesudah halaman tampil,
+  // supaya klik Lihat/Cetak pertama tidak menunggu (docs/rencana-percepatan.md Tahap 3)
+  useEffect(() => {
+    const t = setTimeout(siapkanPdf, 1500);
+    return () => clearTimeout(t);
+  }, []);
   const { dipa } = useDipa(pack?.tahunAnggaran);
   const { pejabatPada } = usePejabat();
   const tanggal = tanggalPejabat(pack);
