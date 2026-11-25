@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   FaBolt,
+  FaCheck,
   FaCircleNotch,
   FaExternalLinkAlt,
   FaRegEye,
@@ -13,6 +14,7 @@ import { tanggalIso } from '@/utils/nilai';
 import { PEJABAT_KATEGORI } from '../../data/masterLpj';
 import { ATURAN_UNGGAHAN, pesanUnggah, simpanScanTte } from '../../services/unggahan';
 import Field from '../../ui/Field';
+import BannerEditFase from '../../components/BannerEditFase';
 import { BTN, FORM, NAVY, STATUS, T } from '@/utils/uiTokens';
 import { ANIM } from '@/utils/animasi';
 import ProgressBar from '../../ui/ProgressBar';
@@ -76,6 +78,19 @@ export default function StepTTE({ ctx }) {
     if (!tanggal) e.tanggalSurat = 'Wajib diisi';
     if (tandaiGalat(e)) return;
     const nomorResmi = nomor.trim();
+    if (ctx.sudahSelesai('tte')) {
+      // Edit TTE yang sudah selesai: nomor SPD yang mengikuti nomor SP lama ikut berganti
+      const nomorLama = pack.tte?.nomorSurat || '';
+      await ctx.simpanPerubahan(
+        (prev) => ({
+          ...prev,
+          tte: { ...prev.tte, nomorSurat: nomorResmi, tanggalSurat: tanggal },
+          spd: prev.spd.nomorSpd === nomorLama ? { ...prev.spd, nomorSpd: nomorResmi } : prev.spd,
+        }),
+        'Perubahan SP ber-TTE tersimpan.',
+      );
+      return;
+    }
     const ok = await persist(
       (prev) => ({
         ...prev,
@@ -98,6 +113,12 @@ export default function StepTTE({ ctx }) {
 
   return (
     <>
+      {ctx.sudahSelesai('tte') && (
+        <BannerEditFase
+          label="SP ber-TTE & nomor surat"
+          catatan="Nomor surat di register Nomor Surat (Riwayat Surat) ikut diperbarui."
+        />
+      )}
       <div className={`rounded-xl border p-[22px] mb-3.5 ${STATUS.warnBg} ${STATUS.warnBorder}`}>
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 shrink-0 rounded-[10px] bg-[rgba(237,161,0,.2)] flex items-center justify-center text-[#A97C24] dark:text-[#F0B93E]">
@@ -133,7 +154,7 @@ export default function StepTTE({ ctx }) {
             <div>
               <div className={`text-[13.5px] font-semibold ${T.ink}`}>Surat Perintah</div>
               <div className={`text-[11.5px] mt-px ${T.inkMuted}`}>
-                Sudah final — tidak dapat diubah lagi
+                Sudah selesai — ubah lewat langkah Surat Perintah
               </div>
             </div>
           </div>
@@ -242,7 +263,15 @@ export default function StepTTE({ ctx }) {
           disabled={uploading}
           onClick={handleSubmit}
         >
-          Lanjut Buat SPD <FaChevronRight size={12} />
+          {ctx.sudahSelesai('tte') ? (
+            <>
+              <FaCheck size={12} /> Simpan Perubahan
+            </>
+          ) : (
+            <>
+              Lanjut Buat SPD <FaChevronRight size={12} />
+            </>
+          )}
         </button>
       </div>
     </>

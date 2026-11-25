@@ -34,19 +34,19 @@ function langkahAktif(pack) {
 function bolehMasuk(pack, step) {
   const k = (b) => terkunci(pack, b);
   switch (step) {
+    // Fase yang sudah selesai tetap bisa dibuka untuk diedit (sampai diarsip; dijaga canEditPack)
     case 'sp':
-      // SP masih boleh diubah sampai SP ber-TTE & nomor surat disimpan final
-      return !k('tte');
+      return true;
     case 'tte':
-      return k('sp') && !k('tte');
+      return k('sp');
     case 'spd':
-      return k('tte') && !k('spd');
+      return k('tte');
     case 'cetak-spd':
       return k('spd');
     case 'lpj':
-      return k('spd') && !k('lpj');
+      return k('spd');
     case 'laporan':
-      return k('lpj') && !k('laporan');
+      return k('lpj');
     default:
       return false;
   }
@@ -123,6 +123,21 @@ export default function PerjadinFormPage({ pack, isi, user }) {
     keDetail();
   }
 
+  // Fase langkah ini sudah selesai: sedang diedit (boleh sampai berkas diarsip). Isiannya tidak
+  // disimpan otomatis; perubahan baru dikirim lewat "Simpan Perubahan".
+  const sudahSelesai = (b) => terkunci(pack, b);
+  const langkahSelesai = sudahSelesai(step === 'cetak-spd' ? 'spd' : step);
+
+  /** Simpan perubahan fase yang sudah selesai lalu kembali ke Detail. @returns hasil persist */
+  async function simpanPerubahan(nextOrFn = pfRef.current, pesan = 'Perubahan tersimpan.') {
+    const hasil = await persist(nextOrFn, { quiet: true, tahanLangkah: true });
+    if (hasil) {
+      showToast(pesan);
+      keDetail();
+    }
+    return hasil;
+  }
+
   /** Tampilkan galat validasi; bila ada, gulir ke isian merah pertama. @returns true bila ada galat */
   function tandaiGalat(e) {
     setErrors(e);
@@ -153,7 +168,7 @@ export default function PerjadinFormPage({ pack, isi, user }) {
     pack,
     packView,
     pf,
-    setPf: form.ubahPf,
+    setPf: langkahSelesai ? form.setPf : form.ubahPf,
     pfRef,
     errors,
     setErrors,
@@ -162,6 +177,8 @@ export default function PerjadinFormPage({ pack, isi, user }) {
     goStep,
     keDetail,
     backToDetail,
+    sudahSelesai,
+    simpanPerubahan,
     askConfirm,
     closeConfirm,
     showToast,
@@ -197,6 +214,12 @@ export default function PerjadinFormPage({ pack, isi, user }) {
                   className={`px-2.5 py-[3px] rounded-[20px] text-[11px] font-bold tracking-[.04em] border ${STATUS.doneBg} ${STATUS.doneInk} ${STATUS.doneBorder}`}
                 >
                   SIAP CETAK
+                </span>
+              ) : langkahSelesai ? (
+                <span
+                  className={`px-2.5 py-[3px] rounded-[20px] text-[11px] font-bold tracking-[.04em] border ${STATUS.doneBg} ${STATUS.doneInk} ${STATUS.doneBorder}`}
+                >
+                  SELESAI · MODE EDIT
                 </span>
               ) : (
                 <span className="px-2.5 py-[3px] rounded-[20px] text-[11px] font-bold tracking-[.04em] bg-[#fef9c3] text-[#92400e] border border-[#fde68a]">

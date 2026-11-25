@@ -118,6 +118,9 @@ export function dataDokumen(pack, { dipa = null, pejabat = {} } = {}) {
   const lap = pack.laporan || {};
   return {
     ...data,
+    // "Untuk Pembayaran" Kwitansi & SPBy serta kolom Uraian Kegiatan Nota Dinas (dokumen Fase 3)
+    // mengikuti Keterangan di form LPJ & SPBy; kosong → uraian kegiatan berkas
+    uraian: String(lpj.keterangan || '').trim() || data.uraian,
     // Surat Perintah (nomor & tanggal resmi dari TTE Srikandi)
     nomor_sp: tte.nomorSurat || '',
     menimbang: sp.menimbang || '',

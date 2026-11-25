@@ -321,11 +321,7 @@ r = await simpan(T0.pg, AKUN.pg.uid, {
 cek('memperbaiki transaksi LPJ', r === true, r);
 const hasil = await panggil('selesaikanSpby', { berkasId: B }, T0.pl);
 const nomor = hasil.hasil?.nomorLpj || '';
-cek(
-  'pelaksana menyelesaikan SPBy → nomor LPJ terbit',
-  /^LPJ-\d{4}-\d{2}-0001$/.test(nomor),
-  JSON.stringify(hasil),
-);
+cek('pelaksana menyelesaikan SPBy → nomor LPJ terbit', nomor === '0001', JSON.stringify(hasil));
 cek(
   'memanggil ulang ditolak (nomor sudah terbit)',
   (await panggil('selesaikanSpby', { berkasId: B }, T0.pl)).galat === 'ALREADY_EXISTS',
@@ -337,7 +333,10 @@ cek(
   d1?.lpj?.terkunci === true && d1?.nomorLpj === nomor && d1?.realisasiTercatat === true,
   JSON.stringify({ lpj: d1?.lpj?.terkunci, n: d1?.nomorLpj }),
 );
-cek('penjaga nomor lpj_nomor dibuat', (await baca('owner', `lpj_nomor/${nomor}`))?.berkasId === B);
+cek(
+  'penjaga nomor lpj_nomor/{tahun}-{nomor} dibuat',
+  (await baca('owner', `lpj_nomor/${T}-${nomor}`))?.berkasId === B,
+);
 const real = await daftar('mak_realisasi', ['berkasId', B]);
 cek(
   'realisasi 2 baris, jumlah bilangan bulat, status aktif, tanpa NIP',
@@ -355,9 +354,9 @@ cek(
   rekap1?.item?.I1?.total === 400000 && rekap1?.item?.I1?.real?.['10'] === 400000,
   JSON.stringify(rekap1?.item),
 );
+versi = d1.versi; // selesaikanSpby menaikkan versi
 r = await simpan(T0.pg, AKUN.pg.uid, { lpj: { ...d1.lpj, keterangan: 'diubah' } });
-cek('mengubah LPJ setelah terkunci ditolak rules', r !== true);
-versi--;
+cek('mengubah keterangan LPJ yang sudah selesai (belum diarsip) lolos rules', r === true, r);
 const ringkas1 = await sampai(async () => {
   const x = await baca('owner', `lpj_ringkas/${B}`);
   return x?.tahap === 'verif' ? x : null;
@@ -578,7 +577,7 @@ await tulis(
 const n3 = await panggil('selesaikanSpby', { berkasId: B3 }, T0.pg);
 cek(
   'SPBy Non-Perjadin selesai → nomor LPJ berikutnya',
-  /-0002$/.test(n3.hasil?.nomorLpj || ''),
+  n3.hasil?.nomorLpj === '0002',
   JSON.stringify(n3),
 );
 const idReal = `${B3}_c1`;
@@ -767,7 +766,7 @@ const dMasuk = await sampai(async () => {
 });
 cek(
   'DRPP mencatat berkas yang masuk (nomor LPJ + total setelah koreksi)',
-  dMasuk?.masuk?.[B3]?.total === 250000 && /^LPJ-/.test(dMasuk?.masuk?.[B3]?.nomorLpj || ''),
+  dMasuk?.masuk?.[B3]?.total === 250000 && /^\d{4,}$/.test(dMasuk?.masuk?.[B3]?.nomorLpj || ''),
   JSON.stringify(dMasuk?.masuk),
 );
 cek(
@@ -879,7 +878,7 @@ await tulis('owner', `lpj_berkas/${B9}`, {
   tahunAnggaran: T,
   versi: 1,
   dicetak: {},
-  nomorLpj: `LPJ-${T}-01-9999`,
+  nomorLpj: '9999',
   spby: { terkunci: true, pelaksana: [orang('pPG', 'Budi Contoh')] },
   anggotaUids: [AKUN.pg.uid],
   ...audit(AKUN.pg.uid),
@@ -1047,6 +1046,145 @@ cek(
   'sistem_log mencatat aturPenghitung',
   logSurat.includes('aturPenghitung'),
   JSON.stringify(logSurat),
+);
+
+// ── Edit fase yang sudah selesai (sampai berkas diarsip) ─────────────────
+const B4 = 'BERKAS4';
+// Node MAK sendiri (A1/I1 sudah dinonaktifkan uji hapus node di atas)
+await tulis('owner', 'mak_node/A9', node('akun', 'TH', { kode: '524119' }));
+await tulis(
+  'owner',
+  'mak_node/I9',
+  node('item', 'A9', { kode: '009', nama: 'Uji edit', pagu: 10000000 }),
+);
+const spby4 = {
+  terkunci: false,
+  tanggal: `${T}-10-26`,
+  pelaksana: [orang('pPG', 'Budi Contoh')],
+  mak: { kode: '524119', akunNodeId: 'A9', tahunNodeId: 'TH', pilihan: {} },
+  transaksi: [
+    { barisId: 'd1', pelaksanaId: 'pPG', itemNodeId: 'I9', jumlah: 100000 },
+    { barisId: 'd2', pelaksanaId: 'pPG', itemNodeId: 'I9', jumlah: 200000 },
+  ],
+};
+await tulis(
+  T0.pg,
+  `lpj_berkas/${B4}`,
+  {
+    skema: 1,
+    jenis: 'nonperjadin',
+    uraian: 'Belanja ATK (uji edit)',
+    tahunAnggaran: T,
+    versi: 1,
+    dicetak: {},
+    spby: spby4,
+    anggotaUids: [AKUN.pg.uid],
+    ...audit(AKUN.pg.uid),
+  },
+  { baru: true, waktu: ['dibuatPada', 'diubahPada'] },
+);
+const n4 = await panggil('selesaikanSpby', { berkasId: B4 }, T0.pg);
+cek('SPBy berkas uji edit selesai → nomor LPJ', !!n4.hasil?.nomorLpj, JSON.stringify(n4));
+const rekapI9 = async () => (await baca('owner', `mak_rekap/${T}`))?.item?.I9?.total || 0;
+const awal4 = await rekapI9();
+// Salah ketik diperbaiki: d1 100.000 → 150.000, d2 dihapus, d3 50.000 ditambah
+r = await tulis(
+  T0.pg,
+  `lpj_berkas/${B4}`,
+  {
+    spby: {
+      ...spby4,
+      terkunci: true,
+      transaksi: [
+        { barisId: 'd1', pelaksanaId: 'pPG', itemNodeId: 'I9', jumlah: 150000 },
+        { barisId: 'd3', pelaksanaId: 'pPG', itemNodeId: 'I9', jumlah: 50000 },
+      ],
+    },
+    versi: (await baca('owner', `lpj_berkas/${B4}`))?.versi + 1,
+    diubahOleh: AKUN.pg.uid,
+  },
+  { ubah: true, waktu: ['diubahPada'] },
+);
+cek('anggota mengedit transaksi SPBy yang sudah selesai (rules)', r === true, r);
+const real4 = await sampai(async () => {
+  const x = await daftar('mak_realisasi', ['berkasId', B4]);
+  const m = Object.fromEntries(x.map((v) => [v.id, v]));
+  return m[`${B4}_d3`]?.status === 'aktif' && m[`${B4}_d2`]?.status === 'batal' ? m : null;
+});
+cek(
+  'realisasi ikut diperbarui: baris diubah, baris baru dicatat, baris hilang dibatalkan',
+  real4?.[`${B4}_d1`]?.jumlah === 150000 &&
+    real4?.[`${B4}_d1`]?.status === 'aktif' &&
+    real4?.[`${B4}_d3`]?.jumlah === 50000 &&
+    real4?.[`${B4}_d2`]?.batalKarena === 'ubahLpj',
+  JSON.stringify(real4),
+);
+cek(
+  'rekap MAK ikut berubah (300.000 → 200.000)',
+  (await rekapI9()) === awal4 - 100000,
+  JSON.stringify({ awal4, kini: await rekapI9() }),
+);
+cek(
+  'memulihkan realisasi yang barisnya dihapus lewat edit ditolak',
+  (await panggil('pulihkanRealisasi', { realisasiId: `${B4}_d2` }, T0.sa)).galat ===
+    'FAILED_PRECONDITION',
+);
+const ringkas4 = await sampai(async () => {
+  const x = await baca('owner', `lpj_ringkas/${B4}`);
+  return x?.total === 200000 ? x : null;
+});
+cek('ringkasan berkas mengikuti total baru', !!ringkas4, JSON.stringify(ringkas4?.total));
+const logEdit = (await daftar('sistem_log', ['modul', 'lpj'])).map((x) => x.aksi);
+cek('sistem_log mencatat sinkronRealisasi', logEdit.includes('sinkronRealisasi'));
+
+// Nomor SP ber-TTE diedit sesudah selesai → register surat (sumber srikandi) ikut diperbarui
+const B5 = 'BERKAS5';
+r = await tulis(
+  T0.pg,
+  `lpj_berkas/${B5}`,
+  {
+    skema: 1,
+    jenis: 'perjadin',
+    uraian: 'Rapat koordinasi (uji edit TTE)',
+    tahunAnggaran: T,
+    versi: 1,
+    dicetak: {},
+    sp: { terkunci: false, menimbang: '', kepada: [orang('pPG', 'Budi Contoh')] },
+    anggotaUids: [AKUN.pg.uid],
+    ...audit(AKUN.pg.uid),
+  },
+  { baru: true, waktu: ['dibuatPada', 'diubahPada'] },
+);
+let versi5 = 1;
+const simpan5 = (data) => {
+  versi5++;
+  return tulis(
+    T0.pg,
+    `lpj_berkas/${B5}`,
+    { ...data, versi: versi5, diubahOleh: AKUN.pg.uid },
+    { ubah: true, waktu: ['diubahPada'] },
+  );
+};
+await simpan5({
+  sp: { terkunci: true, menimbang: 'Uji', kepada: [orang('pPG', 'Budi Contoh')] },
+});
+r = await simpan5({
+  tte: { terkunci: true, nomorSurat: 'W20.IMI.1-0500', tanggalSurat: `${T}-10-05`, scan: null },
+});
+cek('TTE berkas uji edit ditetapkan selesai', r === true, r);
+const sp5 = await sampai(() => baca('owner', `surat_nomor/sp_${B5}`));
+r = await simpan5({
+  tte: { terkunci: true, nomorSurat: 'W20.IMI.1-0501', tanggalSurat: `${T}-10-06`, scan: null },
+});
+cek('mengedit nomor & tanggal TTE yang sudah selesai (rules)', r === true, r);
+const sp5b = await sampai(async () => {
+  const x = await baca('owner', `surat_nomor/sp_${B5}`);
+  return x?.nomor === 'W20.IMI.1-0501' ? x : null;
+});
+cek(
+  'register nomor surat ikut diperbarui (nomor urut tetap)',
+  sp5b?.tanggal === `${T}-10-06` && !!sp5 && sp5b?.nomorUrut === sp5.nomorUrut,
+  JSON.stringify({ sp5, sp5b }),
 );
 
 // ── Inventory ─────────────────────────────────────────────────────────────

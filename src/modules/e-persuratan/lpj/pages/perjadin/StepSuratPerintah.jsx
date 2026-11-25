@@ -6,8 +6,8 @@ import PegawaiPicker from '../../components/PegawaiPicker';
 import PejabatPicker from '../../components/PejabatPicker';
 import PegawaiCards from '../../components/PegawaiCards';
 import Field from '../../ui/Field';
-import { BTN, FORM, NAVY, STATUS, T } from '@/utils/uiTokens';
-import { showToast } from '@/utils/toastStore';
+import BannerEditFase from '../../components/BannerEditFase';
+import { BTN, FORM, NAVY, T } from '@/utils/uiTokens';
 import { ANIM, hapusBaris } from '@/utils/animasi';
 
 function validateSp(sp) {
@@ -27,17 +27,13 @@ export default function StepSuratPerintah({ ctx }) {
   const setSp = (patch) => setPf((prev) => ({ ...prev, sp: { ...prev.sp, ...patch } }));
   const { dipa } = useDipa(ctx.pack.tahunAnggaran);
 
-  // SP sudah ditandai selesai tetapi SP ber-TTE belum diunggah: masih boleh diubah
-  const sudahSelesai = ctx.pack.sp?.terkunci === true;
+  // SP yang sudah selesai masih boleh diedit sampai berkas diarsip
+  const sudahSelesai = ctx.sudahSelesai('sp');
 
   async function simpanPerubahan() {
     const e = validateSp(sp);
     if (tandaiGalat(e)) return;
-    const ok = await persist(ctx.pfRef.current, { quiet: true, tahanLangkah: true });
-    if (ok) {
-      showToast('Perubahan Surat Perintah tersimpan.');
-      ctx.keDetail();
-    }
+    await ctx.simpanPerubahan(ctx.pfRef.current, 'Perubahan Surat Perintah tersimpan.');
   }
 
   function handleSelesai() {
@@ -45,13 +41,6 @@ export default function StepSuratPerintah({ ctx }) {
     if (tandaiGalat(e)) return;
     askConfirm({
       label: 'Surat Perintah',
-      pesan: (
-        <>
-          Setelah selesai, Surat Perintah masih bisa diubah sampai{' '}
-          <strong>SP ber-TTE dan nomor surat diunggah</strong>. Sesudah itu isinya tidak bisa diubah
-          lagi.
-        </>
-      ),
       onYes: async () => {
         // Final: isi terakhir + kunci ditulis bersama (tanggal resmi SP datang dari TTE)
         const ok = await persist(ctx.pfRef.current, {
@@ -77,12 +66,14 @@ export default function StepSuratPerintah({ ctx }) {
   return (
     <>
       {sudahSelesai && (
-        <div
-          className={`rounded-xl border px-4 py-3 mb-3.5 text-[13px] ${STATUS.warnBg} ${STATUS.warnBorder} ${STATUS.warnInk}`}
-        >
-          Surat Perintah sudah ditandai selesai, tetapi masih bisa diubah karena SP ber-TTE dan
-          nomor surat belum diunggah. Bila sudah dicetak untuk TTE, cetak ulang setelah mengubah.
-        </div>
+        <BannerEditFase
+          label="Surat Perintah"
+          catatan={
+            ctx.sudahSelesai('tte')
+              ? 'SP ber-TTE sudah diunggah: bila isinya berubah, proses ulang TTE di Srikandi lalu unggah scan barunya di langkah Upload SP ber-TTE.'
+              : ''
+          }
+        />
       )}
       <div className={FORM.card}>
         <h3 className={`${FORM.cardTitle} mb-4`}>Surat Perintah</h3>

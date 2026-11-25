@@ -80,6 +80,8 @@ export default function StepLampiran({ ctx }) {
     }
   }
 
+  const sudahSelesai = ctx.sudahSelesai('lampiran');
+
   function handleSelesai() {
     askConfirm({
       label: 'Lampiran',
@@ -116,6 +118,14 @@ export default function StepLampiran({ ctx }) {
         </div>
       </div>
       {ctx.infoSimpan}
+      {sudahSelesai && (
+        <div
+          className={`rounded-xl border px-4 py-3 mb-3.5 text-[13px] ${STATUS.warnBg} ${STATUS.warnBorder} ${STATUS.warnInk}`}
+        >
+          <strong>Lampiran</strong> sudah selesai dan masih bisa diganti sampai berkas diarsip
+          Keuangan. Foto dan nota langsung tersimpan begitu diunggah atau dihapus.
+        </div>
+      )}
 
       {/* Memenuhi lebar kartu form (sama dengan form Perjadin) */}
       <div>
@@ -288,7 +298,7 @@ export default function StepLampiran({ ctx }) {
           <button type="button" className={BTN.ghost} onClick={ctx.backToDetail}>
             <FaChevronLeft size={12} /> Kembali ke Detail LPJ
           </button>
-          {allDone && (
+          {allDone && !sudahSelesai && (
             <button
               type="button"
               onClick={handleSelesai}

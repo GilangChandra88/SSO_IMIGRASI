@@ -6,6 +6,7 @@ import { formatTanggal } from '../../utils/formatTanggal';
 import { transaksiLengkap } from '../../utils/lpjLogic';
 import TransaksiTable from '../../components/TransaksiTable';
 import Field from '../../ui/Field';
+import BannerEditFase from '../../components/BannerEditFase';
 import { BTN, FONT, FORM, STATUS, T } from '@/utils/uiTokens';
 
 /**
@@ -36,6 +37,8 @@ export default function StepLPJ({ ctx }) {
   const akunItems = itemDiAkun(mak.nodes, spd.mak?.akunNodeId);
   const total = lpj.transaksi.reduce((s, t) => s + (Number.isInteger(t.jumlah) ? t.jumlah : 0), 0);
 
+  const sudahSelesai = ctx.sudahSelesai('lpj');
+
   function handleSelesai() {
     const e = {};
     if (!lpj.tanggalLpj) e.tanggalLpj = 'Wajib diisi';
@@ -43,6 +46,11 @@ export default function StepLPJ({ ctx }) {
       e.transaksi = 'Lengkapi setiap baris: pelaksana, item, dan jumlah lebih dari 0.';
     }
     if (tandaiGalat(e)) return;
+    if (sudahSelesai) {
+      // Nomor LPJ tetap; realisasi MAK disesuaikan Function dengan transaksi terbaru
+      ctx.simpanPerubahan(ctx.pfRef.current, 'Perubahan LPJ & SPBy tersimpan.');
+      return;
+    }
     askConfirm({
       label: 'LPJ & SPBy (Pack Dokumen)',
       onYes: async () => {
@@ -78,6 +86,12 @@ export default function StepLPJ({ ctx }) {
 
   return (
     <>
+      {sudahSelesai && (
+        <BannerEditFase
+          label="LPJ & SPBy"
+          catatan={`Nomor LPJ ${ctx.pack.nomorLpj || ''} tetap; realisasi MAK ikut diperbarui sesuai transaksi terbaru.`}
+        />
+      )}
       <div className={FORM.cardMuted}>
         <div className={`text-[11px] font-bold uppercase tracking-[.06em] mb-2.5 ${T.ink2}`}>
           Data dari Dokumen Awal · read-only
@@ -106,11 +120,15 @@ export default function StepLPJ({ ctx }) {
             className={`${FORM.input} ${errors.tanggalLpj ? FORM.borderErr : FORM.borderOk} max-w-[240px]`}
           />
         </Field>
-        <Field label="Keterangan" htmlFor="lpj-ket">
+        <Field
+          label="Keterangan (Untuk Pembayaran)"
+          htmlFor="lpj-ket"
+          hint="Tercetak di Kwitansi, SPBy, dan Nota Dinas. Bila dikosongkan, dokumen memakai uraian kegiatan berkas."
+        >
           <textarea
             id="lpj-ket"
             value={lpj.keterangan}
-            placeholder="Uraian kegiatan"
+            placeholder={ctx.pack.uraian || 'Uraian pembayaran'}
             onChange={(e) => setLpj({ keterangan: e.target.value })}
             className={`${FORM.textarea} ${FORM.borderOk}`}
           />
@@ -175,7 +193,7 @@ export default function StepLPJ({ ctx }) {
           <FaChevronLeft size={12} /> Kembali ke Detail LPJ
         </button>
         <button type="button" className={BTN.primaryDark} onClick={handleSelesai}>
-          <FaCheck size={12} /> Selesai
+          <FaCheck size={12} /> {sudahSelesai ? 'Simpan Perubahan' : 'Selesai'}
         </button>
       </div>
     </>

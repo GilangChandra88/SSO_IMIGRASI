@@ -114,6 +114,13 @@ async function ubahStatusRealisasi(p, realisasiId, keStatus, alasan) {
         keStatus === 'batal' ? 'Realisasi ini sudah dibatalkan.' : 'Realisasi ini masih aktif.',
       );
     }
+    if (keStatus === 'aktif' && r.batalKarena === 'ubahLpj') {
+      // Baris transaksinya sudah dihapus dari berkas (edit LPJ/SPBy); memulihkan = hitung ganda
+      throw new HttpsError(
+        'failed-precondition',
+        'Baris transaksi realisasi ini sudah dihapus dari berkas LPJ. Tambahkan lagi lewat edit berkas.',
+      );
+    }
     if (keStatus === 'aktif') {
       const berkas = await tx.get(db.collection(KOLEKSI.lpjBerkas).doc(r.berkasId));
       if (!berkas.exists || berkas.get('dihapus')) {

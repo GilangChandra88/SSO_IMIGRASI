@@ -5,6 +5,7 @@ import { ALAT_ANGKUT } from '../../data/masterLpj';
 import MakDropdowns from '../../components/MakDropdowns';
 import PegawaiCards from '../../components/PegawaiCards';
 import Field from '../../ui/Field';
+import BannerEditFase from '../../components/BannerEditFase';
 import { BTN, FORM, STATUS, T } from '@/utils/uiTokens';
 
 function validateSpd(spd) {
@@ -40,9 +41,15 @@ export default function StepSPD({ ctx }) {
   const setSpd = (patch) => setPf((prev) => ({ ...prev, spd: { ...prev.spd, ...patch } }));
   const border = (key) => (errors[key] ? FORM.borderErr : FORM.borderOk);
 
+  const sudahSelesai = ctx.sudahSelesai('spd');
+
   function handleSelesai() {
     const e = validateSpd(spd);
     if (tandaiGalat(e)) return;
+    if (sudahSelesai) {
+      ctx.simpanPerubahan(ctx.pfRef.current, 'Perubahan SPD tersimpan.');
+      return;
+    }
     askConfirm({
       label: 'SPD (Surat Perjalanan Dinas)',
       onYes: async () => {
@@ -63,6 +70,16 @@ export default function StepSPD({ ctx }) {
 
   return (
     <>
+      {sudahSelesai && (
+        <BannerEditFase
+          label="SPD"
+          catatan={
+            ctx.sudahSelesai('lpj')
+              ? 'Mengganti Akun MAK di sini ikut mengubah realisasi MAK bila item transaksi LPJ masih di bawah Akun itu; sesuaikan juga item transaksi di langkah LPJ & SPBy.'
+              : ''
+          }
+        />
+      )}
       <div
         className={`flex items-center gap-2 px-3.5 py-2.5 mb-3.5 rounded-[10px] border text-[13px] ${STATUS.doneBg} ${STATUS.doneBorder} ${STATUS.doneInk}`}
       >
@@ -225,7 +242,7 @@ export default function StepSPD({ ctx }) {
           <FaChevronLeft size={12} /> Kembali ke Detail LPJ
         </button>
         <button type="button" className={BTN.primaryDark} onClick={handleSelesai}>
-          <FaCheck size={12} /> Selesai
+          <FaCheck size={12} /> {sudahSelesai ? 'Simpan Perubahan' : 'Selesai'}
         </button>
       </div>
     </>

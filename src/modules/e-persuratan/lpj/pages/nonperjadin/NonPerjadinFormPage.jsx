@@ -29,8 +29,9 @@ function langkahAktif(pack) {
 }
 
 function bolehMasuk(pack, step) {
-  if (step === 'np') return !terkunci(pack, 'spby');
-  if (step === 'lampiran') return terkunci(pack, 'spby') && !terkunci(pack, 'lampiran');
+  // Fase yang sudah selesai tetap bisa dibuka untuk diedit (sampai diarsip; dijaga canEditPack)
+  if (step === 'np') return true;
+  if (step === 'lampiran') return terkunci(pack, 'spby');
   return false;
 }
 
@@ -84,6 +85,21 @@ export default function NonPerjadinFormPage({ pack, isi, user }) {
     keDetail();
   }
 
+  // Fase langkah ini sudah selesai: sedang diedit (boleh sampai berkas diarsip). Isiannya tidak
+  // disimpan otomatis; perubahan baru dikirim lewat "Simpan Perubahan".
+  const sudahSelesai = (b) => terkunci(pack, b);
+  const langkahSelesai = sudahSelesai(step === 'np' ? 'spby' : 'lampiran');
+
+  /** Simpan perubahan fase yang sudah selesai lalu kembali ke Detail. @returns hasil persist */
+  async function simpanPerubahan(nextOrFn = pfRef.current, pesan = 'Perubahan tersimpan.') {
+    const hasil = await persist(nextOrFn, { quiet: true, tahanLangkah: true });
+    if (hasil) {
+      showToast(pesan);
+      keDetail();
+    }
+    return hasil;
+  }
+
   /** Tampilkan galat validasi; bila ada, gulir ke isian merah pertama. @returns true bila ada galat */
   function tandaiGalat(e) {
     setErrors(e);
@@ -113,7 +129,7 @@ export default function NonPerjadinFormPage({ pack, isi, user }) {
     pack,
     packView,
     pf,
-    setPf: form.ubahPf,
+    setPf: langkahSelesai ? form.setPf : form.ubahPf,
     pfRef,
     // Baris "Tersimpan otomatis" dipasang tiap langkah tepat di bawah judulnya
     infoSimpan: <InfoSimpan status={otomatis.status} lastSaved={lastSaved} />,
@@ -124,6 +140,8 @@ export default function NonPerjadinFormPage({ pack, isi, user }) {
     goStep,
     keDetail,
     backToDetail,
+    sudahSelesai,
+    simpanPerubahan,
     askConfirm: setConfirm,
     closeConfirm,
     showToast,

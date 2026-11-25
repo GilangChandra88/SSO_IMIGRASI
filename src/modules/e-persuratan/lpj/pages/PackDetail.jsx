@@ -159,7 +159,7 @@ export default function PackDetail({ packId }) {
   }
 
   const goForm = (isi) => {
-    if (!canEdit) return; // berkas final / tanpa hak edit tidak lagi bisa diubah
+    if (!canEdit) return; // berkas sudah diarsip / tanpa hak edit tidak lagi bisa diubah
     navigate(`/e-persuratan/lpj/${pack.id}?isi=${isi}`);
   };
 
@@ -253,6 +253,8 @@ export default function PackDetail({ packId }) {
       <div>
         {stages.map(({ stage, display, locked, tally, pct }, si) => {
           const aksi = !locked && canEdit ? aksiFase(pack, stage) : null;
+          // Bagian fase ini yang sudah selesai tetap bisa diedit sampai berkas diarsip
+          const edit = !locked && canEdit ? editFase(pack, stage) : [];
           // Dokumen fase yang sudah jadi & ber-template PDF → tombol "Cetak Semua"
           const siap = locked ? [] : dokumenSiapCetak(pack, stage);
           // Fase yang sedang berjalan disapu kilau, serempak dengan tombol fase
@@ -319,6 +321,17 @@ export default function PackDetail({ packId }) {
                     {mencetakFase === stage.num ? 'Menyiapkan…' : `Cetak Semua (${siap.length})`}
                   </button>
                 )}
+                {edit.map((e) => (
+                  <button
+                    key={e.isi}
+                    type="button"
+                    className={`${BTN.sm} shrink-0`}
+                    onClick={() => goForm(e.isi)}
+                    data-mekar
+                  >
+                    <FaPen size={11} /> {e.label}
+                  </button>
+                ))}
                 {aksi && (
                   <TombolBuat
                     key={aksi.isi + aksi.label}
@@ -357,12 +370,7 @@ export default function PackDetail({ packId }) {
                       status={lpjSingleStatus(pack, stage, doc)}
                       onLihat={dok.lihat}
                       onSiapkan={doc.berkas ? siapkanScan : undefined}
-                      // SP selesai masih bisa diubah sampai SP ber-TTE & nomor surat disimpan
-                      onUbah={
-                        doc.key === 'sp' && canEdit && !terkunci(pack, 'tte')
-                          ? () => goForm('sp')
-                          : undefined
-                      }
+                      bisaEdit={canEdit}
                     />
                   ))}
                   {(stage.groups || []).map((group) => (
@@ -373,6 +381,7 @@ export default function PackDetail({ packId }) {
                       group={group}
                       status={lpjGroupStatus(pack, stage, group)}
                       onLihat={dok.lihat}
+                      bisaEdit={canEdit}
                     />
                   ))}
                   {/* Fase 4 Perjadin: bukti pengeluaran per pelaksana (opsional) */}
@@ -496,6 +505,29 @@ function aksiFase(pack, stage) {
     : { isi: d.isi, label: teks.mulai, ikon: teks.ikon };
 }
 
+/**
+ * Tombol "Edit" kepala blok fase: satu per bagian fase ini yang sudah selesai (terkunci). Bagian
+ * yang selesai masih bisa diedit sampai berkas diarsip (rules `bagianBerubahSah`).
+ * @returns {{ isi: string, label: string }[]}
+ */
+function editFase(pack, stage) {
+  const isi = [...(stage.items || []), ...(stage.groups || [])].map((d) => d.isi).filter(Boolean);
+  return [...new Set(isi)]
+    .filter((x) => TEKS_EDIT[x] && terkunci(pack, x === 'np' ? 'spby' : x))
+    .map((x) => ({ isi: x, label: TEKS_EDIT[x] }));
+}
+
+// Teks tombol edit per langkah form (?isi=)
+const TEKS_EDIT = {
+  sp: 'Edit Surat Perintah',
+  tte: 'Edit SP ber-TTE',
+  spd: 'Edit SPD',
+  lpj: 'Edit SPBy & LPJ',
+  laporan: 'Edit Laporan',
+  np: 'Edit SPBy & Rincian',
+  lampiran: 'Edit Lampiran',
+};
+
 // Teks tombol fase per dokumen: mulai (belum diisi) / lanjut (sudah mulai diisi)
 const TEKS_AKSI = {
   sp: { mulai: 'Buat Surat Perintah', lanjut: 'Lanjutkan Surat Perintah', ikon: FaPlus },
@@ -529,7 +561,13 @@ function BelumDibuat({ teks = 'Belum dibuat' }) {
   return <span className={`text-[11.5px] shrink-0 ${T.inkMuted}`}>{teks}</span>;
 }
 
-function SingleCard({ doc, status, onLihat, onSiapkan, onUbah }) {
+/** Keterangan di bawah nama dokumen yang sudah selesai. */
+const ketSelesai = (bisaEdit) =>
+  bisaEdit
+    ? 'Sudah selesai — masih bisa diedit sampai berkas diarsip'
+    : 'Sudah final — tidak dapat diubah';
+
+function SingleCard({ doc, status, onLihat, onSiapkan, bisaEdit }) {
   let actions = null;
   if (status === 'selesai' || status === 'proses') {
     // Satu tombol: popup pratinjau, yang juga bisa langsung mencetak (berkas unggahan seperti
@@ -537,11 +575,6 @@ function SingleCard({ doc, status, onLihat, onSiapkan, onUbah }) {
     const bisaPrint = status === 'selesai';
     actions = (
       <div className="flex flex-wrap gap-2">
-        {status === 'selesai' && onUbah && (
-          <button type="button" className={BTN.sm} onClick={onUbah} data-mekar>
-            <FaPen size={11} /> Ubah
-          </button>
-        )}
         <TombolLihat onClick={() => onLihat(doc)} onSiapkan={onSiapkan}>
           {bisaPrint ? 'Lihat / Print' : 'Lihat'}
         </TombolLihat>
@@ -562,11 +595,7 @@ function SingleCard({ doc, status, onLihat, onSiapkan, onUbah }) {
         <div className="flex-1 min-w-0">
           <div className={`text-[13px] font-semibold ${T.ink}`}>{doc.label}</div>
           {status === 'selesai' && doc.noEdit && (
-            <div className={`text-[11px] mt-px ${T.inkMuted}`}>
-              {onUbah
-                ? 'Masih bisa diubah sampai SP ber-TTE & nomor surat diunggah'
-                : 'Sudah final — tidak dapat diubah'}
-            </div>
+            <div className={`text-[11px] mt-px ${T.inkMuted}`}>{ketSelesai(bisaEdit)}</div>
           )}
         </div>
       </div>
@@ -575,7 +604,7 @@ function SingleCard({ doc, status, onLihat, onSiapkan, onUbah }) {
   );
 }
 
-function GroupCard({ pack, stage, group, status, onLihat }) {
+function GroupCard({ pack, stage, group, status, onLihat, bisaEdit }) {
   // Pack LPJ & SPBy (Fase 3): tanpa baris kepala pack, tiap dokumen tampil langsung
   if (group.key === 'lpjpack') {
     return (
@@ -600,9 +629,7 @@ function GroupCard({ pack, stage, group, status, onLihat }) {
           <div className="flex-1 min-w-0">
             <div className={`text-[13px] font-semibold ${T.ink}`}>{group.label}</div>
             {status === 'selesai' && group.noEdit && (
-              <div className={`text-[11px] mt-px ${T.inkMuted}`}>
-                Sudah final — tidak dapat diubah
-              </div>
+              <div className={`text-[11px] mt-px ${T.inkMuted}`}>{ketSelesai(bisaEdit)}</div>
             )}
             {status === 'menunggu' && (
               <div className={`text-[11px] mt-px ${STATUS.warnInk}`}>
